@@ -40,13 +40,15 @@ use rusoto_s3::{
 use rusoto_core::Region;
 
 struct GlobalData {
+    bucket: Option<String>,
+    key: Option<String>,
     upload_id: Option<String>,
 }
 
 const EXPECT_GLOBAL_DATA: &'static str = "failed to lock global data";
 
 static GLOBAL_DATA: Lazy<Mutex<GlobalData>> = Lazy::new(|| {
-    Mutex::new(GlobalData { upload_id: None })
+    Mutex::new(GlobalData { bucket: None, key: None, upload_id: None })
 });
 
 const CHUNK_SIZE: u64 = 8 * 1024 * 1024;
@@ -77,7 +79,6 @@ fn handle_abort(s3: &dyn S3, bucket: &str, key: &str, upload_id: &str) -> Result
 fn handle_upload(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Result<()>
 {
     if ! Path::new(&file).exists() {
-
         eprintln!("source file does not exist");
         process::exit(1);
     }
@@ -121,6 +122,8 @@ fn handle_upload(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Result<()>
 
         {
             let mut global_data = GLOBAL_DATA.lock().expect(EXPECT_GLOBAL_DATA);
+            global_data.bucket = Some(bucket.into());
+            global_data.key = Some(key.into());
             global_data.upload_id = Some(upload_id.clone());
         }
 
@@ -263,19 +266,26 @@ fn handle_download(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Result<(
     Ok(())
 }
 
-fn setup_cancel_handler(bucket: String, key: String) {
+fn setup_cancel_handler() {
     ctrlc::set_handler(move || {
         let global_data = GLOBAL_DATA.lock().expect(EXPECT_GLOBAL_DATA);
-        if let Some(upload_id) = &global_data.upload_id {
-            eprintln!("\ncancelling...");
-            let region = Region::default();
-            let s3 = S3Client::new(region);
-            let res = handle_abort(&s3, &bucket, &key, &upload_id);
-            if let Err(e) = res {
-                eprintln!("Error cancelling: {}", e);
-            }
-        } else {
+        if global_data.bucket.is_none() || global_data.key.is_none() || global_data.upload_id.is_none()
+        {
             eprintln!("\ncancelled");
+        } else {
+            if let Some(bucket) = &global_data.bucket {
+                if let Some(key) = &global_data.key {
+                    if let Some(upload_id) = &global_data.upload_id {
+                        eprintln!("\ncancelling...");
+                        let region = Region::default();
+                        let s3 = S3Client::new(region);
+                        let res = handle_abort(&s3, &bucket, &key, &upload_id);
+                        if let Err(e) = res {
+                            eprintln!("Error cancelling: {}", e);
+                        }
+                    }
+                }
+            }
         }
         process::exit(0);
     }).expect("Error setting Ctrl-C handler");
@@ -325,7 +335,7 @@ fn handle_s3etag(path: &str) -> Result<()> {
     Ok(())
 }
 
-fn handle_sync(s3: &dyn S3, direction: SyncDirection, bucket: &str, key: &str, directory: &str) -> Result<()> {
+fn handle_sync(_s3: &dyn S3, direction: SyncDirection, bucket: &str, key: &str, directory: &str) -> Result<()> {
     eprintln!("not implemented: direction={}, bucket={}, key={}, directory={}",
               direction, bucket, key, directory);
     Ok(())
@@ -408,22 +418,21 @@ fn main() -> Result<()> {
     let region = Region::default();
     let s3 = S3Client::new(region);
 
+    setup_cancel_handler();
+
     match cli.cmd {
 
         Put { bucket, key, file } => {
-            setup_cancel_handler(bucket.clone(), key.clone());
             eprintln!("put: bucket={}, key={}, file={}", bucket, key, file);
             handle_upload(&s3, &bucket, &key, &file)?;
         },
 
         Get { bucket, key, file } => {
-            setup_cancel_handler(bucket.clone(), key.clone());
             eprintln!("get: bucket={}, key={}, file={}", bucket, key, file);
             handle_download(&s3, &bucket, &key, &file)?;
         },
 
         Abort { bucket, key, upload_id } => {
-            setup_cancel_handler(bucket.clone(), key.clone());
             eprintln!("abort: bucket={}, key={}, upload_id={}", bucket, key, upload_id);
             handle_abort(&s3, &bucket, &key, &upload_id)?;
         },
