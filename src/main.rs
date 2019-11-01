@@ -2,6 +2,7 @@ extern crate ctrlc;
 extern crate crypto;
 extern crate hex;
 extern crate once_cell;
+extern crate structopt;
 extern crate rusoto_core;
 extern crate rusoto_s3;
 
@@ -18,16 +19,7 @@ use std::sync::Mutex;
 use crypto::digest::Digest;
 use crypto::md5::Md5;
 use once_cell::sync::Lazy;
-
-struct GlobalData {
-    upload_id: Option<String>,
-}
-
-const EXPECT_GLOBAL_DATA: &'static str = "failed to lock global data";
-
-static GLOBAL_DATA: Lazy<Mutex<GlobalData>> = Lazy::new(|| {
-    Mutex::new(GlobalData { upload_id: None })
-});
+use structopt::StructOpt;
 
 use rusoto_s3::{
     AbortMultipartUploadRequest,
@@ -44,6 +36,16 @@ use rusoto_s3::{
 };
 
 use rusoto_core::Region;
+
+struct GlobalData {
+    upload_id: Option<String>,
+}
+
+const EXPECT_GLOBAL_DATA: &'static str = "failed to lock global data";
+
+static GLOBAL_DATA: Lazy<Mutex<GlobalData>> = Lazy::new(|| {
+    Mutex::new(GlobalData { upload_id: None })
+});
 
 const CHUNK_SIZE: u64 = 8 * 1024 * 1024;
 const READ_SIZE: usize = 4096;
@@ -321,52 +323,82 @@ fn handle_s3etag(path: &str) -> Result<()> {
     Ok(())
 }
 
+#[derive(Debug, StructOpt)]
+#[structopt(name = "esthri", about = "Simple S3 upload implementation.")]
+struct Cli {
+    #[structopt(subcommand)]
+    cmd: Command
+}
+
+#[derive(Debug, StructOpt)]
+enum Command
+{
+    /// Upload an object to S3
+    Put {
+        /// The bucket to target
+        bucket: String,
+        /// The key to target
+        key: String,
+        /// The path of the file to read
+        file: String,
+    },
+    /// Download an object from S3
+    Get {
+        /// The bucket to target
+        bucket: String,
+        /// The key to target
+        key: String,
+        /// The path of the file to write
+        file: String,
+    },
+    /// Manually abort a multipart upload
+    Abort {
+        /// The bucket for the multipart upload
+        bucket: String,
+        /// The key for the multipart upload
+        key: String,
+        /// The upload_id for the multipart upload
+        upload_id: String,
+    },
+    /// Compute and print the S3 ETag of the file
+    S3etag {
+        file: String,
+    },
+}
+
 fn main() -> Result<()> {
 
+    use Command::*;
+
+    let cli = Cli::from_args();
+   
     let region = Region::default();
     let s3 = S3Client::new(region);
 
-    let mut argv: Vec<String> = std::env::args().collect();
+    match cli.cmd {
 
-    if argv.len() < 5 {
-        eprintln!("usage: esthri <operation> <bucket> <key> <file>");
-        process::exit(1);
-    }
-
-    let _ = argv.remove(0);
-    let op = argv.remove(0);
-    let bucket = argv.remove(0);
-    let key = argv.remove(0);
-    let file = argv.remove(0);
-
-    setup_cancel_handler(bucket.clone(), key.clone());
-   
-    match op.as_str() {
-
-        "put" => {
+        Put { bucket, key, file } => {
+            setup_cancel_handler(bucket.clone(), key.clone());
             eprintln!("put: bucket={}, key={}, file={}", bucket, key, file);
             handle_upload(&s3, &bucket, &key, &file)?;
         },
 
-        "get" => {
+        Get { bucket, key, file } => {
+            setup_cancel_handler(bucket.clone(), key.clone());
             eprintln!("get: bucket={}, key={}, file={}", bucket, key, file);
             handle_download(&s3, &bucket, &key, &file)?;
         },
 
-        "abort" => {
-            eprintln!("abort: bucket={}, key={}, upload_id={}", bucket, key, file);
-            handle_abort(&s3, &bucket, &key, &file)?;
+        Abort { bucket, key, upload_id } => {
+            setup_cancel_handler(bucket.clone(), key.clone());
+            eprintln!("abort: bucket={}, key={}, upload_id={}", bucket, key, upload_id);
+            handle_abort(&s3, &bucket, &key, &upload_id)?;
         },
 
-        "s3etag" => {
+        S3etag { file } => {
             eprintln!("s3etag: file={}", file);
             handle_s3etag(&file)?;
         },
-
-        _  => {
-            eprintln!("unknown operation");
-            process::exit(1);
-        }
     }
 
     Ok(())
