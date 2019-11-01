@@ -1,3 +1,4 @@
+extern crate clap;
 extern crate ctrlc;
 extern crate crypto;
 extern crate hex;
@@ -16,6 +17,7 @@ use std::path::Path;
 use std::process;
 use std::sync::Mutex;
 
+use clap::arg_enum;
 use crypto::digest::Digest;
 use crypto::md5::Md5;
 use once_cell::sync::Lazy;
@@ -323,11 +325,26 @@ fn handle_s3etag(path: &str) -> Result<()> {
     Ok(())
 }
 
+fn handle_sync(s3: &dyn S3, direction: SyncDirection, bucket: &str, key: &str, directory: &str) -> Result<()> {
+    eprintln!("not implemented: direction={}, bucket={}, key={}, directory={}",
+              direction, bucket, key, directory);
+    Ok(())
+}
+
 #[derive(Debug, StructOpt)]
 #[structopt(name = "esthri", about = "Simple S3 upload implementation.")]
 struct Cli {
     #[structopt(subcommand)]
     cmd: Command
+}
+
+arg_enum! {
+    #[derive(Debug)]
+    #[allow(non_camel_case_types)]
+    enum SyncDirection {
+        up,
+        down,
+    }
 }
 
 #[derive(Debug, StructOpt)]
@@ -364,6 +381,22 @@ enum Command
     S3etag {
         file: String,
     },
+    /// Sync a directory with S3
+    #[structopt(name="sync")]
+    SyncCmd {
+        /// The direction of the sync: 'up' for local to remote, 'down' for remote to local
+        #[structopt(long, default_value="up")]
+        direction: SyncDirection, 
+        /// The bucket to target
+        #[structopt(long)]
+        bucket: String, 
+        /// The key to target
+        #[structopt(long)]
+        key: String, 
+        /// The directory to use for up/down sync
+        #[structopt(long)]
+        directory: String, 
+    },
 }
 
 fn main() -> Result<()> {
@@ -398,6 +431,10 @@ fn main() -> Result<()> {
         S3etag { file } => {
             eprintln!("s3etag: file={}", file);
             handle_s3etag(&file)?;
+        },
+
+        SyncCmd { direction, bucket, key, directory } => {
+            handle_sync(&s3, direction, &bucket, &key, &directory)?;
         },
     }
 
