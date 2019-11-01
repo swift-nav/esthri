@@ -1,3 +1,4 @@
+extern crate anyhow;
 extern crate clap;
 extern crate ctrlc;
 extern crate crypto;
@@ -19,9 +20,11 @@ use std::path::Path;
 use std::process;
 use std::sync::Mutex;
 
+use anyhow::{anyhow, Context};
 use clap::arg_enum;
 use crypto::digest::Digest;
 use crypto::md5::Md5;
+use glob::Pattern;
 use once_cell::sync::Lazy;
 use structopt::StructOpt;
 use walkdir::WalkDir;
@@ -34,7 +37,9 @@ use rusoto_s3::{
     CompletedMultipartUpload,
     GetObjectRequest,
     HeadObjectRequest,
+    ListObjectsV2Request,
     PutObjectRequest,
+    Object,
     S3,
     S3Client,
     StreamingBody,
@@ -86,7 +91,7 @@ fn handle_abort(s3: &dyn S3, bucket: &str, key: &str, upload_id: &str) -> Result
 fn handle_upload(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Result<()>
 {
     if ! Path::new(&file).exists() {
-        eprintln!("source file does not exist");
+        eprintln!("source file does not exist: {}", file);
         process::exit(1);
     }
 
@@ -320,7 +325,12 @@ fn s3_etag(path: &str) -> Result<String> {
         remaining -= chunk_size as u64;
     }
 
-    if digests.len() == 1 && file_size < CHUNK_SIZE {
+    if digests.len() == 0 {
+        let mut hash_bytes = [0u8;16];
+        hash.result(&mut hash_bytes);
+        let hex_digest = hex::encode(hash_bytes);
+        Ok(format!("\"{}\"", hex_digest))
+    } else if digests.len() == 1 && file_size < CHUNK_SIZE {
         let hex_digest = hex::encode(digests[0]);
         Ok(format!("\"{}\"", hex_digest))
     } else {
@@ -388,8 +398,128 @@ fn handle_head_object(s3: &dyn S3, bucket: &str, key: &str) -> Result<()>
     Ok(())
 }
 
-fn handle_sync(
+struct S3Listing
+{
+    count: i64,
+    continuation: Option<String>,
+    objects: Vec<S3Obj>,
+}
+
+struct S3Obj
+{
+    key: String,
+    e_tag: String,
+}
+
+fn list_objects(s3: &dyn S3, bucket: &str, key: &str, continuation: Option<String>) -> Result<S3Listing> {
+
+    let lov2r = ListObjectsV2Request {
+        bucket: bucket.into(),
+        prefix: Some(key.into()),
+        continuation_token: continuation,
+        ..Default::default()
+    };
+
+    let fut = s3.list_objects_v2(lov2r);
+    let res = fut.sync();
+
+    let lov2o = res.context(anyhow!("listing objects failed"))?;
+    let contents = if lov2o.contents.is_none() {
+        eprintln!("listing returned no contents");
+        return Ok(S3Listing { count: 0, continuation: None, objects: vec![] });
+    } else {
+        lov2o.contents.unwrap()
+    };
+
+    let count = lov2o.key_count.ok_or(anyhow!("unexpected: key count was none"))?;
+
+    let mut listing = S3Listing { count: count, continuation: lov2o.next_continuation_token, objects: vec![] };
+
+    for object in contents {
+        let key = if object.key.is_some() { object.key.unwrap() }
+                  else { eprintln!("unexpected: object key was null"); continue; };
+        let e_tag = if object.e_tag.is_some() { object.e_tag.unwrap() } 
+                    else { eprintln!("unexpected: object ETag was null"); continue; };
+        listing.objects.push(S3Obj { key: key, e_tag: e_tag });
+    }
+
+    Ok(listing)
+}
+
+fn sync_local_to_remote(
+        s3: &dyn S3,
+        bucket: &str,
+        key: &str,
+        directory: &str,
+        glob_includes: &Vec<Pattern>,
+        glob_excludes: &Vec<Pattern>,
+    ) -> Result<()> 
+{
+    for entry in WalkDir::new(directory) {
+        let entry = entry?;
+        let stat = entry.metadata()?;
+        if stat.is_dir() {
+            continue;
+        }
+        // TODO: abort if symlink?
+        let path = format!("{}", entry.path().display());
+        eprintln!("local path={}", path);
+        let mut excluded = false;
+        let mut included = false;
+        for pattern in glob_excludes {
+            if pattern.matches(&path) {
+                excluded = true;
+            }
+        }
+        for pattern in glob_includes {
+            if pattern.matches(&path) {
+                included = true;
+            }
+        }
+        let path = if included {
+            Some(path)
+        } else if !excluded {
+            Some(path)
+        } else {
+            None
+        };
+        if let Some(path) = path {
+            let remote_path = Path::new(key);
+            let stripped_path = format!("{}", entry.path().strip_prefix(&directory)?.display());
+            let remote_path: String = format!("{}", remote_path.join(&stripped_path).display());
+            eprintln!("checking remote: {}", remote_path);
+            let remote_etag = head_object(s3, bucket, &remote_path);
+            let local_etag = s3_etag(&path)?;
+            if remote_etag.is_none() {
+                eprintln!("file did not exist remotely: {}", remote_path);
+                handle_upload(s3, bucket, &remote_path, &path)?;
+            } else {
+                let remote_etag = remote_etag.unwrap();
+                if remote_etag != local_etag {
+                    eprintln!("file etag mistmatch: {}, remote_etag={}, local_etag={}", remote_path, remote_etag, local_etag);
+                    handle_upload(s3, bucket, &remote_path, &path)?;
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn sync_remote_to_local(
         _s3: &dyn S3,
+        _bucket: &str,
+        __key: &str,
+        _directory: &str,
+        _glob_includes: &Vec<Pattern>,
+        _glob_excludes: &Vec<Pattern>,
+    ) -> Result<()>
+{
+    Ok(())
+}
+
+fn handle_sync(
+        s3: &dyn S3,
         direction: SyncDirection,
         bucket: &str,
         key: &str,
@@ -398,12 +528,9 @@ fn handle_sync(
         excludes: &Option<Vec<String>>,
     ) -> Result<()> 
 {
-    use glob::Pattern;
-
     eprintln!("sync: direction={}, bucket={}, key={}, directory={}, include={:?}, exclude={:?}",
               direction, bucket, key, directory, includes, excludes);
 
-    // TODO: Default excludes to '*' if excludes is empty and includes has something?
     let mut glob_excludes: Vec<Pattern> = vec![];
     let mut glob_includes: Vec<Pattern> = vec![];
 
@@ -435,39 +562,32 @@ fn handle_sync(
         }
     }
 
-    for entry in WalkDir::new(directory) {
-        let entry = entry?;
-        let stat = entry.metadata()?;
-        if stat.is_dir() {
-            continue;
+    // TODO: Default excludes to '*' if excludes is empty and includes has something?
+
+    match direction {
+        SyncDirection::up => {
+            sync_local_to_remote(s3, bucket, key, directory, &glob_includes, &glob_excludes)?;
+        },
+        SyncDirection::down => {
+            sync_remote_to_local(s3, bucket, key, directory, &glob_includes, &glob_excludes)?;
         }
-        // TODO: abort if symlink
-        let path = format!("{}", entry.path().display());
-        let mut excluded = false;
-        let mut included = false;
-        for pattern in &glob_excludes {
-            if pattern.matches(&path) {
-                excluded = true;
-            }
+    }
+
+    Ok(())
+}
+
+fn handle_list_objects(s3: &dyn S3, bucket: &str, key: &str) -> Result<()> {
+
+    let mut continuation: Option<String> = None;
+    loop {
+        let listing = list_objects(s3, bucket, key, continuation)?;
+        for entry in listing.objects {
+            eprintln!("key={}, etag={}", entry.key, entry.e_tag);
         }
-        for pattern in &glob_includes {
-            if pattern.matches(&path) {
-                included = true;
-            }
+        if listing.continuation.is_none() {
+            break;
         }
-        let path = if included {
-            Some(path)
-        } else if !excluded {
-            Some(path)
-        } else {
-            None
-        };
-        if let Some(path) = path {
-            eprintln!("{}", path);
-            // TODO: Head object
-            // TODO: Compute s3 etag
-            // TODO: Upload/download if etag is different
-        }
+        continuation = listing.continuation;
     }
 
     Ok(())
@@ -547,10 +667,14 @@ enum Command
     },
     HeadObject {
         /// The bucket to target
-        #[structopt(long)]
         bucket: String, 
         /// The key to target
-        #[structopt(long)]
+        key: String, 
+    },
+    ListObjects {
+        /// The bucket to target
+        bucket: String, 
+        /// The key to target
         key: String, 
     }
 }
@@ -594,6 +718,10 @@ fn main() -> Result<()> {
 
         HeadObject {  bucket, key } => {
             handle_head_object(&s3, &bucket, &key)?;
+        },
+
+        ListObjects { bucket, key } => {
+            handle_list_objects(&s3, &bucket, &key)?;
         },
     }
 
