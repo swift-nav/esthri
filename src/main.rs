@@ -8,6 +8,7 @@ extern crate once_cell;
 extern crate structopt;
 extern crate rusoto_core;
 extern crate rusoto_s3;
+extern crate thiserror;
 extern crate walkdir;
 
 use std::fs;
@@ -698,33 +699,35 @@ enum Command
 {
     /// Upload an object to S3
     Put {
-        /// The bucket to target
+        #[structopt(long)]
         bucket: String,
-        /// The key to target
+        #[structopt(long)]
         key: String,
-        /// The path of the file to read
+        /// The path of the local file to read
         file: String,
     },
     /// Download an object from S3
     Get {
-        /// The bucket to target
+        #[structopt(long)]
         bucket: String,
-        /// The key to target
+        #[structopt(long)]
         key: String,
-        /// The path of the file to write
+        /// The path of the local file to write
         file: String,
     },
     /// Manually abort a multipart upload
     Abort {
         /// The bucket for the multipart upload
+        #[structopt(long)]
         bucket: String,
         /// The key for the multipart upload
+        #[structopt(long)]
         key: String,
         /// The upload_id for the multipart upload
         upload_id: String,
     },
     /// Compute and print the S3 ETag of the file
-    S3etag {
+    S3Etag {
         file: String,
     },
     /// Sync a directory with S3
@@ -733,32 +736,36 @@ enum Command
         /// The direction of the sync: 'up' for local to remote, 'down' for remote to local
         #[structopt(long, default_value="up")]
         direction: SyncDirection, 
-        /// The bucket to target
         #[structopt(long)]
         bucket: String, 
-        /// The key to target
         #[structopt(long)]
         key: String, 
         /// The directory to use for up/down sync
         #[structopt(long)]
         directory: String, 
-        /// Optional exclude glob pattern
-        #[structopt(long)]
-        exclude: Option<Vec<String>>,
-        /// Optional include glob pattern
+        /// Optional include glob pattern (see man 3 glob)
         #[structopt(long)]
         include: Option<Vec<String>>,
+        /// Optional exclude glob pattern (see man 3 glob)
+        #[structopt(long)]
+        exclude: Option<Vec<String>>,
     },
+    /// Retreive the ETag for a remote object
     HeadObject {
         /// The bucket to target
+        #[structopt(long)]
         bucket: String, 
         /// The key to target
+        #[structopt(long)]
         key: String, 
     },
+    /// List remote objects in S3
     ListObjects {
         /// The bucket to target
+        #[structopt(long)]
         bucket: String, 
         /// The key to target
+        #[structopt(long)]
         key: String, 
     }
 }
@@ -791,7 +798,7 @@ fn main() -> Result<()> {
             handle_abort(&s3, &bucket, &key, &upload_id)?;
         },
 
-        S3etag { file } => {
+        S3Etag { file } => {
             eprintln!("s3etag: file={}", file);
             handle_s3etag(&file)?;
         },
