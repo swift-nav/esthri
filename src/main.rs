@@ -64,7 +64,9 @@ static GLOBAL_DATA: Lazy<Mutex<GlobalData>> = Lazy::new(|| {
     Mutex::new(GlobalData { bucket: None, key: None, upload_id: None })
 });
 
+// This is the default chunk size from awscli
 const CHUNK_SIZE: u64 = 8 * 1024 * 1024;
+
 const READ_SIZE: usize = 4096;
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
@@ -133,6 +135,7 @@ fn handle_upload(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Result<()>
         let upload_id = upload_id.unwrap();
         eprintln!("upload_id: {}", upload_id);
 
+        // Load into global data so it can be cancelled for CTRL-C / SIGTERM
         {
             let mut global_data = GLOBAL_DATA.lock().expect(EXPECT_GLOBAL_DATA);
             global_data.bucket = Some(bucket.into());
@@ -202,6 +205,14 @@ fn handle_upload(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Result<()>
         if let Err(e) = res {
             eprintln!("complete_multipart_upload failed: {}", e);
             process::exit(1);
+        }
+
+        // Clear multi-part upload
+        {
+            let mut global_data = GLOBAL_DATA.lock().expect(EXPECT_GLOBAL_DATA);
+            global_data.bucket = None;
+            global_data.key = None;
+            global_data.upload_id = None;
         }
 
     } else {
@@ -378,6 +389,12 @@ fn head_object(s3: &dyn S3, bucket: &str, key: &str) -> Option<String>
 
     match res {
         Ok(hoo) => {
+            if let Some(delete_marker) = hoo.delete_marker {
+                eprintln!("delete_marker: {}", delete_marker);
+                if delete_marker {
+                    return None;
+                }
+            }
             if let Some(e_tag) = hoo.e_tag {
                 return Some(e_tag);
             }
@@ -543,6 +560,8 @@ fn sync_local_to_remote(
                 if remote_etag != local_etag {
                     eprintln!("file etag mistmatch: {}, remote_etag={}, local_etag={}", remote_path, remote_etag, local_etag);
                     handle_upload(s3, bucket, &remote_path, &path)?;
+                } else {
+                    eprintln!("etag match: {}, remote_etag={}, local_etag={}", remote_path, remote_etag, local_etag);
                 }
             }
         }
