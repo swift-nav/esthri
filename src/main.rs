@@ -25,6 +25,7 @@ use clap::arg_enum;
 use crypto::digest::Digest;
 use crypto::md5::Md5;
 use glob::Pattern;
+use thiserror::Error;
 use once_cell::sync::Lazy;
 use structopt::StructOpt;
 use walkdir::WalkDir;
@@ -39,7 +40,6 @@ use rusoto_s3::{
     HeadObjectRequest,
     ListObjectsV2Request,
     PutObjectRequest,
-    Object,
     S3,
     S3Client,
     StreamingBody,
@@ -232,6 +232,8 @@ fn handle_upload(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Result<()>
 
 fn handle_download(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Result<()>
 {
+    eprintln!("downloading: bucket={}, key={}, dest={}", bucket, key, file);
+
     let f = File::create(file)?;
     let mut writer = BufWriter::new(f);
 
@@ -303,7 +305,17 @@ fn setup_cancel_handler() {
     }).expect("Error setting Ctrl-C handler");
 }
 
+#[derive(Error, Debug)]
+pub enum ETagErr {
+    #[error("did not exist locally")]
+    NotPresent,
+}
+
 fn s3_etag(path: &str) -> Result<String> {
+
+    if ! Path::new(path).exists() {
+        return Err(Box::new(ETagErr::NotPresent));
+    }
 
     let f = File::open(path)?;
     let mut reader = BufReader::new(f);
@@ -446,6 +458,51 @@ fn list_objects(s3: &dyn S3, bucket: &str, key: &str, continuation: Option<Strin
     Ok(listing)
 }
 
+fn process_globs<'a>(path: &'a str, glob_includes: &Vec<Pattern>, glob_excludes: &Vec<Pattern>) -> Option<&'a str>
+{
+    let mut excluded = false;
+    let mut included = false;
+    for pattern in glob_excludes {
+        if pattern.matches(path) {
+            excluded = true;
+        }
+    }
+    for pattern in glob_includes {
+        if pattern.matches(path) {
+            included = true;
+        }
+    }
+    if included {
+        Some(path)
+    } else if !excluded {
+        Some(path)
+    } else {
+        None
+    }
+}
+
+fn download_with_dir(s3: &dyn S3, bucket: &str, s3_prefix: &str, s3_suffix: &str, local_dir: &str) -> Result<()>
+{
+    let dest_path = Path::new(local_dir).join(s3_suffix);
+
+    let parent_dir = dest_path.parent().ok_or(anyhow!("unexpected: parent dir was null"))?;
+    let parent_dir = format!("{}", parent_dir.display());
+
+    /*
+    eprintln!("bucket={}, s3_prefix={}, s3_suffix={}, local_dir={}, parent_dir={}",
+              bucket, s3_prefix, s3_suffix, local_dir, parent_dir);
+    */
+
+    fs::create_dir_all(parent_dir)?;
+
+    let key = format!("{}", Path::new(s3_prefix).join(s3_suffix).display());
+    let dest_path = format!("{}", dest_path.display());
+
+    handle_download(s3, bucket, &key, &dest_path)?;
+
+    Ok(())
+}
+
 fn sync_local_to_remote(
         s3: &dyn S3,
         bucket: &str,
@@ -464,28 +521,15 @@ fn sync_local_to_remote(
         // TODO: abort if symlink?
         let path = format!("{}", entry.path().display());
         eprintln!("local path={}", path);
-        let mut excluded = false;
-        let mut included = false;
-        for pattern in glob_excludes {
-            if pattern.matches(&path) {
-                excluded = true;
-            }
-        }
-        for pattern in glob_includes {
-            if pattern.matches(&path) {
-                included = true;
-            }
-        }
-        let path = if included {
-            Some(path)
-        } else if !excluded {
-            Some(path)
-        } else {
-            None
-        };
+        let path = process_globs(&path, glob_includes, glob_excludes);
         if let Some(path) = path {
             let remote_path = Path::new(key);
-            let stripped_path = format!("{}", entry.path().strip_prefix(&directory)?.display());
+            let stripped_path = entry.path().strip_prefix(&directory);
+            let stripped_path = match stripped_path {
+                Err(e) => { eprintln!("unexpected: failed to strip prefix: {}", e); continue; }
+                Ok(result) => result,
+            };
+            let stripped_path = format!("{}", stripped_path.display());
             let remote_path: String = format!("{}", remote_path.join(&stripped_path).display());
             eprintln!("checking remote: {}", remote_path);
             let remote_etag = head_object(s3, bucket, &remote_path);
@@ -507,14 +551,54 @@ fn sync_local_to_remote(
 }
 
 fn sync_remote_to_local(
-        _s3: &dyn S3,
-        _bucket: &str,
-        __key: &str,
-        _directory: &str,
-        _glob_includes: &Vec<Pattern>,
-        _glob_excludes: &Vec<Pattern>,
+        s3: &dyn S3,
+        bucket: &str,
+        key: &str,
+        directory: &str,
+        glob_includes: &Vec<Pattern>,
+        glob_excludes: &Vec<Pattern>,
     ) -> Result<()>
 {
+    let mut continuation: Option<String> = None;
+    let dir_path = Path::new(directory);
+
+    loop {
+        let listing = list_objects(s3, bucket, key, continuation)?;
+        eprintln!("syncing {} objects", listing.count);
+        for entry in listing.objects {
+            eprintln!("key={}", entry.key);
+            let path = format!("{}", Path::new(&entry.key).strip_prefix(key)?.display());
+            let path = process_globs(&path, glob_includes, glob_excludes);
+            if let Some(path) = path {
+                let local_path: String = format!("{}", dir_path.join(&path).display());
+                eprintln!("checking {}", local_path);
+                let local_etag = s3_etag(&local_path);
+                match local_etag {
+                    Ok(local_etag) => { 
+                        if local_etag != entry.e_tag {
+                            eprintln!("etag mismatch: {}, local etag={}, remote etag={}", local_path, local_etag, entry.e_tag);
+                            download_with_dir(s3, bucket, &key, &path, &directory)?;
+                        }
+                    },
+                    Err(err) => {
+                        let not_present: Option<&ETagErr> = err.downcast_ref();
+                        match not_present {
+                            Some(ETagErr::NotPresent) => { 
+                                eprintln!("file did not exist locally: {}", local_path);
+                                download_with_dir(s3, bucket, &key, &path, &directory)?;
+                            },
+                            None => { eprintln!("s3 etag error: {}", err); },
+                        }
+                    },
+                }
+            }
+        }
+        if listing.continuation.is_none() {
+            break;
+        }
+        continuation = listing.continuation;
+    }
+
     Ok(())
 }
 
