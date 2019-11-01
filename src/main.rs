@@ -1,11 +1,13 @@
 extern crate clap;
 extern crate ctrlc;
 extern crate crypto;
+extern crate glob;
 extern crate hex;
 extern crate once_cell;
 extern crate structopt;
 extern crate rusoto_core;
 extern crate rusoto_s3;
+extern crate walkdir;
 
 use std::fs;
 use std::error::Error;
@@ -22,6 +24,7 @@ use crypto::digest::Digest;
 use crypto::md5::Md5;
 use once_cell::sync::Lazy;
 use structopt::StructOpt;
+use walkdir::WalkDir;
 
 use rusoto_s3::{
     AbortMultipartUploadRequest,
@@ -30,6 +33,7 @@ use rusoto_s3::{
     CompleteMultipartUploadRequest,
     CompletedMultipartUpload,
     GetObjectRequest,
+    HeadObjectRequest,
     PutObjectRequest,
     S3,
     S3Client,
@@ -37,7 +41,10 @@ use rusoto_s3::{
     UploadPartRequest,
 };
 
-use rusoto_core::Region;
+use rusoto_core::{
+    Region,
+    RusotoError,
+};
 
 struct GlobalData {
     bucket: Option<String>,
@@ -335,9 +342,134 @@ fn handle_s3etag(path: &str) -> Result<()> {
     Ok(())
 }
 
-fn handle_sync(_s3: &dyn S3, direction: SyncDirection, bucket: &str, key: &str, directory: &str) -> Result<()> {
-    eprintln!("not implemented: direction={}, bucket={}, key={}, directory={}",
-              direction, bucket, key, directory);
+fn head_object(s3: &dyn S3, bucket: &str, key: &str) -> Option<String>
+{
+    let hor = HeadObjectRequest {
+        bucket: bucket.into(),
+        key: key.into(),
+        ..Default::default()
+    };
+
+    let fut = s3.head_object(hor);
+    let res = fut.sync();
+
+    match res {
+        Ok(hoo) => {
+            if let Some(e_tag) = hoo.e_tag {
+                return Some(e_tag);
+            }
+        },
+        Err(RusotoError::Unknown(e)) => {
+
+            if e.status == 404 {
+                return None;
+
+            } else {
+                eprintln!("head_object failed (1): {:?}", e);
+                process::exit(1);
+            }
+        },
+        Err(e) => {
+            eprintln!("head_object failed (2): {:?}", e);
+            process::exit(1);
+        }
+    }
+
+    panic!("should NOT get here");
+}
+
+fn handle_head_object(s3: &dyn S3, bucket: &str, key: &str) -> Result<()>
+{
+    eprintln!("head-object: buckey={}, key={}", bucket, key);
+    let e_tag = head_object(s3, bucket, key);
+
+    eprintln!("etag: e_tag={:?}", e_tag);
+
+    Ok(())
+}
+
+fn handle_sync(
+        _s3: &dyn S3,
+        direction: SyncDirection,
+        bucket: &str,
+        key: &str,
+        directory: &str,
+        includes: &Option<Vec<String>>,
+        excludes: &Option<Vec<String>>,
+    ) -> Result<()> 
+{
+    use glob::Pattern;
+
+    eprintln!("sync: direction={}, bucket={}, key={}, directory={}, include={:?}, exclude={:?}",
+              direction, bucket, key, directory, includes, excludes);
+
+    // TODO: Default excludes to '*' if excludes is empty and includes has something?
+    let mut glob_excludes: Vec<Pattern> = vec![];
+    let mut glob_includes: Vec<Pattern> = vec![];
+
+    if let Some(excludes) = excludes {
+        for exclude in excludes {
+            match Pattern::new(exclude) {
+                Err(e) => {
+                    eprintln!("exclude glob pattern error for {}: {}", exclude, e);
+                    process::exit(1);
+                },
+                Ok(p) => {
+                    glob_excludes.push(p);
+                }
+            }
+        }
+    }
+
+    if let Some(includes) = includes {
+        for include in includes {
+            match Pattern::new(include) {
+                Err(e) => {
+                    eprintln!("include glob pattern error for {}: {}", include, e);
+                    process::exit(1);
+                },
+                Ok(p) => {
+                    glob_includes.push(p);
+                }
+            }
+        }
+    }
+
+    for entry in WalkDir::new(directory) {
+        let entry = entry?;
+        let stat = entry.metadata()?;
+        if stat.is_dir() {
+            continue;
+        }
+        // TODO: abort if symlink
+        let path = format!("{}", entry.path().display());
+        let mut excluded = false;
+        let mut included = false;
+        for pattern in &glob_excludes {
+            if pattern.matches(&path) {
+                excluded = true;
+            }
+        }
+        for pattern in &glob_includes {
+            if pattern.matches(&path) {
+                included = true;
+            }
+        }
+        let path = if included {
+            Some(path)
+        } else if !excluded {
+            Some(path)
+        } else {
+            None
+        };
+        if let Some(path) = path {
+            eprintln!("{}", path);
+            // TODO: Head object
+            // TODO: Compute s3 etag
+            // TODO: Upload/download if etag is different
+        }
+    }
+
     Ok(())
 }
 
@@ -406,7 +538,21 @@ enum Command
         /// The directory to use for up/down sync
         #[structopt(long)]
         directory: String, 
+        /// Optional exclude glob pattern
+        #[structopt(long)]
+        exclude: Option<Vec<String>>,
+        /// Optional include glob pattern
+        #[structopt(long)]
+        include: Option<Vec<String>>,
     },
+    HeadObject {
+        /// The bucket to target
+        #[structopt(long)]
+        bucket: String, 
+        /// The key to target
+        #[structopt(long)]
+        key: String, 
+    }
 }
 
 fn main() -> Result<()> {
@@ -442,8 +588,12 @@ fn main() -> Result<()> {
             handle_s3etag(&file)?;
         },
 
-        SyncCmd { direction, bucket, key, directory } => {
-            handle_sync(&s3, direction, &bucket, &key, &directory)?;
+        SyncCmd { direction, bucket, key, directory, include, exclude } => {
+            handle_sync(&s3, direction, &bucket, &key, &directory, &include, &exclude)?;
+        },
+
+        HeadObject {  bucket, key } => {
+            handle_head_object(&s3, &bucket, &key)?;
         },
     }
 
