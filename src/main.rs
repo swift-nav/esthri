@@ -10,7 +10,7 @@ use esthri_lib::*;
 use esthri_lib::types::*;
 
 #[derive(Debug, StructOpt)]
-#[structopt(name = "esthri", about = "Simple S3 upload implementation.")]
+#[structopt(name = "esthri", about = "Simple S3 file transfer utility.")]
 struct Cli {
     #[structopt(subcommand)]
     cmd: Command
