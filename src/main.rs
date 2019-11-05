@@ -1,3 +1,6 @@
+extern crate env_logger;
+#[macro_use]
+extern crate log;
 extern crate structopt;
 extern crate rusoto_core;
 extern crate rusoto_s3;
@@ -94,34 +97,33 @@ enum Command
 
 fn main() -> Result<()> {
 
-    use Command::*;
+    env_logger::init();
 
     let cli = Cli::from_args();
-   
     let region = Region::default();
-    let s3 = S3Client::new(region);
 
+    info!("Starting, using region: {:?}...", region);
+
+    let s3 = S3Client::new(region);
     setup_cancel_handler();
+
+    use Command::*;
 
     match cli.cmd {
 
         Put { bucket, key, file } => {
-            eprintln!("put: bucket={}, key={}, file={}", bucket, key, file);
             handle_upload(&s3, &bucket, &key, &file)?;
         },
 
         Get { bucket, key, file } => {
-            eprintln!("get: bucket={}, key={}, file={}", bucket, key, file);
             handle_download(&s3, &bucket, &key, &file)?;
         },
 
         Abort { bucket, key, upload_id } => {
-            eprintln!("abort: bucket={}, key={}, upload_id={}", bucket, key, upload_id);
             handle_abort(&s3, &bucket, &key, &upload_id)?;
         },
 
         S3Etag { file } => {
-            eprintln!("s3etag: file={}", file);
             handle_s3etag(&file)?;
         },
 

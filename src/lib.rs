@@ -2,6 +2,10 @@ extern crate anyhow;
 extern crate ctrlc;
 extern crate crypto;
 extern crate glob;
+#[macro_use]
+extern crate log;
+#[macro_use]
+extern crate log_derive;
 extern crate hex;
 extern crate once_cell;
 extern crate rusoto_core;
@@ -70,25 +74,34 @@ const CHUNK_SIZE: u64 = 8 * 1024 * 1024;
 const READ_SIZE: usize = 4096;
 
 pub use anyhow::Result;
-
+ 
+#[logfn(err = "ERROR")]
 pub fn handle_head_object(s3: &dyn S3, bucket: &str, key: &str) -> Result<()>
 {
-    eprintln!("head-object: buckey={}, key={}", bucket, key);
+    info!("head-object: buckey={}, key={}", bucket, key);
     let e_tag = head_object(s3, bucket, key);
 
-    eprintln!("etag: e_tag={:?}", e_tag);
+    debug!("etag: e_tag={:?}", e_tag);
 
     Ok(())
 }
 
+#[logfn(err = "ERROR")]
 pub fn handle_s3etag(path: &str) -> Result<()> {
+
+    info!("s3etag: path={}", path);
     let etag = s3_etag(path)?;
-    eprintln!("s3etag: file={}, etag={}", path, etag);
+
+    debug!("s3etag: file={}, etag={}", path, etag);
+
     Ok(())
 }
 
+#[logfn(err = "ERROR")]
 pub fn handle_abort(s3: &dyn S3, bucket: &str, key: &str, upload_id: &str) -> Result<()>
 {
+    info!("abort: bucket={}, key={}, upload_id={}", bucket, key, upload_id);
+
     let amur = AbortMultipartUploadRequest {
         bucket: bucket.into(),
         key: key.into(),
@@ -104,14 +117,17 @@ pub fn handle_abort(s3: &dyn S3, bucket: &str, key: &str, upload_id: &str) -> Re
     Ok(())
 }
 
+#[logfn(err = "ERROR")]
 pub fn handle_upload(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Result<()>
 {
+    info!("put: bucket={}, key={}, file={}", bucket, key, file);
+
     ensure!(Path::new(&file).exists(), anyhow!("source file does not exist: {}", file));
 
     let stat = fs::metadata(&file)?;
     let file_size = stat.len();
 
-    eprintln!("file_size: {}", file_size);
+    debug!("file_size: {}", file_size);
 
     let f = File::open(file)?;
     let mut reader = BufReader::new(f);
@@ -131,7 +147,7 @@ pub fn handle_upload(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Result
 
         let upload_id = cmuo.upload_id.ok_or(anyhow!("create_multipart_upload upload_id was none"))?;
 
-        eprintln!("upload_id: {}", upload_id);
+        debug!("upload_id: {}", upload_id);
 
         // Load into global data so it can be cancelled for CTRL-C / SIGTERM
         {
@@ -169,7 +185,7 @@ pub fn handle_upload(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Result
             let upo = res.context("upload_part failed")?;
 
             if upo.e_tag.is_none() {
-                eprintln!("WARNING: upload_part e_tag was not present");
+                warn!("upload_part e_tag was not present");
             }
 
             let cp = CompletedPart { e_tag: upo.e_tag, part_number: Some(part_number) };
@@ -228,9 +244,10 @@ pub fn handle_upload(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Result
     Ok(())
 }
 
+#[logfn(err = "ERROR")]
 pub fn handle_download(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Result<()>
 {
-    eprintln!("downloading: bucket={}, key={}, dest={}", bucket, key, file);
+    info!("get: bucket={}, key={}, file={}", bucket, key, file);
 
     let f = File::create(file)?;
     let mut writer = BufWriter::new(f);
@@ -268,6 +285,7 @@ pub fn handle_download(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Resu
     Ok(())
 }
 
+#[logfn(err = "ERROR")]
 pub fn handle_sync(
         s3: &dyn S3,
         direction: SyncDirection,
@@ -278,8 +296,8 @@ pub fn handle_sync(
         excludes: &Option<Vec<String>>,
     ) -> Result<()> 
 {
-    eprintln!("sync: direction={}, bucket={}, key={}, directory={}, include={:?}, exclude={:?}",
-              direction, bucket, key, directory, includes, excludes);
+    info!("sync: direction={}, bucket={}, key={}, directory={}, include={:?}, exclude={:?}",
+          direction, bucket, key, directory, includes, excludes);
 
     let mut glob_excludes: Vec<Pattern> = vec![];
     let mut glob_includes: Vec<Pattern> = vec![];
@@ -324,13 +342,16 @@ pub fn handle_sync(
     Ok(())
 }
 
+#[logfn(err = "ERROR")]
 pub fn handle_list_objects(s3: &dyn S3, bucket: &str, key: &str) -> Result<()> {
+
+    info!("list-objects: bucket={}, key={}", bucket, key);
 
     let mut continuation: Option<String> = None;
     loop {
         let listing = list_objects(s3, bucket, key, continuation)?;
         for entry in listing.objects {
-            eprintln!("key={}, etag={}", entry.key, entry.e_tag);
+            info!("key={}, etag={}", entry.key, entry.e_tag);
         }
         if listing.continuation.is_none() {
             break;
@@ -346,17 +367,17 @@ pub fn setup_cancel_handler() {
         let global_data = GLOBAL_DATA.lock().expect(EXPECT_GLOBAL_DATA);
         if global_data.bucket.is_none() || global_data.key.is_none() || global_data.upload_id.is_none()
         {
-            eprintln!("\ncancelled");
+            info!("\ncancelled");
         } else {
             if let Some(bucket) = &global_data.bucket {
                 if let Some(key) = &global_data.key {
                     if let Some(upload_id) = &global_data.upload_id {
-                        eprintln!("\ncancelling...");
+                        info!("\ncancelling...");
                         let region = Region::default();
                         let s3 = S3Client::new(region);
                         let res = handle_abort(&s3, &bucket, &key, &upload_id);
                         if let Err(e) = res {
-                            eprintln!("Error cancelling: {}", e);
+                            error!("cancelling failed: {}", e);
                         }
                     }
                 }
@@ -413,6 +434,7 @@ fn s3_etag(path: &str) -> Result<String> {
     }
 }
 
+#[logfn(err = "ERROR")]
 fn head_object(s3: &dyn S3, bucket: &str, key: &str) -> Result<Option<String>>
 {
     let hor = HeadObjectRequest {
@@ -480,7 +502,7 @@ fn list_objects(s3: &dyn S3, bucket: &str, key: &str, continuation: Option<Strin
 
     let lov2o = res.context("listing objects failed")?;
     let contents = if lov2o.contents.is_none() {
-        eprintln!("listing returned no contents");
+        warn!("listing returned no contents");
         return Ok(S3Listing { count: 0, continuation: None, objects: vec![] });
     } else {
         lov2o.contents.unwrap()
@@ -492,9 +514,9 @@ fn list_objects(s3: &dyn S3, bucket: &str, key: &str, continuation: Option<Strin
 
     for object in contents {
         let key = if object.key.is_some() { object.key.unwrap() }
-                  else { eprintln!("unexpected: object key was null"); continue; };
+                  else { warn!("unexpected: object key was null"); continue; };
         let e_tag = if object.e_tag.is_some() { object.e_tag.unwrap() } 
-                    else { eprintln!("unexpected: object ETag was null"); continue; };
+                    else { warn!("unexpected: object ETag was null"); continue; };
         listing.objects.push(S3Obj { key: key, e_tag: e_tag });
     }
 
@@ -563,30 +585,30 @@ fn sync_local_to_remote(
         }
         // TODO: abort if symlink?
         let path = format!("{}", entry.path().display());
-        eprintln!("local path={}", path);
+        debug!("local path={}", path);
         let path = process_globs(&path, glob_includes, glob_excludes);
         if let Some(path) = path {
             let remote_path = Path::new(key);
             let stripped_path = entry.path().strip_prefix(&directory);
             let stripped_path = match stripped_path {
-                Err(e) => { eprintln!("unexpected: failed to strip prefix: {}", e); continue; }
+                Err(e) => { warn!("unexpected: failed to strip prefix: {}", e); continue; }
                 Ok(result) => result,
             };
             let stripped_path = format!("{}", stripped_path.display());
             let remote_path: String = format!("{}", remote_path.join(&stripped_path).display());
-            eprintln!("checking remote: {}", remote_path);
+            debug!("checking remote: {}", remote_path);
             let remote_etag = head_object(s3, bucket, &remote_path)?;
             let local_etag = s3_etag(&path)?;
             if remote_etag.is_none() {
-                eprintln!("file did not exist remotely: {}", remote_path);
+                info!("file did not exist remotely: {}", remote_path);
                 handle_upload(s3, bucket, &remote_path, &path)?;
             } else {
                 let remote_etag = remote_etag.unwrap();
                 if remote_etag != local_etag {
-                    eprintln!("file etag mistmatch: {}, remote_etag={}, local_etag={}", remote_path, remote_etag, local_etag);
+                    info!("etag mis-match: {}, remote_etag={}, local_etag={}", remote_path, remote_etag, local_etag);
                     handle_upload(s3, bucket, &remote_path, &path)?;
                 } else {
-                    eprintln!("etag match: {}, remote_etag={}, local_etag={}", remote_path, remote_etag, local_etag);
+                    debug!("etags matched: {}, remote_etag={}, local_etag={}", remote_path, remote_etag, local_etag);
                 }
             }
         }
@@ -609,19 +631,19 @@ fn sync_remote_to_local(
 
     loop {
         let listing = list_objects(s3, bucket, key, continuation)?;
-        eprintln!("syncing {} objects", listing.count);
+        debug!("syncing {} objects", listing.count);
         for entry in listing.objects {
-            eprintln!("key={}", entry.key);
+            debug!("key={}", entry.key);
             let path = format!("{}", Path::new(&entry.key).strip_prefix(key)?.display());
             let path = process_globs(&path, glob_includes, glob_excludes);
             if let Some(path) = path {
                 let local_path: String = format!("{}", dir_path.join(&path).display());
-                eprintln!("checking {}", local_path);
+                debug!("checking {}", local_path);
                 let local_etag = s3_etag(&local_path);
                 match local_etag {
                     Ok(local_etag) => { 
                         if local_etag != entry.e_tag {
-                            eprintln!("etag mismatch: {}, local etag={}, remote etag={}", local_path, local_etag, entry.e_tag);
+                            debug!("etag mismatch: {}, local etag={}, remote etag={}", local_path, local_etag, entry.e_tag);
                             download_with_dir(s3, bucket, &key, &path, &directory)?;
                         }
                     },
@@ -629,10 +651,10 @@ fn sync_remote_to_local(
                         let not_present: Option<&ETagErr> = err.downcast_ref();
                         match not_present {
                             Some(ETagErr::NotPresent) => { 
-                                eprintln!("file did not exist locally: {}", local_path);
+                                debug!("file did not exist locally: {}", local_path);
                                 download_with_dir(s3, bucket, &key, &path, &directory)?;
                             },
-                            None => { eprintln!("s3 etag error: {}", err); },
+                            None => { warn!("s3 etag error: {}", err); },
                         }
                     },
                 }
