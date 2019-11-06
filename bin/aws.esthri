@@ -1,0 +1,120 @@
+#!/usr/bin/env python
+
+import re
+import os
+import sys
+import argparse
+
+
+MATCH_S3URL = re.compile('^s3://(?P<bucket>[^/]*)/(?P<prefix>.*)$')
+
+os.environ['RUST_LOG'] = 'esthri=debug,esthri_lib=debug'
+
+
+class ArgParserError(RuntimeError):
+    pass
+
+class ArgParser(argparse.ArgumentParser):
+    def error(self, msg):
+        raise ArgParserError(msg)
+
+
+def exec_real():
+    print("WARNING: not using esthri", file=sys.stderr)
+    os.execvp('aws.real', ['aws.real'] + sys.argv[1:])
+
+
+def handle_s3_cp(src, src_is_s3, dst, dst_is_s3):
+    assert (src_is_s3 is not None and dst_is_s3 is None) or \
+        (src_is_s3 is None and dst_is_s3 is not None)
+    if src_is_s3 is not None:
+        bucket = src_is_s3.group('bucket')
+        prefix = src_is_s3.group('prefix')
+        if os.path.isdir(dst):
+            _, fname = os.path.split(prefix)
+            dst = os.path.join(dst, fname)
+        os.execvp('esthri', ['esthri', 'get', '--bucket', bucket, '--key', prefix, dst]);
+    elif dst_is_s3 is not None:
+        bucket = dst_is_s3.group('bucket')
+        prefix = dst_is_s3.group('prefix')
+        if os.path.isdir(src):
+            exec_real()
+        os.execvp('esthri', ['esthri', 'put', '--bucket', bucket, '--key', prefix, src]);
+    else:
+        assert False
+
+
+def handle_s3_sync(src, src_is_s3, dst, dst_is_s3):
+    assert (src_is_s3 is not None and dst_is_s3 is None) or \
+        (src_is_s3 is None and dst_is_s3 is not None)
+    if src_is_s3 is not None:
+        bucket = src_is_s3.group('bucket')
+        prefix = src_is_s3.group('prefix')
+        os.execvp('esthri', ['esthri', 'sync', '--bucket', bucket, '--key', prefix,
+                             '--directory', dst, '--direction', 'down'])
+    elif dst_is_s3 is not None:
+        bucket = dst_is_s3.group('bucket')
+        prefix = dst_is_s3.group('prefix')
+        os.execvp('esthri', ['esthri', 'put', '--bucket', bucket, '--key', prefix, 
+                             '--directory', src, '--direction', 'up'])
+    else:
+        assert False
+
+
+def classify_s3_cp(ns):
+    if 's3_cp_src' not in ns or 's3_cp_dst' not in ns:
+        exec_real()
+    src_is_s3 = MATCH_S3URL.match(ns.s3_cp_src)
+    dst_is_s3 = MATCH_S3URL.match(ns.s3_cp_dst)
+    if src_is_s3 is not None and dst_is_s3 is not None:
+        exec_real()
+    if src_is_s3 is None and dst_is_s3 is None:
+        exec_real()
+    handle_s3_cp(ns.s3_cp_src, src_is_s3, ns.s3_cp_dst, dst_is_s3)
+
+
+def classify_s3_sync(ns):
+    if 's3_sync_src' not in ns or 's3_sync_dst' not in ns:
+        exec_real()
+    src_is_s3 = MATCH_S3URL.match(ns.s3_sync_src)
+    dst_is_s3 = MATCH_S3URL.match(ns.s3_sync_dst)
+    if src_is_s3 is not None and dst_is_s3 is not None:
+        exec_real()
+    if src_is_s3 is None and dst_is_s3 is None:
+        exec_real()
+    handle_s3_sync(ns.s3_sync_src, src_is_s3, ns.s3_sync_dst, dst_is_s3)
+
+
+parser = ArgParser(prog='aws.esthri', usage=argparse.SUPPRESS)
+subparsers = parser.add_subparsers(help=argparse.SUPPRESS, dest='subcommand')
+
+parser_s3 = subparsers.add_parser('s3')
+
+parser_s3_subparsers = parser_s3.add_subparsers(help=argparse.SUPPRESS, dest='subsubcommand')
+
+parser_s3_cp = parser_s3_subparsers.add_parser('cp')
+parser_s3_sync = parser_s3_subparsers.add_parser('sync')
+
+parser_s3_cp.add_argument('s3_cp_src', type=str)
+parser_s3_cp.add_argument('s3_cp_dst', type=str)
+
+parser_s3_sync.add_argument('s3_sync_src', type=str)
+parser_s3_sync.add_argument('s3_sync_dst', type=str)
+
+
+def main():
+    ns = {}
+    try:
+        ns = parser.parse_args(sys.argv[1:])
+    except ArgParserError as exc:
+        exec_real()
+    if ns.subcommand == 's3' and ns.subsubcommand == 'cp':
+        classify_s3_cp(ns)
+    elif ns.subcommand == 's3' and ns.subsubcommand == 'sync':
+        classify_s3_sync(ns)
+    else:
+        exec_real()
+
+
+if __name__ == '__main__':
+    main()
