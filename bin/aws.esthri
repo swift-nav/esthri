@@ -95,9 +95,11 @@ parser_s3_subparsers = parser_s3.add_subparsers(help=argparse.SUPPRESS, dest='su
 parser_s3_cp = parser_s3_subparsers.add_parser('cp')
 parser_s3_sync = parser_s3_subparsers.add_parser('sync')
 
+parser_s3_cp.add_argument('--quiet', action='store_true')
 parser_s3_cp.add_argument('s3_cp_src', type=str)
 parser_s3_cp.add_argument('s3_cp_dst', type=str)
 
+parser_s3_sync.add_argument('--quiet', action='store_true')
 parser_s3_sync.add_argument('s3_sync_src', type=str)
 parser_s3_sync.add_argument('s3_sync_dst', type=str)
 
