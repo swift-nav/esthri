@@ -21,6 +21,10 @@ pipeline {
       parallel {
         stage('Test') {
           agent { dockerfile { reuseNode true } }
+          environment {
+            AWS_REGION="us-west-2"
+            AWS_DEFAULT_REGION="us-west-2"
+          }
           steps {
             script {
               sh("cargo test")
@@ -39,7 +43,7 @@ pipeline {
           agent { dockerfile { reuseNode true } }
           steps {
             script {
-              sh("cargo format -- --check")
+              sh("cargo fmt -- --check")
             }
           }
         }
