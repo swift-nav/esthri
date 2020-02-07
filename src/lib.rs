@@ -62,7 +62,7 @@ struct GlobalData {
     upload_id: Option<String>,
 }
 
-const EXPECT_GLOBAL_DATA: &'static str = "failed to lock global data";
+const EXPECT_GLOBAL_DATA: &str = "failed to lock global data";
 
 static GLOBAL_DATA: Lazy<Mutex<GlobalData>> = Lazy::new(|| {
     Mutex::new(GlobalData { bucket: None, key: None, upload_id: None })
@@ -154,7 +154,7 @@ pub fn s3_upload_reader(s3: &dyn S3, bucket: &str, key: &str, reader: &mut dyn R
 
         let cmuo = res.context("create_multipart_upload failed")?;
 
-        let upload_id = cmuo.upload_id.ok_or(anyhow!("create_multipart_upload upload_id was none"))?;
+        let upload_id = cmuo.upload_id.ok_or_else(|| anyhow!("create_multipart_upload upload_id was none"))?;
 
         debug!("upload_id: {}", upload_id);
 
@@ -175,14 +175,19 @@ pub fn s3_upload_reader(s3: &dyn S3, bucket: &str, key: &str, reader: &mut dyn R
             let chunk_size = if remaining >= CHUNK_SIZE { CHUNK_SIZE } else { remaining };
             let mut buf = vec![0u8;chunk_size as usize];
 
-            reader.read(&mut buf)?;
+            let res = reader.read(&mut buf);
+            let read_count = res.context("read call returned error")?;
+
+            if read_count == 0 {
+                return Err(anyhow!("read size zero"));
+            }
 
             let body: StreamingBody = buf.into();
 
             let upr = UploadPartRequest {
                 bucket: bucket.into(),
                 key: key.into(),
-                part_number: part_number,
+                part_number,
                 upload_id: upload_id.clone(),
                 body: Some(body),
                 ..Default::default()
@@ -212,7 +217,7 @@ pub fn s3_upload_reader(s3: &dyn S3, bucket: &str, key: &str, reader: &mut dyn R
         let cmur = CompleteMultipartUploadRequest {
             bucket: bucket.into(),
             key: key.into(),
-            upload_id: upload_id,
+            upload_id,
             multipart_upload: Some(cmpu),
             ..Default::default()
         };
@@ -233,7 +238,11 @@ pub fn s3_upload_reader(s3: &dyn S3, bucket: &str, key: &str, reader: &mut dyn R
     } else {
 
         let mut buf = vec![0u8;file_size as usize];
-        reader.read(&mut buf)?;
+        let read_size = reader.read(&mut buf).context("read returned failure")?;
+
+        if read_size == 0 {
+            return Err(anyhow!("read size zero"));
+        }
 
         let body: StreamingBody = buf.into();
 
@@ -519,7 +528,7 @@ fn list_objects(s3: &dyn S3, bucket: &str, key: &str, continuation: Option<Strin
 
     let count = lov2o.key_count.ok_or(anyhow!("unexpected: key count was none"))?;
 
-    let mut listing = S3Listing { count: count, continuation: lov2o.next_continuation_token, objects: vec![] };
+    let mut listing = S3Listing { count, continuation: lov2o.next_continuation_token, objects: vec![] };
 
     for object in contents {
         let key = if object.key.is_some() { object.key.unwrap() }
