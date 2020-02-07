@@ -7,7 +7,7 @@ pipeline {
   environment {
     SCCACHE_BUCKET="sccache-linux"
     SCCACHE_SIZE="100G"
-    SCCACHE_DIR="/sccache"
+    SCCACHE_DIR="/opt/sccache"
     SCCACHE_REGION="us-west-2"
   }
   options {
