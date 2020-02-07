@@ -280,7 +280,7 @@ pub fn handle_download(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Resu
     let res = fut.sync();
 
     let goo = res.context("get_object failed")?;
-    let body = goo.body.ok_or(anyhow!("did not expect body field of GetObjectOutput to be none"))?;
+    let body = goo.body.ok_or_else(||anyhow!("did not expect body field of GetObjectOutput to be none"))?;
 
     let mut reader = body.into_blocking_read();
 
@@ -386,17 +386,15 @@ pub fn setup_cancel_handler() {
         if global_data.bucket.is_none() || global_data.key.is_none() || global_data.upload_id.is_none()
         {
             info!("\ncancelled");
-        } else {
-            if let Some(bucket) = &global_data.bucket {
-                if let Some(key) = &global_data.key {
-                    if let Some(upload_id) = &global_data.upload_id {
-                        info!("\ncancelling...");
-                        let region = Region::default();
-                        let s3 = S3Client::new(region);
-                        let res = handle_abort(&s3, &bucket, &key, &upload_id);
-                        if let Err(e) = res {
-                            error!("cancelling failed: {}", e);
-                        }
+        } else if let Some(bucket) = &global_data.bucket {
+            if let Some(key) = &global_data.key {
+                if let Some(upload_id) = &global_data.upload_id {
+                    info!("\ncancelling...");
+                    let region = Region::default();
+                    let s3 = S3Client::new(region);
+                    let res = handle_abort(&s3, &bucket, &key, &upload_id);
+                    if let Err(e) = res {
+                        error!("cancelling failed: {}", e);
                     }
                 }
             }
@@ -423,7 +421,7 @@ fn s3_etag(path: &str) -> Result<String> {
         let chunk_size: usize = (if remaining >= CHUNK_SIZE { CHUNK_SIZE } else { remaining }) as usize;
         hash.reset();
         let mut blob = vec![0u8;chunk_size];
-        let _ = reader.read_exact(&mut blob)?;
+        reader.read_exact(&mut blob)?;
         hash.input(&blob);
         let mut hash_bytes = [0u8;16];
         hash.result(&mut hash_bytes);
@@ -431,7 +429,7 @@ fn s3_etag(path: &str) -> Result<String> {
         remaining -= chunk_size as u64;
     }
 
-    if digests.len() == 0 {
+    if digests.is_empty() {
         let mut hash_bytes = [0u8;16];
         hash.result(&mut hash_bytes);
         let hex_digest = hex::encode(hash_bytes);
@@ -526,7 +524,7 @@ fn list_objects(s3: &dyn S3, bucket: &str, key: &str, continuation: Option<Strin
         lov2o.contents.unwrap()
     };
 
-    let count = lov2o.key_count.ok_or(anyhow!("unexpected: key count was none"))?;
+    let count = lov2o.key_count.ok_or_else(||anyhow!("unexpected: key count was none"))?;
 
     let mut listing = S3Listing { count, continuation: lov2o.next_continuation_token, objects: vec![] };
 
@@ -535,13 +533,13 @@ fn list_objects(s3: &dyn S3, bucket: &str, key: &str, continuation: Option<Strin
                   else { warn!("unexpected: object key was null"); continue; };
         let e_tag = if object.e_tag.is_some() { object.e_tag.unwrap() } 
                     else { warn!("unexpected: object ETag was null"); continue; };
-        listing.objects.push(S3Obj { key: key, e_tag: e_tag });
+        listing.objects.push(S3Obj { key, e_tag });
     }
 
     Ok(listing)
 }
 
-fn process_globs<'a>(path: &'a str, glob_includes: &Vec<Pattern>, glob_excludes: &Vec<Pattern>) -> Option<&'a str>
+fn process_globs<'a>(path: &'a str, glob_includes: &[Pattern], glob_excludes: &[Pattern]) -> Option<&'a str>
 {
     let mut excluded = false;
     let mut included = false;
@@ -555,9 +553,7 @@ fn process_globs<'a>(path: &'a str, glob_includes: &Vec<Pattern>, glob_excludes:
             included = true;
         }
     }
-    if included {
-        Some(path)
-    } else if !excluded {
+    if included || !excluded {
         Some(path)
     } else {
         None
@@ -568,7 +564,7 @@ fn download_with_dir(s3: &dyn S3, bucket: &str, s3_prefix: &str, s3_suffix: &str
 {
     let dest_path = Path::new(local_dir).join(s3_suffix);
 
-    let parent_dir = dest_path.parent().ok_or(anyhow!("unexpected: parent dir was null"))?;
+    let parent_dir = dest_path.parent().ok_or_else(|| anyhow!("unexpected: parent dir was null"))?;
     let parent_dir = format!("{}", parent_dir.display());
 
     /*
@@ -591,8 +587,8 @@ fn sync_local_to_remote(
         bucket: &str,
         key: &str,
         directory: &str,
-        glob_includes: &Vec<Pattern>,
-        glob_excludes: &Vec<Pattern>,
+        glob_includes: &[Pattern],
+        glob_excludes: &[Pattern],
     ) -> Result<()> 
 {
     for entry in WalkDir::new(directory) {
@@ -617,17 +613,16 @@ fn sync_local_to_remote(
             debug!("checking remote: {}", remote_path);
             let remote_etag = head_object(s3, bucket, &remote_path)?;
             let local_etag = s3_etag(&path)?;
-            if remote_etag.is_none() {
-                info!("file did not exist remotely: {}", remote_path);
-                s3_upload(s3, bucket, &remote_path, &path)?;
-            } else {
-                let remote_etag = remote_etag.unwrap();
+            if let Some(remote_etag) = remote_etag {
                 if remote_etag != local_etag {
                     info!("etag mis-match: {}, remote_etag={}, local_etag={}", remote_path, remote_etag, local_etag);
                     s3_upload(s3, bucket, &remote_path, &path)?;
                 } else {
                     debug!("etags matched: {}, remote_etag={}, local_etag={}", remote_path, remote_etag, local_etag);
                 }
+            } else {
+                info!("file did not exist remotely: {}", remote_path);
+                s3_upload(s3, bucket, &remote_path, &path)?;
             }
         }
     }
@@ -640,8 +635,8 @@ fn sync_remote_to_local(
         bucket: &str,
         key: &str,
         directory: &str,
-        glob_includes: &Vec<Pattern>,
-        glob_excludes: &Vec<Pattern>,
+        glob_includes: &[Pattern],
+        glob_excludes: &[Pattern],
     ) -> Result<()>
 {
     let mut continuation: Option<String> = None;
