@@ -2,7 +2,6 @@ FROM rust:1.41-slim-buster
 
 ARG DEBIAN_FRONTEND=noninterative
 
-ARG SCCACHE_BIN=sccache-0.2.12-x86_64-unknown-linux-musl/sccache
 ARG SCCACHE_URL=https://github.com/mozilla/sccache/releases/download/0.2.12/sccache-0.2.12-x86_64-unknown-linux-musl.tar.gz
 
 ENV SCCACHE_CACHE_SIZE=100G
