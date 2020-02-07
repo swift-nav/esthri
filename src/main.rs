@@ -112,7 +112,7 @@ fn main() -> Result<()> {
     match cli.cmd {
 
         Put { bucket, key, file } => {
-            handle_upload(&s3, &bucket, &key, &file)?;
+            s3_upload(&s3, &bucket, &key, &file)?;
         },
 
         Get { bucket, key, file } => {

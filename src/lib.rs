@@ -117,8 +117,9 @@ pub fn handle_abort(s3: &dyn S3, bucket: &str, key: &str, upload_id: &str) -> Re
     Ok(())
 }
 
-#[logfn(err = "ERROR")]
-pub fn handle_upload(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Result<()>
+use std::io::Read;
+
+pub fn s3_upload(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Result<()>
 {
     info!("put: bucket={}, key={}, file={}", bucket, key, file);
 
@@ -131,6 +132,14 @@ pub fn handle_upload(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Result
 
     let f = File::open(file)?;
     let mut reader = BufReader::new(f);
+
+    s3_upload_reader(s3, bucket, key, &mut reader, file_size)
+}
+
+#[logfn(err = "ERROR")]
+pub fn s3_upload_reader(s3: &dyn S3, bucket: &str, key: &str, reader: &mut dyn Read, file_size: u64) -> Result<()>
+{
+    info!("put: bucket={}, key={}, file_size={}", bucket, key, file_size);
 
     if file_size >= CHUNK_SIZE {
 
@@ -601,12 +610,12 @@ fn sync_local_to_remote(
             let local_etag = s3_etag(&path)?;
             if remote_etag.is_none() {
                 info!("file did not exist remotely: {}", remote_path);
-                handle_upload(s3, bucket, &remote_path, &path)?;
+                s3_upload(s3, bucket, &remote_path, &path)?;
             } else {
                 let remote_etag = remote_etag.unwrap();
                 if remote_etag != local_etag {
                     info!("etag mis-match: {}, remote_etag={}, local_etag={}", remote_path, remote_etag, local_etag);
-                    handle_upload(s3, bucket, &remote_path, &path)?;
+                    s3_upload(s3, bucket, &remote_path, &path)?;
                 } else {
                     debug!("etags matched: {}, remote_etag={}, local_etag={}", remote_path, remote_etag, local_etag);
                 }
