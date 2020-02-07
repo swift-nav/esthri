@@ -4,5 +4,5 @@ ARG DEBIAN_FRONTEND=noninterative
 
 RUN \
       apt-get update \
-   && apt-get install -y libssl-dev \
+   && apt-get install -y libssl-dev pkg-config \
    && rm -rf /var/lib/apt/lists/*
