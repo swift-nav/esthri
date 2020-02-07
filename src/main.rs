@@ -1,27 +1,26 @@
 extern crate env_logger;
 #[macro_use]
 extern crate log;
-extern crate structopt;
 extern crate rusoto_core;
 extern crate rusoto_s3;
+extern crate structopt;
 
-use structopt::StructOpt;
 use rusoto_core::Region;
 use rusoto_s3::S3Client;
+use structopt::StructOpt;
 
-use esthri_lib::*;
 use esthri_lib::types::*;
+use esthri_lib::*;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "esthri", about = "Simple S3 file transfer utility.")]
 struct Cli {
     #[structopt(subcommand)]
-    cmd: Command
+    cmd: Command,
 }
 
 #[derive(Debug, StructOpt)]
-enum Command
-{
+enum Command {
     /// Upload an object to S3
     Put {
         #[structopt(long)]
@@ -52,22 +51,20 @@ enum Command
         upload_id: String,
     },
     /// Compute and print the S3 ETag of the file
-    S3Etag {
-        file: String,
-    },
+    S3Etag { file: String },
     /// Sync a directory with S3
-    #[structopt(name="sync")]
+    #[structopt(name = "sync")]
     SyncCmd {
         /// The direction of the sync: 'up' for local to remote, 'down' for remote to local
-        #[structopt(long, default_value="up")]
-        direction: SyncDirection, 
+        #[structopt(long, default_value = "up")]
+        direction: SyncDirection,
         #[structopt(long)]
-        bucket: String, 
+        bucket: String,
         #[structopt(long)]
-        key: String, 
+        key: String,
         /// The directory to use for up/down sync
         #[structopt(long)]
-        directory: String, 
+        directory: String,
         /// Optional include glob pattern (see man 3 glob)
         #[structopt(long)]
         include: Option<Vec<String>>,
@@ -79,24 +76,23 @@ enum Command
     HeadObject {
         /// The bucket to target
         #[structopt(long)]
-        bucket: String, 
+        bucket: String,
         /// The key to target
         #[structopt(long)]
-        key: String, 
+        key: String,
     },
     /// List remote objects in S3
     ListObjects {
         /// The bucket to target
         #[structopt(long)]
-        bucket: String, 
+        bucket: String,
         /// The key to target
         #[structopt(long)]
-        key: String, 
-    }
+        key: String,
+    },
 }
 
 fn main() -> Result<()> {
-
     env_logger::init();
 
     let cli = Cli::from_args();
@@ -110,34 +106,46 @@ fn main() -> Result<()> {
     use Command::*;
 
     match cli.cmd {
-
         Put { bucket, key, file } => {
             s3_upload(&s3, &bucket, &key, &file)?;
-        },
+        }
 
         Get { bucket, key, file } => {
             handle_download(&s3, &bucket, &key, &file)?;
-        },
+        }
 
-        Abort { bucket, key, upload_id } => {
+        Abort {
+            bucket,
+            key,
+            upload_id,
+        } => {
             handle_abort(&s3, &bucket, &key, &upload_id)?;
-        },
+        }
 
         S3Etag { file } => {
             handle_s3etag(&file)?;
-        },
+        }
 
-        SyncCmd { direction, bucket, key, directory, include, exclude } => {
-            handle_sync(&s3, direction, &bucket, &key, &directory, &include, &exclude)?;
-        },
+        SyncCmd {
+            direction,
+            bucket,
+            key,
+            directory,
+            include,
+            exclude,
+        } => {
+            handle_sync(
+                &s3, direction, &bucket, &key, &directory, &include, &exclude,
+            )?;
+        }
 
-        HeadObject {  bucket, key } => {
+        HeadObject { bucket, key } => {
             handle_head_object(&s3, &bucket, &key)?;
-        },
+        }
 
         ListObjects { bucket, key } => {
             handle_list_objects(&s3, &bucket, &key)?;
-        },
+        }
     }
 
     Ok(())
