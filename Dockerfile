@@ -18,8 +18,8 @@ RUN \
    && tar --strip-components=1 -C /tmp/sccache -xzf /tmp/sccache.tgz \
    && mv /tmp/sccache/sccache /usr/local/bin \
    && chmod +x /usr/local/bin/sccache \
-   && rustup component add rustfmt --toolchain 1.41.0-x86_64-unknown-linux-gnu \
-   && rustup component add clippy --toolchain 1.41.0-x86_64-unknown-linux-gnu \
+   && rustup component add rustfmt \
+   && rustup component add clippy \
    && rm -rf /var/lib/apt/lists/* \
    && rm -rf /tmp/sccache /tmp/sccache.tgz
 
