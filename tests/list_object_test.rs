@@ -29,16 +29,23 @@ fn test_handle_list_objects() {
     let filename = "test5mb.bin";
     let filepath = format!("tests/data/{}", filename);
     let folder = "test_folder";
+    let empty_folder = "test_folder_empty";
     let bucket = format!("{}/{}", common::TEST_BUCKET, folder);
 
     let res = s3_upload(s3client.as_ref(), &bucket, filename, &filepath);
 
     assert_eq!(res.unwrap(), ());
 
-    let res = handle_list_objects(s3client.as_ref(), common::TEST_BUCKET, &folder);
+    let mut res = handle_list_objects(s3client.as_ref(), common::TEST_BUCKET, &folder);
 
     let bucket_contents = res.unwrap();
 
     assert_eq!(1, bucket_contents.len());
     assert_eq!("test_folder/test5mb.bin", bucket_contents[0]);
+
+    let mut res = handle_list_objects(s3client.as_ref(), common::TEST_BUCKET, &empty_folder);
+
+    let bucket_contents = res.unwrap();
+
+    assert!(bucket_contents.is_empty())
 }

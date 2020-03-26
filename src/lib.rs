@@ -380,7 +380,7 @@ pub fn handle_list_objects(
     key: &str,
 ) -> Result<Vec<String>, anyhow::Error> {
     info!("list-objects: bucket={}, key={}", bucket, key);
-    println!("list-objects: bucket={}, key={}", bucket, key);
+
     let mut bucket_contents = Vec::new();
     let mut continuation: Option<String> = None;
     loop {
