@@ -1,3 +1,5 @@
+#![cfg_attr(feature = "aggressive_lint", deny(warnings))]
+
 use std::io::Cursor;
 
 use esthri_lib::s3_upload;
