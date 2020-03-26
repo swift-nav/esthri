@@ -1,17 +1,4 @@
-extern crate anyhow;
-extern crate crypto;
-extern crate ctrlc;
-extern crate glob;
-#[macro_use]
-extern crate log;
-#[macro_use]
-extern crate log_derive;
-extern crate hex;
-extern crate once_cell;
-extern crate rusoto_core;
-extern crate rusoto_s3;
-extern crate thiserror;
-extern crate walkdir;
+#![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
 use std::fs;
 use std::fs::File;
@@ -26,6 +13,8 @@ use anyhow::{anyhow, ensure, Context};
 use crypto::digest::Digest;
 use crypto::md5::Md5;
 use glob::Pattern;
+use log::*;
+use log_derive::logfn;
 use once_cell::sync::Lazy;
 use walkdir::WalkDir;
 

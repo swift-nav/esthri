@@ -1,9 +1,6 @@
-extern crate env_logger;
-#[macro_use]
-extern crate log;
-extern crate rusoto_core;
-extern crate rusoto_s3;
-extern crate structopt;
+#![cfg_attr(feature = "aggressive_lint", deny(warnings))]
+
+use log::*;
 
 use rusoto_core::Region;
 use rusoto_s3::S3Client;

@@ -30,3 +30,7 @@ path = "src/lib.rs"
 [[bin]]
 name = "esthri"
 path = "src/main.rs"
+
+[features]
+default = []
+aggressive_lint = []

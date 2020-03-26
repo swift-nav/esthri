@@ -14,7 +14,7 @@ fn test_upload() {
 
     let res = s3_upload(s3client.as_ref(), common::TEST_BUCKET, filename, &filepath);
 
-    assert_eq!(res.unwrap(), ())
+    assert!(res.is_ok());
 }
 
 #[test]
@@ -33,5 +33,5 @@ fn test_upload_reader() {
         contents.len() as u64,
     );
 
-    assert_eq!(res.unwrap(), ())
+    assert!(res.is_ok());
 }
