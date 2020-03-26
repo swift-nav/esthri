@@ -67,13 +67,13 @@ const READ_SIZE: usize = 4096;
 pub use anyhow::Result;
 
 #[logfn(err = "ERROR")]
-pub fn handle_head_object(s3: &dyn S3, bucket: &str, key: &str) -> Result<()> {
+pub fn handle_head_object(s3: &dyn S3, bucket: &str, key: &str) -> Result<Option<String>> {
     info!("head-object: buckey={}, key={}", bucket, key);
-    let e_tag = head_object(s3, bucket, key);
+    let e_tag = head_object(s3, bucket, key)?;
 
     debug!("etag: e_tag={:?}", e_tag);
 
-    Ok(())
+    Ok(e_tag)
 }
 
 #[logfn(err = "ERROR")]
@@ -370,14 +370,18 @@ pub fn handle_sync(
 }
 
 #[logfn(err = "ERROR")]
-pub fn handle_list_objects(s3: &dyn S3, bucket: &str, key: &str) -> Result<()> {
+pub fn handle_list_objects(s3: &dyn S3, bucket: &str, key: &str) -> Result<Vec<String>> {
     info!("list-objects: bucket={}, key={}", bucket, key);
 
+    let mut bucket_contents = Vec::new();
     let mut continuation: Option<String> = None;
     loop {
         let listing = list_objects(s3, bucket, key, continuation)?;
-        for entry in listing.objects {
-            info!("key={}, etag={}", entry.key, entry.e_tag);
+        if listing.objects.len() > 0 {
+            for entry in listing.objects {
+                info!("key={}, etag={}", entry.key, entry.e_tag);
+                bucket_contents.push(entry.key);
+            }
         }
         if listing.continuation.is_none() {
             break;
@@ -385,7 +389,7 @@ pub fn handle_list_objects(s3: &dyn S3, bucket: &str, key: &str) -> Result<()> {
         continuation = listing.continuation;
     }
 
-    Ok(())
+    Ok(bucket_contents)
 }
 
 pub fn setup_cancel_handler() {
