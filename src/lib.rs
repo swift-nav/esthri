@@ -67,13 +67,9 @@ const READ_SIZE: usize = 4096;
 pub use anyhow::Result;
 
 #[logfn(err = "ERROR")]
-pub fn handle_head_object(
-    s3: &dyn S3,
-    bucket: &str,
-    key: &str,
-) -> Result<Result<Option<String>>, anyhow::Error> {
+pub fn handle_head_object(s3: &dyn S3, bucket: &str, key: &str) -> Result<Option<String>> {
     info!("head-object: buckey={}, key={}", bucket, key);
-    let e_tag = head_object(s3, bucket, key);
+    let e_tag = head_object(s3, bucket, key)?;
 
     debug!("etag: e_tag={:?}", e_tag);
 
@@ -374,11 +370,7 @@ pub fn handle_sync(
 }
 
 #[logfn(err = "ERROR")]
-pub fn handle_list_objects(
-    s3: &dyn S3,
-    bucket: &str,
-    key: &str,
-) -> Result<Vec<String>, anyhow::Error> {
+pub fn handle_list_objects(s3: &dyn S3, bucket: &str, key: &str) -> Result<Vec<String>> {
     info!("list-objects: bucket={}, key={}", bucket, key);
 
     let mut bucket_contents = Vec::new();

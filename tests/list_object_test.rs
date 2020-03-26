@@ -17,7 +17,7 @@ fn test_handle_head_object() {
 
     let res = handle_head_object(s3client.as_ref(), common::TEST_BUCKET, &filename);
 
-    let e_tag: Option<String> = res.unwrap().unwrap();
+    let e_tag: Option<String> = res.unwrap();
 
     assert!(e_tag.is_some());
 }
@@ -36,14 +36,14 @@ fn test_handle_list_objects() {
 
     assert_eq!(res.unwrap(), ());
 
-    let mut res = handle_list_objects(s3client.as_ref(), common::TEST_BUCKET, &folder);
+    let res = handle_list_objects(s3client.as_ref(), common::TEST_BUCKET, &folder);
 
     let bucket_contents = res.unwrap();
 
     assert_eq!(1, bucket_contents.len());
     assert_eq!("test_folder/test5mb.bin", bucket_contents[0]);
 
-    let mut res = handle_list_objects(s3client.as_ref(), common::TEST_BUCKET, &empty_folder);
+    let res = handle_list_objects(s3client.as_ref(), common::TEST_BUCKET, &empty_folder);
 
     let bucket_contents = res.unwrap();
 
