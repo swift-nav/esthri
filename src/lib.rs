@@ -366,7 +366,7 @@ pub fn handle_list_objects(s3: &dyn S3, bucket: &str, key: &str) -> Result<Vec<S
     let mut continuation: Option<String> = None;
     loop {
         let listing = list_objects(s3, bucket, key, continuation)?;
-        if listing.objects.len() > 0 {
+        if ! listing.objects.is_empty() {
             for entry in listing.objects {
                 info!("key={}, etag={}", entry.key, entry.e_tag);
                 bucket_contents.push(entry.key);
