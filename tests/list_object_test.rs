@@ -13,7 +13,7 @@ fn test_handle_head_object() {
 
     let res = s3_upload(s3client.as_ref(), common::TEST_BUCKET, filename, &filepath);
 
-    assert_eq!(res.unwrap(), ());
+    assert!(res.is_ok());
 
     let res = handle_head_object(s3client.as_ref(), common::TEST_BUCKET, &filename);
 
@@ -34,7 +34,7 @@ fn test_handle_list_objects() {
 
     let res = s3_upload(s3client.as_ref(), &bucket, filename, &filepath);
 
-    assert_eq!(res.unwrap(), ());
+    assert!(res.is_ok());
 
     let res = handle_list_objects(s3client.as_ref(), common::TEST_BUCKET, &folder);
 

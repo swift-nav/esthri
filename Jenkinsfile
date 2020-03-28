@@ -41,7 +41,7 @@ pipeline {
           agent { dockerfile { reuseNode true } }
           steps {
             script {
-              sh("cargo clippy")
+              sh("cargo clippy --all-targets --features aggressive_lint")
             }
           }
         }

@@ -1,3 +1,5 @@
+#![cfg_attr(feature = "aggressive_lint", deny(warnings))]
+
 use rusoto_core::Region;
 use rusoto_s3::S3Client;
 
@@ -13,9 +15,9 @@ pub struct TestGlobal {
 static TEST_GLOBAL: Lazy<Mutex<TestGlobal>> =
     Lazy::new(|| Mutex::new(TestGlobal { s3client: None }));
 
-static TEST_GLOBAL_LOCK_FAILED: &'static str = "locking global test data failed";
+static TEST_GLOBAL_LOCK_FAILED: &str = "locking global test data failed";
 
-pub static TEST_BUCKET: &'static str = "esthri-test";
+pub static TEST_BUCKET: &str = "esthri-test";
 
 fn init_s3client() {
     let mut test_global = TEST_GLOBAL.lock().expect(TEST_GLOBAL_LOCK_FAILED);
@@ -26,9 +28,7 @@ fn init_s3client() {
             let s3 = Arc::new(S3Client::new(region));
             test_global.s3client = Some(s3);
         }
-        Some(_) => {
-            return;
-        }
+        Some(_) => {}
     }
 }
 

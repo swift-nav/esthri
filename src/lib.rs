@@ -1,17 +1,4 @@
-extern crate anyhow;
-extern crate crypto;
-extern crate ctrlc;
-extern crate glob;
-#[macro_use]
-extern crate log;
-#[macro_use]
-extern crate log_derive;
-extern crate hex;
-extern crate once_cell;
-extern crate rusoto_core;
-extern crate rusoto_s3;
-extern crate thiserror;
-extern crate walkdir;
+#![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
 use std::fs;
 use std::fs::File;
@@ -26,6 +13,8 @@ use anyhow::{anyhow, ensure, Context};
 use crypto::digest::Digest;
 use crypto::md5::Md5;
 use glob::Pattern;
+use log::*;
+use log_derive::logfn;
 use once_cell::sync::Lazy;
 use walkdir::WalkDir;
 
@@ -377,7 +366,7 @@ pub fn handle_list_objects(s3: &dyn S3, bucket: &str, key: &str) -> Result<Vec<S
     let mut continuation: Option<String> = None;
     loop {
         let listing = list_objects(s3, bucket, key, continuation)?;
-        if listing.objects.len() > 0 {
+        if !listing.objects.is_empty() {
             for entry in listing.objects {
                 info!("key={}, etag={}", entry.key, entry.e_tag);
                 bucket_contents.push(entry.key);
