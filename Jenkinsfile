@@ -78,6 +78,7 @@ pipeline {
                 | ./third_party/github-release-api/github_release_manager.sh \\
                 | -l \$GITHUB_USER -t \$GITHUB_TOKEN \\
                 | -o swift-nav -r ${context.repo}  \\
+                | -m "Release ${TAG_NAME}" \\
                 | -d ${TAG_NAME} \\
                 | -c create
                 |
