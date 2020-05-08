@@ -56,27 +56,34 @@ const READ_SIZE: usize = 4096;
 pub use anyhow::Result;
 
 #[logfn(err = "ERROR")]
-pub fn handle_head_object(s3: &dyn S3, bucket: &str, key: &str) -> Result<Option<String>> {
+pub fn s3_head_object(s3: &dyn S3, bucket: &str, key: &str) -> Result<Option<String>> {
     info!("head-object: buckey={}, key={}", bucket, key);
     let e_tag = head_object(s3, bucket, key)?;
-
     debug!("etag: e_tag={:?}", e_tag);
-
     Ok(e_tag)
 }
 
+#[deprecated(since = "0.2.1", note = "use s3_head_object instead")]
+pub fn handle_head_object(s3: &dyn S3, bucket: &str, key: &str) -> Result<Option<String>> {
+    s3_head_object(s3, bucket, key)
+}
+
 #[logfn(err = "ERROR")]
-pub fn handle_s3etag(path: &str) -> Result<()> {
+pub fn s3_log_etag(path: &str) -> Result<String> {
     info!("s3etag: path={}", path);
-    let etag = s3_etag(path)?;
-
+    let etag = s3_compute_etag(path)?;
     debug!("s3etag: file={}, etag={}", path, etag);
+    Ok(etag)
+}
 
+#[deprecated(since = "0.2.1", note = "use s3_log_etag instead")]
+pub fn handle_s3etag(path: &str) -> Result<()> {
+    let _etag = s3_log_etag(path)?;
     Ok(())
 }
 
 #[logfn(err = "ERROR")]
-pub fn handle_abort(s3: &dyn S3, bucket: &str, key: &str, upload_id: &str) -> Result<()> {
+pub fn s3_abort_upload(s3: &dyn S3, bucket: &str, key: &str, upload_id: &str) -> Result<()> {
     info!(
         "abort: bucket={}, key={}, upload_id={}",
         bucket, key, upload_id
@@ -97,7 +104,10 @@ pub fn handle_abort(s3: &dyn S3, bucket: &str, key: &str, upload_id: &str) -> Re
     Ok(())
 }
 
-use std::io::Read;
+#[deprecated(since = "0.2.1", note = "use s3_abort_upload instead")]
+pub fn handle_abort(s3: &dyn S3, bucket: &str, key: &str, upload_id: &str) -> Result<()> {
+    s3_abort_upload(s3, bucket, key, upload_id)
+}
 
 pub fn s3_upload(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Result<()> {
     info!("put: bucket={}, key={}, file={}", bucket, key, file);
@@ -115,11 +125,22 @@ pub fn s3_upload(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Result<()>
     let f = File::open(file)?;
     let mut reader = BufReader::new(f);
 
-    s3_upload_reader(s3, bucket, key, &mut reader, file_size)
+    s3_upload_from_reader(s3, bucket, key, &mut reader, file_size)
+}
+
+#[deprecated(since = "0.2.1", note = "use s3_upload_from_reader instead")]
+pub fn s3_upload_reader(
+    s3: &dyn S3,
+    bucket: &str,
+    key: &str,
+    reader: &mut dyn Read,
+    file_size: u64,
+) -> Result<()> {
+    s3_upload_from_reader(s3, bucket, key, reader, file_size)
 }
 
 #[logfn(err = "ERROR")]
-pub fn s3_upload_reader(
+pub fn s3_upload_from_reader(
     s3: &dyn S3,
     bucket: &str,
     key: &str,
@@ -257,8 +278,13 @@ pub fn s3_upload_reader(
     Ok(())
 }
 
-#[logfn(err = "ERROR")]
+#[deprecated(since = "0.2.1", note = "use s3_download instead")]
 pub fn handle_download(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Result<()> {
+    s3_download(s3, bucket, key, file)
+}
+
+#[logfn(err = "ERROR")]
+pub fn s3_download(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Result<()> {
     info!("get: bucket={}, key={}, file={}", bucket, key, file);
 
     let f = File::create(file)?;
@@ -300,8 +326,21 @@ pub fn handle_download(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Resu
     Ok(())
 }
 
-#[logfn(err = "ERROR")]
+#[deprecated(since = "0.2.1", note = "use s3_sync instead")]
 pub fn handle_sync(
+    s3: &dyn S3,
+    direction: SyncDirection,
+    bucket: &str,
+    key: &str,
+    directory: &str,
+    includes: &Option<Vec<String>>,
+    excludes: &Option<Vec<String>>,
+) -> Result<()> {
+    s3_sync(s3, direction, bucket, key, directory, includes, excludes)
+}
+
+#[logfn(err = "ERROR")]
+pub fn s3_sync(
     s3: &dyn S3,
     direction: SyncDirection,
     bucket: &str,
@@ -358,8 +397,13 @@ pub fn handle_sync(
     Ok(())
 }
 
-#[logfn(err = "ERROR")]
+#[deprecated(since = "0.2.1", note = "use s3_upload_from_reader instead")]
 pub fn handle_list_objects(s3: &dyn S3, bucket: &str, key: &str) -> Result<Vec<String>> {
+    s3_list_objects(s3, bucket, key)
+}
+
+#[logfn(err = "ERROR")]
+pub fn s3_list_objects(s3: &dyn S3, bucket: &str, key: &str) -> Result<Vec<String>> {
     info!("list-objects: bucket={}, key={}", bucket, key);
 
     let mut bucket_contents = Vec::new();
@@ -395,7 +439,7 @@ pub fn setup_cancel_handler() {
                     info!("\ncancelling...");
                     let region = Region::default();
                     let s3 = S3Client::new(region);
-                    let res = handle_abort(&s3, &bucket, &key, &upload_id);
+                    let res = s3_abort_upload(&s3, &bucket, &key, &upload_id);
                     if let Err(e) = res {
                         error!("cancelling failed: {}", e);
                     }
@@ -407,7 +451,7 @@ pub fn setup_cancel_handler() {
     .expect("Error setting Ctrl-C handler");
 }
 
-fn s3_etag(path: &str) -> Result<String> {
+fn s3_compute_etag(path: &str) -> Result<String> {
     if !Path::new(path).exists() {
         return Err(anyhow!(ETagErr::NotPresent));
     }
@@ -601,17 +645,12 @@ fn download_with_dir(
         .ok_or_else(|| anyhow!("unexpected: parent dir was null"))?;
     let parent_dir = format!("{}", parent_dir.display());
 
-    /*
-    eprintln!("bucket={}, s3_prefix={}, s3_suffix={}, local_dir={}, parent_dir={}",
-              bucket, s3_prefix, s3_suffix, local_dir, parent_dir);
-    */
-
     fs::create_dir_all(parent_dir)?;
 
     let key = format!("{}", Path::new(s3_prefix).join(s3_suffix).display());
     let dest_path = format!("{}", dest_path.display());
 
-    handle_download(s3, bucket, &key, &dest_path)?;
+    s3_download(s3, bucket, &key, &dest_path)?;
 
     Ok(())
 }
@@ -648,7 +687,7 @@ fn sync_local_to_remote(
             let remote_path: String = format!("{}", remote_path.join(&stripped_path).display());
             debug!("checking remote: {}", remote_path);
             let remote_etag = head_object(s3, bucket, &remote_path)?;
-            let local_etag = s3_etag(&path)?;
+            let local_etag = s3_compute_etag(&path)?;
             if let Some(remote_etag) = remote_etag {
                 if remote_etag != local_etag {
                     info!(
@@ -693,7 +732,7 @@ fn sync_remote_to_local(
             if let Some(path) = path {
                 let local_path: String = format!("{}", dir_path.join(&path).display());
                 debug!("checking {}", local_path);
-                let local_etag = s3_etag(&local_path);
+                let local_etag = s3_compute_etag(&local_path);
                 match local_etag {
                     Ok(local_etag) => {
                         if local_etag != entry.e_tag {
