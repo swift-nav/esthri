@@ -70,14 +70,17 @@ pipeline {
         GITHUB_USER = "swiftnav-svc-jenkins"
       }
       steps {
-        withCredentials([string(credentialsId: 'github-access-token-secretText', variable: 'GITHUB_TOKEN')]) {
-          sh("""/bin/bash -ex
-              | ./third_party/github-release-api/github_release_manager.sh \\
-              | -l \$GITHUB_USER -t \$GITHUB_TOKEN \\
-              | -o swift-nav -r ${context.repo}  \\
-              | -d ${TAG_NAME} \\
-              | -c upload target/release/esthri
-              |""".stripMargin())
+        gitPrep()
+        script {
+          withCredentials([string(credentialsId: 'github-access-token-secretText', variable: 'GITHUB_TOKEN')]) {
+            sh("""/bin/bash -ex
+                | ./third_party/github-release-api/github_release_manager.sh \\
+                | -l \$GITHUB_USER -t \$GITHUB_TOKEN \\
+                | -o swift-nav -r ${context.repo}  \\
+                | -d ${TAG_NAME} \\
+                | -c upload target/release/esthri
+                |""".stripMargin())
+          }
         }
       }
     }
