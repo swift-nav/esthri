@@ -397,7 +397,7 @@ pub fn s3_sync(
     Ok(())
 }
 
-#[deprecated(since = "0.2.1", note = "use s3_upload_from_reader instead")]
+#[deprecated(since = "0.2.1", note = "use s3_list_objects instead")]
 pub fn handle_list_objects(s3: &dyn S3, bucket: &str, key: &str) -> Result<Vec<String>> {
     s3_list_objects(s3, bucket, key)
 }
