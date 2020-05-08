@@ -1,0 +1,3 @@
+[submodule "third_party/github-release-api"]
+	path = third_party/github-release-api
+	url = https://github.com/pgdurand/github-release-api.git

@@ -108,7 +108,7 @@ fn main() -> Result<()> {
         }
 
         Get { bucket, key, file } => {
-            handle_download(&s3, &bucket, &key, &file)?;
+            s3_download(&s3, &bucket, &key, &file)?;
         }
 
         Abort {
@@ -116,11 +116,11 @@ fn main() -> Result<()> {
             key,
             upload_id,
         } => {
-            handle_abort(&s3, &bucket, &key, &upload_id)?;
+            s3_abort_upload(&s3, &bucket, &key, &upload_id)?;
         }
 
         S3Etag { file } => {
-            handle_s3etag(&file)?;
+            s3_log_etag(&file)?;
         }
 
         SyncCmd {
@@ -131,17 +131,17 @@ fn main() -> Result<()> {
             include,
             exclude,
         } => {
-            handle_sync(
+            s3_sync(
                 &s3, direction, &bucket, &key, &directory, &include, &exclude,
             )?;
         }
 
         HeadObject { bucket, key } => {
-            handle_head_object(&s3, &bucket, &key)?;
+            s3_head_object(&s3, &bucket, &key)?;
         }
 
         ListObjects { bucket, key } => {
-            handle_list_objects(&s3, &bucket, &key)?;
+            s3_list_objects(&s3, &bucket, &key)?;
         }
     }
 

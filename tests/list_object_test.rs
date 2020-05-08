@@ -1,5 +1,5 @@
-use esthri_lib::handle_head_object;
-use esthri_lib::handle_list_objects;
+use esthri_lib::s3_head_object;
+use esthri_lib::s3_list_objects;
 use esthri_lib::s3_upload;
 
 mod common;
@@ -15,7 +15,7 @@ fn test_handle_head_object() {
 
     assert!(res.is_ok());
 
-    let res = handle_head_object(s3client.as_ref(), common::TEST_BUCKET, &filename);
+    let res = s3_head_object(s3client.as_ref(), common::TEST_BUCKET, &filename);
 
     let e_tag: Option<String> = res.unwrap();
 
@@ -36,14 +36,14 @@ fn test_handle_list_objects() {
 
     assert!(res.is_ok());
 
-    let res = handle_list_objects(s3client.as_ref(), common::TEST_BUCKET, &folder);
+    let res = s3_list_objects(s3client.as_ref(), common::TEST_BUCKET, &folder);
 
     let bucket_contents = res.unwrap();
 
     assert_eq!(1, bucket_contents.len());
     assert_eq!("test_folder/test5mb.bin", bucket_contents[0]);
 
-    let res = handle_list_objects(s3client.as_ref(), common::TEST_BUCKET, &empty_folder);
+    let res = s3_list_objects(s3client.as_ref(), common::TEST_BUCKET, &empty_folder);
 
     let bucket_contents = res.unwrap();
 

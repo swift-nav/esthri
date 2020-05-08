@@ -3,7 +3,7 @@
 use std::io::Cursor;
 
 use esthri_lib::s3_upload;
-use esthri_lib::s3_upload_reader;
+use esthri_lib::s3_upload_from_reader;
 
 mod common;
 
@@ -27,7 +27,7 @@ fn test_upload_reader() {
     let contents = "file contents";
     let mut reader = Cursor::new(contents);
 
-    let res = s3_upload_reader(
+    let res = s3_upload_from_reader(
         s3client.as_ref(),
         common::TEST_BUCKET,
         filename,
