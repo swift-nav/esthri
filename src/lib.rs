@@ -82,8 +82,9 @@ pub fn handle_s3etag(path: &str) -> Result<()> {
     Ok(())
 }
 
+#[tokio::main]
 #[logfn(err = "ERROR")]
-pub fn s3_abort_upload(s3: &dyn S3, bucket: &str, key: &str, upload_id: &str) -> Result<()> {
+pub async fn s3_abort_upload(s3: &dyn S3, bucket: &str, key: &str, upload_id: &str) -> Result<()> {
     info!(
         "abort: bucket={}, key={}, upload_id={}",
         bucket, key, upload_id
@@ -96,9 +97,7 @@ pub fn s3_abort_upload(s3: &dyn S3, bucket: &str, key: &str, upload_id: &str) ->
         ..Default::default()
     };
 
-    let fut = s3.abort_multipart_upload(amur);
-    let res = fut.sync();
-
+    let res = s3.abort_multipart_upload(amur).await;
     let _ = res.context("abort_multipart_upload failed")?;
 
     Ok(())
@@ -139,8 +138,9 @@ pub fn s3_upload_reader(
     s3_upload_from_reader(s3, bucket, key, reader, file_size)
 }
 
+#[tokio::main]
 #[logfn(err = "ERROR")]
-pub fn s3_upload_from_reader(
+pub async fn s3_upload_from_reader(
     s3: &dyn S3,
     bucket: &str,
     key: &str,
@@ -159,8 +159,7 @@ pub fn s3_upload_from_reader(
             ..Default::default()
         };
 
-        let fut = s3.create_multipart_upload(cmur);
-        let res = fut.sync();
+        let res = s3.create_multipart_upload(cmur).await;
 
         let cmuo = res.context("create_multipart_upload failed")?;
 
@@ -208,9 +207,7 @@ pub fn s3_upload_from_reader(
                 ..Default::default()
             };
 
-            let fut = s3.upload_part(upr);
-            let res = fut.sync();
-
+            let res = s3.upload_part(upr).await;
             let upo = res.context("upload_part failed")?;
 
             if upo.e_tag.is_none() {
@@ -240,9 +237,7 @@ pub fn s3_upload_from_reader(
             ..Default::default()
         };
 
-        let fut = s3.complete_multipart_upload(cmur);
-        let res = fut.sync();
-
+        let res = s3.complete_multipart_upload(cmur).await;
         let _ = res.context("complete_multipart_upload failed")?;
 
         // Clear multi-part upload
@@ -269,9 +264,7 @@ pub fn s3_upload_from_reader(
             ..Default::default()
         };
 
-        let fut = s3.put_object(por);
-        let res = fut.sync();
-
+        let res = s3.put_object(por).await;
         let _ = res.context("put_object failed")?;
     }
 
@@ -283,8 +276,9 @@ pub fn handle_download(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Resu
     s3_download(s3, bucket, key, file)
 }
 
+#[tokio::main]
 #[logfn(err = "ERROR")]
-pub fn s3_download(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Result<()> {
+pub async fn s3_download(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Result<()> {
     info!("get: bucket={}, key={}, file={}", bucket, key, file);
 
     let f = File::create(file)?;
@@ -296,8 +290,7 @@ pub fn s3_download(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Result<(
         ..Default::default()
     };
 
-    let fut = s3.get_object(gor);
-    let res = fut.sync();
+    let res = s3.get_object(gor).await;
 
     let goo = res.context("get_object failed")?;
     let body = goo
@@ -501,16 +494,16 @@ fn s3_compute_etag(path: &str) -> Result<String> {
     }
 }
 
+#[tokio::main]
 #[logfn(err = "ERROR")]
-fn head_object(s3: &dyn S3, bucket: &str, key: &str) -> Result<Option<String>> {
+async fn head_object(s3: &dyn S3, bucket: &str, key: &str) -> Result<Option<String>> {
     let hor = HeadObjectRequest {
         bucket: bucket.into(),
         key: key.into(),
         ..Default::default()
     };
 
-    let fut = s3.head_object(hor);
-    let res = fut.sync();
+    let res = s3.head_object(hor).await;
 
     match res {
         Ok(hoo) => {
@@ -550,7 +543,8 @@ struct S3Obj {
     e_tag: String,
 }
 
-fn list_objects(
+#[tokio::main]
+async fn list_objects(
     s3: &dyn S3,
     bucket: &str,
     key: &str,
@@ -563,8 +557,7 @@ fn list_objects(
         ..Default::default()
     };
 
-    let fut = s3.list_objects_v2(lov2r);
-    let res = fut.sync();
+    let res = s3.list_objects_v2(lov2r).await;
 
     let lov2o = res.context("listing objects failed")?;
     let contents = if lov2o.contents.is_none() {
