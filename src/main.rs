@@ -90,7 +90,6 @@ enum Command {
 }
 
 fn main() -> Result<()> {
-
     if std::env::var("RUST_LOG").is_err() {
         std::env::set_var("RUST_LOG", "esthri=debug,esthri_lib=debug");
     }
