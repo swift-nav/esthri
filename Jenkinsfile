@@ -80,7 +80,7 @@ pipeline {
                 | -o swift-nav -r ${context.repo}  \\
                 | -m "Release ${TAG_NAME}" \\
                 | -d ${TAG_NAME} \\
-                | -c create
+                | -c create || :
                 |
                 | bin_name=esthri-${TAG_NAME}-linux_x86_64
                 | cp target/release/esthri \$bin_name
