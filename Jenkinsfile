@@ -82,11 +82,14 @@ pipeline {
                 | -d ${TAG_NAME} \\
                 | -c create
                 |
+                | bin_name=esthri-${TAG_NAME}-linux_x86_64
+                | cp target/release/esthri \$bin_name
+                |
                 | ./third_party/github-release-api/github_release_manager.sh \\
                 | -l \$GITHUB_USER -t \$GITHUB_TOKEN \\
                 | -o swift-nav -r ${context.repo}  \\
                 | -d ${TAG_NAME} \\
-                | -c upload target/release/esthri
+                | -c upload \$bin_name
                 |""".stripMargin())
           }
         }
