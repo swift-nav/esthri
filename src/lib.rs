@@ -251,7 +251,7 @@ pub async fn s3_upload_from_reader(
         let mut buf = vec![0u8; file_size as usize];
         let read_size = reader.read(&mut buf).context("read returned failure")?;
 
-        if read_size == 0 {
+        if read_size == 0 && file_size != 0 {
             return Err(anyhow!("read size zero"));
         }
 
