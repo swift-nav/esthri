@@ -36,7 +36,12 @@ fn test_handle_list_objects() {
 
     let empty_folder = "test_handle_list_objects/empty_folder";
 
-    let res = s3_upload(s3client.as_ref(), common::TEST_BUCKET, &not_empty_s3_key, &filepath);
+    let res = s3_upload(
+        s3client.as_ref(),
+        common::TEST_BUCKET,
+        &not_empty_s3_key,
+        &filepath,
+    );
 
     assert!(res.is_ok());
 
@@ -45,7 +50,10 @@ fn test_handle_list_objects() {
     let bucket_contents = res.unwrap();
 
     assert_eq!(1, bucket_contents.len());
-    assert_eq!("test_handle_list_objects/not_empty_folder/test1mb.bin", bucket_contents[0]);
+    assert_eq!(
+        "test_handle_list_objects/not_empty_folder/test1mb.bin",
+        bucket_contents[0]
+    );
 
     let res = s3_list_objects(s3client.as_ref(), common::TEST_BUCKET, &empty_folder);
 

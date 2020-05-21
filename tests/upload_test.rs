@@ -23,7 +23,6 @@ fn test_upload() {
 
 #[test]
 fn test_upload_reader() {
-
     let s3client = common::get_s3client();
 
     let filename = "test_reader_upload.bin";
