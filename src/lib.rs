@@ -16,6 +16,7 @@ use glob::Pattern;
 use log::*;
 use log_derive::logfn;
 use once_cell::sync::Lazy;
+use tokio::io::AsyncReadExt;
 use walkdir::WalkDir;
 
 pub mod errors;
@@ -297,11 +298,11 @@ pub async fn s3_download(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Re
         .body
         .ok_or_else(|| anyhow!("did not expect body field of GetObjectOutput to be none"))?;
 
-    let mut reader = body.into_blocking_read();
+    let mut reader = body.into_async_read();
 
     loop {
         let mut blob = [0u8; READ_SIZE];
-        let res = reader.read(&mut blob);
+        let res = reader.read(&mut blob).await;
 
         if let Err(e) = res {
             if e.kind() == ErrorKind::Interrupted {
