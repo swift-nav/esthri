@@ -721,7 +721,13 @@ fn sync_remote_to_local(
         debug!("syncing {} objects", listing.count);
         for entry in listing.objects {
             debug!("key={}", entry.key);
-            let path = format!("{}", Path::new(&entry.key).strip_prefix(key)?.display());
+            let path = format!(
+                "{}",
+                Path::new(&entry.key)
+                    .strip_prefix(key)
+                    .with_context(|| format!("entry.key: {}, prefix: {}", &entry.key, &key))?
+                    .display()
+            );
             let path = process_globs(&path, glob_includes, glob_excludes);
             if let Some(path) = path {
                 let local_path: String = format!("{}", dir_path.join(&path).display());
