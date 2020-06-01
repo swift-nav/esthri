@@ -618,11 +618,20 @@ fn process_globs<'a>(
             included = true;
         }
     }
-    if included || !excluded {
-        Some(path)
-    } else {
+    if !included || excluded {
         None
+    } else {
+        Some(path)
     }
+}
+
+#[test]
+fn test_process_globs() {
+
+    let includes = vec![Pattern::new("*.csv").unwrap()];
+    let excludes = vec![Pattern::new("*-blah.csv").unwrap()];
+
+    assert!(process_globs("data.sbp", &includes[..], &excludes[..]).is_none());
 }
 
 fn download_with_dir(
