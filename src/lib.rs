@@ -377,8 +377,6 @@ pub fn s3_sync(
         }
     }
 
-    // TODO: Default excludes to '*' if excludes is empty and includes has something?
-
     match direction {
         SyncDirection::up => {
             sync_local_to_remote(s3, bucket, key, directory, &glob_includes, &glob_excludes)?;
@@ -618,10 +616,10 @@ fn process_globs<'a>(
             included = true;
         }
     }
-    if !included || excluded {
-        None
-    } else {
+    if included && ! excluded {
         Some(path)
+    } else {
+        None
     }
 }
 
@@ -634,6 +632,16 @@ fn test_process_globs() {
     assert!(process_globs("data.sbp", &includes[..], &excludes[..]).is_none());
     assert!(process_globs("yes.csv", &includes[..], &excludes[..]).is_some());
     assert!(process_globs("no-blah.csv", &includes[..], &excludes[..]).is_none());
+}
+
+#[test]
+fn test_process_globs_exclude_all() {
+
+    let includes = vec![Pattern::new("*.png").unwrap()];
+    let excludes = vec![];
+
+    assert!(process_globs("a-fancy-thing.png", &includes[..], &excludes[..]).is_some());
+    assert!(process_globs("horse.gif", &includes[..], &excludes[..]).is_none());
 }
 
 fn download_with_dir(
