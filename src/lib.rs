@@ -22,7 +22,7 @@ use walkdir::WalkDir;
 pub mod errors;
 pub mod types;
 
-use crate::errors::*;
+use crate::errors::EsthriError;
 use crate::types::SyncDirection;
 
 use rusoto_s3::{
@@ -447,7 +447,7 @@ pub fn setup_cancel_handler() {
 
 fn s3_compute_etag(path: &str) -> Result<String> {
     if !Path::new(path).exists() {
-        return Err(anyhow!(ETagErr::NotPresent));
+        return Err(anyhow!(EsthriError::ETagNotPresent));
     }
 
     let f = File::open(path)?;
@@ -657,6 +657,9 @@ fn sync_local_to_remote(
     glob_includes: &[Pattern],
     glob_excludes: &[Pattern],
 ) -> Result<()> {
+    if ! key.ends_with("/") {
+        return Err(EsthriError::DirlikePrefixRequired)?;
+    }
     for entry in WalkDir::new(directory) {
         let entry = entry?;
         let stat = entry.metadata()?;
@@ -713,9 +716,11 @@ fn sync_remote_to_local(
     glob_includes: &[Pattern],
     glob_excludes: &[Pattern],
 ) -> Result<()> {
+    if ! key.ends_with("/") {
+        return Err(EsthriError::DirlikePrefixRequired)?;
+    }
     let mut continuation: Option<String> = None;
     let dir_path = Path::new(directory);
-
     loop {
         let listing = list_objects(s3, bucket, key, continuation)?;
         debug!("syncing {} objects", listing.count);
@@ -744,13 +749,13 @@ fn sync_remote_to_local(
                         }
                     }
                     Err(err) => {
-                        let not_present: Option<&ETagErr> = err.downcast_ref();
+                        let not_present: Option<&EsthriError> = err.downcast_ref();
                         match not_present {
-                            Some(ETagErr::NotPresent) => {
+                            Some(EsthriError::ETagNotPresent) => {
                                 debug!("file did not exist locally: {}", local_path);
                                 download_with_dir(s3, bucket, &key, &path, &directory)?;
                             }
-                            None => {
+                            Some(_) | None => {
                                 warn!("s3 etag error: {}", err);
                             }
                         }
