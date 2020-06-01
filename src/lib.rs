@@ -632,6 +632,8 @@ fn test_process_globs() {
     let excludes = vec![Pattern::new("*-blah.csv").unwrap()];
 
     assert!(process_globs("data.sbp", &includes[..], &excludes[..]).is_none());
+    assert!(process_globs("yes.csv", &includes[..], &excludes[..]).is_some());
+    assert!(process_globs("no-blah.csv", &includes[..], &excludes[..]).is_none());
 }
 
 fn download_with_dir(
