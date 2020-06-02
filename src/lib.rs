@@ -41,7 +41,7 @@ struct GlobalData {
 
 const EXPECT_GLOBAL_DATA: &str = "failed to lock global data";
 
-const FORWARD_SLASH : char = '/';
+const FORWARD_SLASH: char = '/';
 
 static GLOBAL_DATA: Lazy<Mutex<GlobalData>> = Lazy::new(|| {
     Mutex::new(GlobalData {
