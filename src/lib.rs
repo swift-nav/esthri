@@ -616,7 +616,7 @@ fn process_globs<'a>(
             included = true;
         }
     }
-    if included && ! excluded {
+    if included && !excluded {
         Some(path)
     } else {
         None
@@ -625,7 +625,6 @@ fn process_globs<'a>(
 
 #[test]
 fn test_process_globs() {
-
     let includes = vec![Pattern::new("*.csv").unwrap()];
     let excludes = vec![Pattern::new("*-blah.csv").unwrap()];
 
@@ -636,7 +635,6 @@ fn test_process_globs() {
 
 #[test]
 fn test_process_globs_exclude_all() {
-
     let includes = vec![Pattern::new("*.png").unwrap()];
     let excludes = vec![];
 
@@ -676,7 +674,7 @@ fn sync_local_to_remote(
     glob_includes: &[Pattern],
     glob_excludes: &[Pattern],
 ) -> Result<()> {
-    if ! key.ends_with("/") {
+    if !key.ends_with("/") {
         return Err(EsthriError::DirlikePrefixRequired)?;
     }
     for entry in WalkDir::new(directory) {
@@ -735,7 +733,7 @@ fn sync_remote_to_local(
     glob_includes: &[Pattern],
     glob_excludes: &[Pattern],
 ) -> Result<()> {
-    if ! key.ends_with("/") {
+    if !key.ends_with("/") {
         return Err(EsthriError::DirlikePrefixRequired)?;
     }
     let mut continuation: Option<String> = None;

@@ -41,7 +41,6 @@ fn test_sync_down() {
     assert!(res.is_ok(), format!("s3_sync result: {:?}", res));
 }
 
-
 #[test]
 fn test_sync_down_fail() {
     let s3client = common::get_s3client();
