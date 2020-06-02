@@ -22,7 +22,7 @@ use walkdir::WalkDir;
 pub mod errors;
 pub mod types;
 
-use crate::errors::*;
+use crate::errors::EsthriError;
 use crate::types::SyncDirection;
 
 use rusoto_s3::{
@@ -40,6 +40,8 @@ struct GlobalData {
 }
 
 const EXPECT_GLOBAL_DATA: &str = "failed to lock global data";
+
+const FORWARD_SLASH: char = '/';
 
 static GLOBAL_DATA: Lazy<Mutex<GlobalData>> = Lazy::new(|| {
     Mutex::new(GlobalData {
@@ -377,8 +379,6 @@ pub fn s3_sync(
         }
     }
 
-    // TODO: Default excludes to '*' if excludes is empty and includes has something?
-
     match direction {
         SyncDirection::up => {
             sync_local_to_remote(s3, bucket, key, directory, &glob_includes, &glob_excludes)?;
@@ -447,7 +447,7 @@ pub fn setup_cancel_handler() {
 
 fn s3_compute_etag(path: &str) -> Result<String> {
     if !Path::new(path).exists() {
-        return Err(anyhow!(ETagErr::NotPresent));
+        return Err(anyhow!(EsthriError::ETagNotPresent));
     }
 
     let f = File::open(path)?;
@@ -618,11 +618,30 @@ fn process_globs<'a>(
             included = true;
         }
     }
-    if included || !excluded {
+    if included && !excluded {
         Some(path)
     } else {
         None
     }
+}
+
+#[test]
+fn test_process_globs() {
+    let includes = vec![Pattern::new("*.csv").unwrap()];
+    let excludes = vec![Pattern::new("*-blah.csv").unwrap()];
+
+    assert!(process_globs("data.sbp", &includes[..], &excludes[..]).is_none());
+    assert!(process_globs("yes.csv", &includes[..], &excludes[..]).is_some());
+    assert!(process_globs("no-blah.csv", &includes[..], &excludes[..]).is_none());
+}
+
+#[test]
+fn test_process_globs_exclude_all() {
+    let includes = vec![Pattern::new("*.png").unwrap()];
+    let excludes = vec![];
+
+    assert!(process_globs("a-fancy-thing.png", &includes[..], &excludes[..]).is_some());
+    assert!(process_globs("horse.gif", &includes[..], &excludes[..]).is_none());
 }
 
 fn download_with_dir(
@@ -657,6 +676,9 @@ fn sync_local_to_remote(
     glob_includes: &[Pattern],
     glob_excludes: &[Pattern],
 ) -> Result<()> {
+    if !key.ends_with(FORWARD_SLASH) {
+        return Err(EsthriError::DirlikePrefixRequired.into());
+    }
     for entry in WalkDir::new(directory) {
         let entry = entry?;
         let stat = entry.metadata()?;
@@ -713,15 +735,23 @@ fn sync_remote_to_local(
     glob_includes: &[Pattern],
     glob_excludes: &[Pattern],
 ) -> Result<()> {
+    if !key.ends_with(FORWARD_SLASH) {
+        return Err(EsthriError::DirlikePrefixRequired.into());
+    }
     let mut continuation: Option<String> = None;
     let dir_path = Path::new(directory);
-
     loop {
         let listing = list_objects(s3, bucket, key, continuation)?;
         debug!("syncing {} objects", listing.count);
         for entry in listing.objects {
             debug!("key={}", entry.key);
-            let path = format!("{}", Path::new(&entry.key).strip_prefix(key)?.display());
+            let path = format!(
+                "{}",
+                Path::new(&entry.key)
+                    .strip_prefix(key)
+                    .with_context(|| format!("entry.key: {}, prefix: {}", &entry.key, &key))?
+                    .display()
+            );
             let path = process_globs(&path, glob_includes, glob_excludes);
             if let Some(path) = path {
                 let local_path: String = format!("{}", dir_path.join(&path).display());
@@ -738,13 +768,13 @@ fn sync_remote_to_local(
                         }
                     }
                     Err(err) => {
-                        let not_present: Option<&ETagErr> = err.downcast_ref();
+                        let not_present: Option<&EsthriError> = err.downcast_ref();
                         match not_present {
-                            Some(ETagErr::NotPresent) => {
+                            Some(EsthriError::ETagNotPresent) => {
                                 debug!("file did not exist locally: {}", local_path);
                                 download_with_dir(s3, bucket, &key, &path, &directory)?;
                             }
-                            None => {
+                            Some(_) | None => {
                                 warn!("s3 etag error: {}", err);
                             }
                         }
