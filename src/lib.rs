@@ -41,6 +41,8 @@ struct GlobalData {
 
 const EXPECT_GLOBAL_DATA: &str = "failed to lock global data";
 
+const FORWARD_SLASH : char = '/';
+
 static GLOBAL_DATA: Lazy<Mutex<GlobalData>> = Lazy::new(|| {
     Mutex::new(GlobalData {
         bucket: None,
@@ -674,8 +676,8 @@ fn sync_local_to_remote(
     glob_includes: &[Pattern],
     glob_excludes: &[Pattern],
 ) -> Result<()> {
-    if !key.ends_with("/") {
-        return Err(EsthriError::DirlikePrefixRequired)?;
+    if !key.ends_with(FORWARD_SLASH) {
+        return Err(EsthriError::DirlikePrefixRequired.into());
     }
     for entry in WalkDir::new(directory) {
         let entry = entry?;
@@ -733,8 +735,8 @@ fn sync_remote_to_local(
     glob_includes: &[Pattern],
     glob_excludes: &[Pattern],
 ) -> Result<()> {
-    if !key.ends_with("/") {
-        return Err(EsthriError::DirlikePrefixRequired)?;
+    if !key.ends_with(FORWARD_SLASH) {
+        return Err(EsthriError::DirlikePrefixRequired.into());
     }
     let mut continuation: Option<String> = None;
     let dir_path = Path::new(directory);
