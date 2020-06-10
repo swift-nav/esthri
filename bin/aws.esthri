@@ -50,11 +50,15 @@ def handle_s3_sync(src, src_is_s3, dst, dst_is_s3):
     if src_is_s3 is not None:
         bucket = src_is_s3.group('bucket')
         prefix = src_is_s3.group('prefix')
+        if not prefix.endswith('/'):
+            prefix = prefix + '/'
         os.execvp('esthri', ['esthri', 'sync', '--bucket', bucket, '--key', prefix,
                              '--directory', dst, '--direction', 'down'])
     elif dst_is_s3 is not None:
         bucket = dst_is_s3.group('bucket')
         prefix = dst_is_s3.group('prefix')
+        if not prefix.endswith('/'):
+            prefix = prefix + '/'
         os.execvp('esthri', ['esthri', 'sync', '--bucket', bucket, '--key', prefix,
                              '--directory', src, '--direction', 'up'])
     else:
