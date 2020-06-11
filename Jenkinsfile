@@ -38,7 +38,7 @@ pipeline {
           }
           steps {
             script {
-              sh("cargo test")
+              sh("cargo test -- --nocapture")
             }
           }
         }

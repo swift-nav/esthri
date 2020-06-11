@@ -1,2 +1,2 @@
 [target.'cfg(all())']
-runner = ["env", "RUST_TEST_THREADS=1"]
+runner = ["env", "RUST_TEST_THREADS=1", "RUST_LOG=esthri_lib=debug"]

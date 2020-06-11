@@ -264,6 +264,7 @@ pub async fn s3_upload_from_reader(
             bucket: bucket.into(),
             key: key.into(),
             body: Some(body),
+            acl: Some("bucket-owner-full-control".into()),
             ..Default::default()
         };
 

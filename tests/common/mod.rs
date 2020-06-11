@@ -24,6 +24,7 @@ fn init_s3client() {
 
     match test_global.s3client {
         None => {
+            env_logger::init();
             let region = Region::default();
             let s3 = Arc::new(S3Client::new(region));
             test_global.s3client = Some(s3);
@@ -35,6 +36,5 @@ fn init_s3client() {
 pub fn get_s3client() -> Arc<S3Client> {
     init_s3client();
     let test_global = TEST_GLOBAL.lock().expect(TEST_GLOBAL_LOCK_FAILED);
-
     test_global.s3client.as_ref().unwrap().clone()
 }
