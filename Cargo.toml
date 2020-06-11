@@ -1,6 +1,6 @@
 [package]
 name = "esthri"
-version = "1.2.0"
+version = "1.2.1"
 authors = ["Jason Mobarak <jason@swift-nav.com>"]
 edition = "2018"
 
