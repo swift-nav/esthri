@@ -1,4 +1,4 @@
-FROM rust:1.43-slim-stretch
+FROM rust:1.44-slim-stretch
 
 ARG DEBIAN_FRONTEND=noninterative
 
@@ -9,9 +9,12 @@ ENV SCCACHE_DIR=/opt/sccache
 
 RUN mkdir -p $SCCACHE_DIR
 
+RUN    echo "deb http://deb.debian.org/debian stretch-backports main non-free" >/etc/apt/sources.list.d/backports.list \
+    && echo "deb-src http://httpredir.debian.org/debian stretch-backports main non-free" >>/etc/apt/sources.list.d/backports.list
+
 RUN \
       apt-get update \
-   && apt-get install -y libssl-dev pkg-config curl \
+   && apt-get install -y libssl-dev pkg-config curl openssh-client git-lfs binutils \
    && curl -sSL -o /tmp/sccache.tgz $SCCACHE_URL \
    && mkdir /tmp/sccache \
    && tar --strip-components=1 -C /tmp/sccache -xzf /tmp/sccache.tgz \
@@ -23,3 +26,7 @@ RUN \
    && rm -rf /tmp/sccache /tmp/sccache.tgz
 
 ENV RUSTC_WRAPPER=/usr/local/bin/sccache
+
+## Set-up Jenkins user
+RUN useradd -u 1001 -ms /bin/bash -G sudo,staff jenkins
+RUN echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers

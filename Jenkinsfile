@@ -3,6 +3,11 @@
 def context = new Context(context: this)
 context.setRepo('esthri')
 
+String dockerRunArgs = "\
+  -e USER=jenkins \
+  --group-add staff \
+  --group-add sudo"
+
 pipeline {
   agent {
     node {
@@ -14,7 +19,9 @@ pipeline {
     SCCACHE_SIZE="100G"
     SCCACHE_DIR="/opt/sccache"
     SCCACHE_REGION="us-west-2"
+    USER="jenkins"
   }
+
   options {
     timeout(time: 1, unit: 'HOURS')
     timestamps()
@@ -31,14 +38,27 @@ pipeline {
           }
         }
         stage('Test') {
-          agent { dockerfile { reuseNode true } }
+          agent {
+            dockerfile {
+              reuseNode true
+              args dockerRunArgs
+            }
+          }
           environment {
             AWS_REGION = "us-west-2"
             AWS_DEFAULT_REGION = "us-west-2"
           }
           steps {
+            gitPrep()
             script {
-              sh("cargo test")
+              sh("""/bin/bash -ex
+                  |
+                  | git lfs install
+                  | git lfs pull
+                  |
+                  | cargo test -- --nocapture
+                  |
+                 """.stripMargin())
             }
           }
         }
@@ -82,15 +102,24 @@ pipeline {
                 | -d ${TAG_NAME} \\
                 | -c create || :
                 |
-                | bin_name=esthri-${TAG_NAME}-linux_x86_64
-                | cp target/release/esthri \$bin_name
+                | dir_name=esthri-${TAG_NAME}-linux_x86_64
+                | archive_name=\${dir_name}.tgz
+                |
+                | mkdir \$dir_name
+                |
+                | strip target/release/esthri
+                | cp target/release/esthri \$dir_name
+                | cp bin/aws.esthri \$dir_name
+                |
+                | tar -cvzf \$archive_name \$dir_name
                 |
                 | ./third_party/github-release-api/github_release_manager.sh \\
                 | -l \$GITHUB_USER -t \$GITHUB_TOKEN \\
                 | -o swift-nav -r ${context.repo}  \\
                 | -d ${TAG_NAME} \\
-                | -c upload \$bin_name
-                |""".stripMargin())
+                | -c upload \$archive_name
+                |
+               """.stripMargin())
           }
         }
       }
