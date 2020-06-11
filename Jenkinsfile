@@ -37,8 +37,16 @@ pipeline {
             AWS_DEFAULT_REGION = "us-west-2"
           }
           steps {
+            gitPrep()
             script {
-              sh("cargo test -- --nocapture")
+              sh("""/bin/bash -ex
+                  |
+                  | git lfs install
+                  | git lfs pull
+                  |
+                  | cargo test -- --nocapture
+                  |
+                 """.stripMargin())
             }
           }
         }
@@ -97,7 +105,8 @@ pipeline {
                 | -o swift-nav -r ${context.repo}  \\
                 | -d ${TAG_NAME} \\
                 | -c upload \$archive_name
-                |""".stripMargin())
+                |
+               """.stripMargin())
           }
         }
       }
