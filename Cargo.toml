@@ -24,6 +24,9 @@ env_logger = "0.7"
 log-derive = "0.4"
 tokio = "0.2"
 
+[dev-dependencies]
+md5 = "0.7"
+
 [lib]
 name = "esthri_lib"
 path = "src/lib.rs"

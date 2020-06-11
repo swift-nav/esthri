@@ -339,6 +339,7 @@ dependencies = [
  "hex",
  "log",
  "log-derive",
+ "md5",
  "once_cell",
  "rusoto_core",
  "rusoto_s3",

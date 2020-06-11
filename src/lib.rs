@@ -377,6 +377,8 @@ pub fn s3_sync(
                 }
             }
         }
+    } else {
+        glob_includes.push(Pattern::new("*")?);
     }
 
     match direction {
