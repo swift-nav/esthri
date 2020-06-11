@@ -107,6 +107,7 @@ pipeline {
                 |
                 | mkdir \$dir_name
                 |
+                | strip target/release/esthri
                 | cp target/release/esthri \$dir_name
                 | cp bin/aws.esthri \$dir_name
                 |

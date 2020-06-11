@@ -1,4 +1,4 @@
-FROM rust:1.44-slim-buster
+FROM rust:1.44-slim-stretch
 
 ARG DEBIAN_FRONTEND=noninterative
 
@@ -11,7 +11,7 @@ RUN mkdir -p $SCCACHE_DIR
 
 RUN \
       apt-get update \
-   && apt-get install -y libssl-dev pkg-config curl openssh-client git-lfs \
+   && apt-get install -y libssl-dev pkg-config curl openssh-client git-lfs binutils \
    && curl -sSL -o /tmp/sccache.tgz $SCCACHE_URL \
    && mkdir /tmp/sccache \
    && tar --strip-components=1 -C /tmp/sccache -xzf /tmp/sccache.tgz \
