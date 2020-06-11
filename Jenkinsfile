@@ -82,14 +82,21 @@ pipeline {
                 | -d ${TAG_NAME} \\
                 | -c create || :
                 |
-                | bin_name=esthri-${TAG_NAME}-linux_x86_64
-                | cp target/release/esthri \$bin_name
+                | dir_name=esthri-${TAG_NAME}-linux_x86_64
+                | archive_name=\${dir_name}.tgz
+                |
+                | mkdir \$dir_name
+                |
+                | cp target/release/esthri \$dir_name
+                | cp bin/aws.esthri \$dir_name
+                |
+                | tar -cvzf \$archive_name \$dir_name
                 |
                 | ./third_party/github-release-api/github_release_manager.sh \\
                 | -l \$GITHUB_USER -t \$GITHUB_TOKEN \\
                 | -o swift-nav -r ${context.repo}  \\
                 | -d ${TAG_NAME} \\
-                | -c upload \$bin_name
+                | -c upload \$archive_name
                 |""".stripMargin())
           }
         }
