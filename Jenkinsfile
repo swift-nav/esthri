@@ -3,6 +3,11 @@
 def context = new Context(context: this)
 context.setRepo('esthri')
 
+String dockerRunArgs = "\
+  -e USER=jenkins \
+  --group-add staff \
+  --group-add sudo"
+
 pipeline {
   agent {
     node {
@@ -14,7 +19,9 @@ pipeline {
     SCCACHE_SIZE="100G"
     SCCACHE_DIR="/opt/sccache"
     SCCACHE_REGION="us-west-2"
+    USER="jenkins"
   }
+
   options {
     timeout(time: 1, unit: 'HOURS')
     timestamps()
@@ -31,7 +38,12 @@ pipeline {
           }
         }
         stage('Test') {
-          agent { dockerfile { reuseNode true } }
+          agent {
+            dockerfile {
+              reuseNode true
+              args dockerRunArgs
+            }
+          }
           environment {
             AWS_REGION = "us-west-2"
             AWS_DEFAULT_REGION = "us-west-2"
