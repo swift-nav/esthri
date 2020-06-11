@@ -23,3 +23,7 @@ RUN \
    && rm -rf /tmp/sccache /tmp/sccache.tgz
 
 ENV RUSTC_WRAPPER=/usr/local/bin/sccache
+
+## Set-up Jenkins user
+RUN useradd -u 1001 -ms /bin/bash -G sudo,staff jenkins
+RUN echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
