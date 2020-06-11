@@ -2,8 +2,8 @@
 
 use std::fs;
 
-use esthri_lib::{s3_sync, s3_head_object};
 use esthri_lib::types::SyncDirection;
+use esthri_lib::{s3_head_object, s3_sync};
 
 mod common;
 
@@ -86,7 +86,6 @@ fn test_sync_up() {
 
 #[test]
 fn test_sync_up_default() {
-
     let s3client = common::get_s3client();
     let local_directory = "tests/data/sync_up";
 
@@ -113,12 +112,8 @@ fn test_sync_up_default() {
     ];
 
     for key_hash_pair in &key_hash_pairs[..] {
-
         let key = format!("{}{}", s3_key, key_hash_pair.0);
-        let res = s3_head_object(
-            s3client.as_ref(),
-            common::TEST_BUCKET,
-            &key);
+        let res = s3_head_object(s3client.as_ref(), common::TEST_BUCKET, &key);
 
         assert!(res.is_ok(), "fetching s3 etag failed for: {}", key);
 
@@ -131,7 +126,6 @@ fn test_sync_up_default() {
 
 #[test]
 fn test_sync_down_default() {
-
     let s3client = common::get_s3client();
     let local_directory = "tests/data/sync_down/d";
 
@@ -142,9 +136,10 @@ fn test_sync_down_default() {
         assert!(fs::remove_dir_all(local_directory).is_ok());
     }
 
-    // The bucket+key s3://eshtri-test/sync_down_default populated with:
-    //     aws s3 cp --recursive test/data/sync_up s3://esthri-test/test_sync_down_default/   
-
+    // Test was data populated with the following command:
+    //
+    //     aws s3 cp --recursive test/data/sync_up s3://esthri-test/test_sync_down_default/
+    //
     let s3_key = "test_sync_down_default/";
 
     let res = s3_sync(
@@ -168,7 +163,6 @@ fn test_sync_down_default() {
     ];
 
     for key_hash_pair in &key_hash_pairs[..] {
-
         let path = format!("{}/{}", local_directory, key_hash_pair.0);
         let data = fs::read(&path);
 
@@ -178,6 +172,10 @@ fn test_sync_down_default() {
         let digest = md5::compute(data);
         let digest = format!("{:x}", digest);
 
-        assert_eq!(digest, key_hash_pair.1, "md5 digest did not match: {}", path);
+        assert_eq!(
+            digest, key_hash_pair.1,
+            "md5 digest did not match: {}",
+            path
+        );
     }
 }
