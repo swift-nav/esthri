@@ -69,11 +69,6 @@ pub async fn s3_head_object(s3: &dyn S3, bucket: &str, key: &str) -> Result<Opti
     Ok(e_tag)
 }
 
-#[deprecated(since = "0.2.1", note = "use s3_head_object instead")]
-pub fn handle_head_object(s3: &dyn S3, bucket: &str, key: &str) -> Result<Option<String>> {
-    blocking::s3_head_object(s3, bucket, key)
-}
-
 #[logfn(err = "ERROR")]
 pub fn s3_log_etag(path: &str) -> Result<String> {
     info!("s3etag: path={}", path);
