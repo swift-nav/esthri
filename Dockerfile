@@ -12,21 +12,24 @@ RUN mkdir -p $SCCACHE_DIR
 RUN    echo "deb http://deb.debian.org/debian stretch-backports main non-free" >/etc/apt/sources.list.d/backports.list \
     && echo "deb-src http://httpredir.debian.org/debian stretch-backports main non-free" >>/etc/apt/sources.list.d/backports.list
 
+ARG NIGHTLY_DATE=2020-04-06
+
 RUN \
       apt-get update \
    && apt-get install -y libssl-dev pkg-config curl openssh-client git-lfs binutils \
+   && rm -rf /var/lib/apt/lists/* \
    && curl -sSL -o /tmp/sccache.tgz $SCCACHE_URL \
    && mkdir /tmp/sccache \
    && tar --strip-components=1 -C /tmp/sccache -xzf /tmp/sccache.tgz \
    && mv /tmp/sccache/sccache /usr/local/bin \
    && chmod +x /usr/local/bin/sccache \
+   && rm -rf /tmp/sccache /tmp/sccache.tgz \
+   && rustup toolchain install nightly-${NIGHTLY_DATE} \
+   && rustup override set nightly-${NIGHTLY_DATE} \
    && rustup component add rustfmt \
-   && rustup component add clippy \
-   && rm -rf /var/lib/apt/lists/* \
-   && rm -rf /tmp/sccache /tmp/sccache.tgz
+   && rustup component add clippy
 
 ENV RUSTC_WRAPPER=/usr/local/bin/sccache
 
 ## Set-up Jenkins user
-RUN useradd -u 1001 -ms /bin/bash -G sudo,staff jenkins
-RUN echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+RUN useradd -u 1001 -ms /bin/bash -G staff jenkins

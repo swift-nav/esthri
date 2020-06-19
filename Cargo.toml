@@ -7,8 +7,8 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rusoto_core = "0.43"
-rusoto_s3 = "0.43"
+rusoto_core = "0.44"
+rusoto_s3 = "0.44"
 ctrlc = { version = "3.1", features = ["termination"] }
 once_cell = "1.4"
 rust-crypto = "0.2"
@@ -21,8 +21,12 @@ anyhow = "1.0"
 thiserror = "1.0"
 log = "0.4"
 env_logger = "0.7"
-log-derive = "0.4"
 tokio = "0.2"
+
+[dependencies.log-derive]
+git = "https://github.com/swift-nav/log-derive.git"
+branch = "support-async-functions"
+features = ["async"]
 
 [dev-dependencies]
 md5 = "0.7"

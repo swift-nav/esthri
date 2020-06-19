@@ -89,7 +89,8 @@ enum Command {
     },
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     if std::env::var("RUST_LOG").is_err() {
         std::env::set_var("RUST_LOG", "esthri=debug,esthri_lib=debug");
     }
@@ -108,11 +109,11 @@ fn main() -> Result<()> {
 
     match cli.cmd {
         Put { bucket, key, file } => {
-            s3_upload(&s3, &bucket, &key, &file)?;
+            s3_upload(&s3, &bucket, &key, &file).await?;
         }
 
         Get { bucket, key, file } => {
-            s3_download(&s3, &bucket, &key, &file)?;
+            s3_download(&s3, &bucket, &key, &file).await?;
         }
 
         Abort {
@@ -120,7 +121,7 @@ fn main() -> Result<()> {
             key,
             upload_id,
         } => {
-            s3_abort_upload(&s3, &bucket, &key, &upload_id)?;
+            s3_abort_upload(&s3, &bucket, &key, &upload_id).await?;
         }
 
         S3Etag { file } => {
@@ -137,15 +138,16 @@ fn main() -> Result<()> {
         } => {
             s3_sync(
                 &s3, direction, &bucket, &key, &directory, &include, &exclude,
-            )?;
+            )
+            .await?;
         }
 
         HeadObject { bucket, key } => {
-            s3_head_object(&s3, &bucket, &key)?;
+            s3_head_object(&s3, &bucket, &key).await?;
         }
 
         ListObjects { bucket, key } => {
-            s3_list_objects(&s3, &bucket, &key)?;
+            s3_list_objects(&s3, &bucket, &key).await?;
         }
     }
 

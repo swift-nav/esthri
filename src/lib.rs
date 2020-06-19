@@ -1,3 +1,4 @@
+#![feature(async_closure)]
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
 use std::fs;
@@ -21,6 +22,8 @@ use walkdir::WalkDir;
 
 pub mod errors;
 pub mod types;
+
+pub mod blocking;
 
 use crate::errors::EsthriError;
 use crate::types::SyncDirection;
@@ -59,16 +62,11 @@ const READ_SIZE: usize = 4096;
 pub use anyhow::Result;
 
 #[logfn(err = "ERROR")]
-pub fn s3_head_object(s3: &dyn S3, bucket: &str, key: &str) -> Result<Option<String>> {
+pub async fn s3_head_object(s3: &dyn S3, bucket: &str, key: &str) -> Result<Option<String>> {
     info!("head-object: buckey={}, key={}", bucket, key);
-    let e_tag = head_object(s3, bucket, key)?;
+    let e_tag = head_object(s3, bucket, key).await?;
     debug!("etag: e_tag={:?}", e_tag);
     Ok(e_tag)
-}
-
-#[deprecated(since = "0.2.1", note = "use s3_head_object instead")]
-pub fn handle_head_object(s3: &dyn S3, bucket: &str, key: &str) -> Result<Option<String>> {
-    s3_head_object(s3, bucket, key)
 }
 
 #[logfn(err = "ERROR")]
@@ -79,13 +77,6 @@ pub fn s3_log_etag(path: &str) -> Result<String> {
     Ok(etag)
 }
 
-#[deprecated(since = "0.2.1", note = "use s3_log_etag instead")]
-pub fn handle_s3etag(path: &str) -> Result<()> {
-    let _etag = s3_log_etag(path)?;
-    Ok(())
-}
-
-#[tokio::main]
 #[logfn(err = "ERROR")]
 pub async fn s3_abort_upload(s3: &dyn S3, bucket: &str, key: &str, upload_id: &str) -> Result<()> {
     info!(
@@ -106,12 +97,7 @@ pub async fn s3_abort_upload(s3: &dyn S3, bucket: &str, key: &str, upload_id: &s
     Ok(())
 }
 
-#[deprecated(since = "0.2.1", note = "use s3_abort_upload instead")]
-pub fn handle_abort(s3: &dyn S3, bucket: &str, key: &str, upload_id: &str) -> Result<()> {
-    s3_abort_upload(s3, bucket, key, upload_id)
-}
-
-pub fn s3_upload(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Result<()> {
+pub async fn s3_upload(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Result<()> {
     info!("put: bucket={}, key={}, file={}", bucket, key, file);
 
     ensure!(
@@ -127,21 +113,9 @@ pub fn s3_upload(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Result<()>
     let f = File::open(file)?;
     let mut reader = BufReader::new(f);
 
-    s3_upload_from_reader(s3, bucket, key, &mut reader, file_size)
+    s3_upload_from_reader(s3, bucket, key, &mut reader, file_size).await
 }
 
-#[deprecated(since = "0.2.1", note = "use s3_upload_from_reader instead")]
-pub fn s3_upload_reader(
-    s3: &dyn S3,
-    bucket: &str,
-    key: &str,
-    reader: &mut dyn Read,
-    file_size: u64,
-) -> Result<()> {
-    s3_upload_from_reader(s3, bucket, key, reader, file_size)
-}
-
-#[tokio::main]
 #[logfn(err = "ERROR")]
 pub async fn s3_upload_from_reader(
     s3: &dyn S3,
@@ -275,12 +249,6 @@ pub async fn s3_upload_from_reader(
     Ok(())
 }
 
-#[deprecated(since = "0.2.1", note = "use s3_download instead")]
-pub fn handle_download(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Result<()> {
-    s3_download(s3, bucket, key, file)
-}
-
-#[tokio::main]
 #[logfn(err = "ERROR")]
 pub async fn s3_download(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Result<()> {
     info!("get: bucket={}, key={}, file={}", bucket, key, file);
@@ -323,21 +291,8 @@ pub async fn s3_download(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Re
     Ok(())
 }
 
-#[deprecated(since = "0.2.1", note = "use s3_sync instead")]
-pub fn handle_sync(
-    s3: &dyn S3,
-    direction: SyncDirection,
-    bucket: &str,
-    key: &str,
-    directory: &str,
-    includes: &Option<Vec<String>>,
-    excludes: &Option<Vec<String>>,
-) -> Result<()> {
-    s3_sync(s3, direction, bucket, key, directory, includes, excludes)
-}
-
 #[logfn(err = "ERROR")]
-pub fn s3_sync(
+pub async fn s3_sync(
     s3: &dyn S3,
     direction: SyncDirection,
     bucket: &str,
@@ -384,29 +339,26 @@ pub fn s3_sync(
 
     match direction {
         SyncDirection::up => {
-            sync_local_to_remote(s3, bucket, key, directory, &glob_includes, &glob_excludes)?;
+            sync_local_to_remote(s3, bucket, key, directory, &glob_includes, &glob_excludes)
+                .await?;
         }
         SyncDirection::down => {
-            sync_remote_to_local(s3, bucket, key, directory, &glob_includes, &glob_excludes)?;
+            sync_remote_to_local(s3, bucket, key, directory, &glob_includes, &glob_excludes)
+                .await?;
         }
     }
 
     Ok(())
 }
 
-#[deprecated(since = "0.2.1", note = "use s3_list_objects instead")]
-pub fn handle_list_objects(s3: &dyn S3, bucket: &str, key: &str) -> Result<Vec<String>> {
-    s3_list_objects(s3, bucket, key)
-}
-
 #[logfn(err = "ERROR")]
-pub fn s3_list_objects(s3: &dyn S3, bucket: &str, key: &str) -> Result<Vec<String>> {
+pub async fn s3_list_objects(s3: &dyn S3, bucket: &str, key: &str) -> Result<Vec<String>> {
     info!("list-objects: bucket={}, key={}", bucket, key);
 
     let mut bucket_contents = Vec::new();
     let mut continuation: Option<String> = None;
     loop {
-        let listing = list_objects(s3, bucket, key, continuation)?;
+        let listing = list_objects(s3, bucket, key, continuation).await?;
         if !listing.objects.is_empty() {
             for entry in listing.objects {
                 info!("key={}, etag={}", entry.key, entry.e_tag);
@@ -436,7 +388,7 @@ pub fn setup_cancel_handler() {
                     info!("\ncancelling...");
                     let region = Region::default();
                     let s3 = S3Client::new(region);
-                    let res = s3_abort_upload(&s3, &bucket, &key, &upload_id);
+                    let res = blocking::s3_abort_upload(&s3, &bucket, &key, &upload_id);
                     if let Err(e) = res {
                         error!("cancelling failed: {}", e);
                     }
@@ -498,7 +450,6 @@ fn s3_compute_etag(path: &str) -> Result<String> {
     }
 }
 
-#[tokio::main]
 #[logfn(err = "ERROR")]
 async fn head_object(s3: &dyn S3, bucket: &str, key: &str) -> Result<Option<String>> {
     let hor = HeadObjectRequest {
@@ -547,7 +498,6 @@ struct S3Obj {
     e_tag: String,
 }
 
-#[tokio::main]
 async fn list_objects(
     s3: &dyn S3,
     bucket: &str,
@@ -647,7 +597,7 @@ fn test_process_globs_exclude_all() {
     assert!(process_globs("horse.gif", &includes[..], &excludes[..]).is_none());
 }
 
-fn download_with_dir(
+async fn download_with_dir(
     s3: &dyn S3,
     bucket: &str,
     s3_prefix: &str,
@@ -666,12 +616,12 @@ fn download_with_dir(
     let key = format!("{}", Path::new(s3_prefix).join(s3_suffix).display());
     let dest_path = format!("{}", dest_path.display());
 
-    s3_download(s3, bucket, &key, &dest_path)?;
+    s3_download(s3, bucket, &key, &dest_path).await?;
 
     Ok(())
 }
 
-fn sync_local_to_remote(
+async fn sync_local_to_remote(
     s3: &dyn S3,
     bucket: &str,
     key: &str,
@@ -705,7 +655,7 @@ fn sync_local_to_remote(
             let stripped_path = format!("{}", stripped_path.display());
             let remote_path: String = format!("{}", remote_path.join(&stripped_path).display());
             debug!("checking remote: {}", remote_path);
-            let remote_etag = head_object(s3, bucket, &remote_path)?;
+            let remote_etag = head_object(s3, bucket, &remote_path).await?;
             let local_etag = s3_compute_etag(&path)?;
             if let Some(remote_etag) = remote_etag {
                 if remote_etag != local_etag {
@@ -713,7 +663,7 @@ fn sync_local_to_remote(
                         "etag mis-match: {}, remote_etag={}, local_etag={}",
                         remote_path, remote_etag, local_etag
                     );
-                    s3_upload(s3, bucket, &remote_path, &path)?;
+                    s3_upload(s3, bucket, &remote_path, &path).await?;
                 } else {
                     debug!(
                         "etags matched: {}, remote_etag={}, local_etag={}",
@@ -722,7 +672,7 @@ fn sync_local_to_remote(
                 }
             } else {
                 info!("file did not exist remotely: {}", remote_path);
-                s3_upload(s3, bucket, &remote_path, &path)?;
+                s3_upload(s3, bucket, &remote_path, &path).await?;
             }
         }
     }
@@ -730,7 +680,7 @@ fn sync_local_to_remote(
     Ok(())
 }
 
-fn sync_remote_to_local(
+async fn sync_remote_to_local(
     s3: &dyn S3,
     bucket: &str,
     key: &str,
@@ -744,7 +694,7 @@ fn sync_remote_to_local(
     let mut continuation: Option<String> = None;
     let dir_path = Path::new(directory);
     loop {
-        let listing = list_objects(s3, bucket, key, continuation)?;
+        let listing = list_objects(s3, bucket, key, continuation).await?;
         debug!("syncing {} objects", listing.count);
         for entry in listing.objects {
             debug!("key={}", entry.key);
@@ -767,7 +717,7 @@ fn sync_remote_to_local(
                                 "etag mismatch: {}, local etag={}, remote etag={}",
                                 local_path, local_etag, entry.e_tag
                             );
-                            download_with_dir(s3, bucket, &key, &path, &directory)?;
+                            download_with_dir(s3, bucket, &key, &path, &directory).await?;
                         }
                     }
                     Err(err) => {
@@ -775,7 +725,7 @@ fn sync_remote_to_local(
                         match not_present {
                             Some(EsthriError::ETagNotPresent) => {
                                 debug!("file did not exist locally: {}", local_path);
-                                download_with_dir(s3, bucket, &key, &path, &directory)?;
+                                download_with_dir(s3, bucket, &key, &path, &directory).await?;
                             }
                             Some(_) | None => {
                                 warn!("s3 etag error: {}", err);
