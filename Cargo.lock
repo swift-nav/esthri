@@ -331,7 +331,7 @@ dependencies = [
 
 [[package]]
 name = "esthri"
-version = "1.2.1"
+version = "2.0.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -731,7 +731,7 @@ dependencies = [
 [[package]]
 name = "log-derive"
 version = "0.4.0"
-source = "git+https://github.com/swift-nav/log-derive.git?branch=support-async-functions#ce29c7b30f7d639b512e14afe6f0084ad3bd363e"
+source = "git+https://github.com/swift-nav/log-derive.git?branch=support-async-functions#a835518482d7027837de51b27e25f1cbd0c1c6df"
 dependencies = [
  "darling",
  "proc-macro2",
