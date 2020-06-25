@@ -24,8 +24,6 @@ RUN \
    && mv /tmp/sccache/sccache /usr/local/bin \
    && chmod +x /usr/local/bin/sccache \
    && rm -rf /tmp/sccache /tmp/sccache.tgz \
-   && rustup toolchain install nightly-${NIGHTLY_DATE} \
-   && rustup override set nightly-${NIGHTLY_DATE} \
    && rustup component add rustfmt \
    && rustup component add clippy
 

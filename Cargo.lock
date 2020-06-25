@@ -155,9 +155,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.0.54"
+version = "1.0.55"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7bbb73db36c1246e9034e307d0fba23f9a2e251faa47ade70c1bd252220c8311"
+checksum = "b1be3409f94d7bdceeb5f5fac551039d9b3f00e25da7a74fc4d33400a0d96368"
 
 [[package]]
 name = "cfg-if"
@@ -731,7 +731,7 @@ dependencies = [
 [[package]]
 name = "log-derive"
 version = "0.4.0"
-source = "git+https://github.com/swift-nav/log-derive.git?branch=support-async-functions#a835518482d7027837de51b27e25f1cbd0c1c6df"
+source = "git+https://github.com/swift-nav/log-derive.git?branch=async-support#7fa35ba1ec5ef448ea68e7194b030c7e81e1bb76"
 dependencies = [
  "darling",
  "proc-macro2",
