@@ -1,4 +1,3 @@
-#![feature(async_closure)]
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
 use std::fs;

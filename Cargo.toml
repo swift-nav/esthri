@@ -25,7 +25,7 @@ tokio = "0.2"
 
 [dependencies.log-derive]
 git = "https://github.com/swift-nav/log-derive.git"
-branch = "support-async-functions"
+branch = "async-support"
 features = ["async"]
 
 [dev-dependencies]
