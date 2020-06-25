@@ -61,7 +61,10 @@ const READ_SIZE: usize = 4096;
 pub use anyhow::Result;
 
 #[logfn(err = "ERROR")]
-pub async fn s3_head_object(s3: &dyn S3, bucket: &str, key: &str) -> Result<Option<String>> {
+pub async fn s3_head_object<T>(s3: &T, bucket: &str, key: &str) -> Result<Option<String>>
+where
+    T: S3 + Send,
+{
     info!("head-object: buckey={}, key={}", bucket, key);
     let e_tag = head_object(s3, bucket, key).await?;
     debug!("etag: e_tag={:?}", e_tag);
@@ -77,7 +80,10 @@ pub fn s3_log_etag(path: &str) -> Result<String> {
 }
 
 #[logfn(err = "ERROR")]
-pub async fn s3_abort_upload(s3: &dyn S3, bucket: &str, key: &str, upload_id: &str) -> Result<()> {
+pub async fn s3_abort_upload<T>(s3: &T, bucket: &str, key: &str, upload_id: &str) -> Result<()>
+where
+    T: S3 + Send,
+{
     info!(
         "abort: bucket={}, key={}, upload_id={}",
         bucket, key, upload_id
@@ -96,7 +102,10 @@ pub async fn s3_abort_upload(s3: &dyn S3, bucket: &str, key: &str, upload_id: &s
     Ok(())
 }
 
-pub async fn s3_upload(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Result<()> {
+pub async fn s3_upload<T>(s3: &T, bucket: &str, key: &str, file: &str) -> Result<()>
+where
+    T: S3 + Send,
+{
     info!("put: bucket={}, key={}, file={}", bucket, key, file);
 
     ensure!(
@@ -116,13 +125,16 @@ pub async fn s3_upload(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Resu
 }
 
 #[logfn(err = "ERROR")]
-pub async fn s3_upload_from_reader(
-    s3: &dyn S3,
+pub async fn s3_upload_from_reader<T>(
+    s3: &T,
     bucket: &str,
     key: &str,
     reader: &mut dyn Read,
     file_size: u64,
-) -> Result<()> {
+) -> Result<()>
+where
+    T: S3 + Send,
+{
     info!(
         "put: bucket={}, key={}, file_size={}",
         bucket, key, file_size
@@ -249,7 +261,10 @@ pub async fn s3_upload_from_reader(
 }
 
 #[logfn(err = "ERROR")]
-pub async fn s3_download(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Result<()> {
+pub async fn s3_download<T>(s3: &T, bucket: &str, key: &str, file: &str) -> Result<()>
+where
+    T: S3 + Send,
+{
     info!("get: bucket={}, key={}, file={}", bucket, key, file);
 
     let f = File::create(file)?;
@@ -291,15 +306,18 @@ pub async fn s3_download(s3: &dyn S3, bucket: &str, key: &str, file: &str) -> Re
 }
 
 #[logfn(err = "ERROR")]
-pub async fn s3_sync(
-    s3: &dyn S3,
+pub async fn s3_sync<T>(
+    s3: &T,
     direction: SyncDirection,
     bucket: &str,
     key: &str,
     directory: &str,
     includes: &Option<Vec<String>>,
     excludes: &Option<Vec<String>>,
-) -> Result<()> {
+) -> Result<()>
+where
+    T: S3 + Send,
+{
     info!(
         "sync: direction={}, bucket={}, key={}, directory={}, include={:?}, exclude={:?}",
         direction, bucket, key, directory, includes, excludes
@@ -351,7 +369,10 @@ pub async fn s3_sync(
 }
 
 #[logfn(err = "ERROR")]
-pub async fn s3_list_objects(s3: &dyn S3, bucket: &str, key: &str) -> Result<Vec<String>> {
+pub async fn s3_list_objects<T>(s3: &T, bucket: &str, key: &str) -> Result<Vec<String>>
+where
+    T: S3 + Send,
+{
     info!("list-objects: bucket={}, key={}", bucket, key);
 
     let mut bucket_contents = Vec::new();
@@ -450,7 +471,10 @@ fn s3_compute_etag(path: &str) -> Result<String> {
 }
 
 #[logfn(err = "ERROR")]
-async fn head_object(s3: &dyn S3, bucket: &str, key: &str) -> Result<Option<String>> {
+async fn head_object<T>(s3: &T, bucket: &str, key: &str) -> Result<Option<String>>
+where
+    T: S3 + Send,
+{
     let hor = HeadObjectRequest {
         bucket: bucket.into(),
         key: key.into(),
@@ -497,12 +521,15 @@ struct S3Obj {
     e_tag: String,
 }
 
-async fn list_objects(
-    s3: &dyn S3,
+async fn list_objects<T>(
+    s3: &T,
     bucket: &str,
     key: &str,
     continuation: Option<String>,
-) -> Result<S3Listing> {
+) -> Result<S3Listing>
+where
+    T: S3 + Send,
+{
     let lov2r = ListObjectsV2Request {
         bucket: bucket.into(),
         prefix: Some(key.into()),
@@ -596,13 +623,16 @@ fn test_process_globs_exclude_all() {
     assert!(process_globs("horse.gif", &includes[..], &excludes[..]).is_none());
 }
 
-async fn download_with_dir(
-    s3: &dyn S3,
+async fn download_with_dir<T>(
+    s3: &T,
     bucket: &str,
     s3_prefix: &str,
     s3_suffix: &str,
     local_dir: &str,
-) -> Result<()> {
+) -> Result<()>
+where
+    T: S3 + Send,
+{
     let dest_path = Path::new(local_dir).join(s3_suffix);
 
     let parent_dir = dest_path
@@ -620,14 +650,17 @@ async fn download_with_dir(
     Ok(())
 }
 
-async fn sync_local_to_remote(
-    s3: &dyn S3,
+async fn sync_local_to_remote<T>(
+    s3: &T,
     bucket: &str,
     key: &str,
     directory: &str,
     glob_includes: &[Pattern],
     glob_excludes: &[Pattern],
-) -> Result<()> {
+) -> Result<()>
+where
+    T: S3 + Send,
+{
     if !key.ends_with(FORWARD_SLASH) {
         return Err(EsthriError::DirlikePrefixRequired.into());
     }
@@ -679,14 +712,17 @@ async fn sync_local_to_remote(
     Ok(())
 }
 
-async fn sync_remote_to_local(
-    s3: &dyn S3,
+async fn sync_remote_to_local<T>(
+    s3: &T,
     bucket: &str,
     key: &str,
     directory: &str,
     glob_includes: &[Pattern],
     glob_excludes: &[Pattern],
-) -> Result<()> {
+) -> Result<()>
+where
+    T: S3 + Send,
+{
     if !key.ends_with(FORWARD_SLASH) {
         return Err(EsthriError::DirlikePrefixRequired.into());
     }
