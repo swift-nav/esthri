@@ -24,9 +24,8 @@ env_logger = "0.7"
 tokio = "0.2"
 
 [dependencies.log-derive]
-git = "https://github.com/swift-nav/log-derive.git"
-branch = "async-support"
-features = ["async"]
+git = "https://github.com/elichai/log-derive.git"
+rev = "a6431c4bce0cca55d042ec86e2939894233c0cc3"
 
 [dev-dependencies]
 md5 = "0.7"
