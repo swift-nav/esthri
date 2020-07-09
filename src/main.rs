@@ -12,14 +12,21 @@
 
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
-use log::*;
+use std::time::Duration;
 
-use rusoto_core::Region;
-use rusoto_s3::S3Client;
-use structopt::StructOpt;
+use log::*;
 
 use esthri_lib::types::*;
 use esthri_lib::*;
+
+use rusoto_core::{Region, HttpClient};
+use rusoto_credential::DefaultCredentialsProvider;
+use rusoto_s3::S3Client;
+
+use structopt::StructOpt;
+
+use hyper::Client;
+use hyper_tls::HttpsConnector;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "esthri", about = "Simple S3 file transfer utility.")]
@@ -114,7 +121,15 @@ async fn main() -> Result<()> {
 
     info!("Starting, using region: {:?}...", region);
 
-    let s3 = S3Client::new(region);
+    let mut hyper_builder = Client::builder();
+    hyper_builder.pool_idle_timeout(Duration::from_secs(20));
+
+    let https_connector = HttpsConnector::new();
+    let http_client = HttpClient::from_builder(hyper_builder, https_connector);
+
+    let credentials_provider = DefaultCredentialsProvider::new().unwrap();
+    let s3 = S3Client::new_with(http_client, credentials_provider, Region::default());
+
     setup_cancel_handler();
 
     use Command::*;
