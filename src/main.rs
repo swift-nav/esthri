@@ -19,7 +19,7 @@ use log::*;
 use esthri_lib::types::*;
 use esthri_lib::*;
 
-use rusoto_core::{Region, HttpClient};
+use rusoto_core::{HttpClient, Region};
 use rusoto_credential::DefaultCredentialsProvider;
 use rusoto_s3::S3Client;
 
