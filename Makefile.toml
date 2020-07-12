@@ -1,0 +1,54 @@
+[tasks.install-toml]
+command = "pip3"
+args = ["install", "toml"]
+
+[tasks.release]
+script = [
+'''
+#!/bin/bash
+cargo build
+git add Cargo.toml Cargo.lock
+relver=$(./scripts/package-version.py get-current)
+git commit -m "Release $relver"
+git tag -f $relver
+'''
+]
+
+[tasks.bump-version-bugfix]
+dependencies = ["install-toml"]
+script = [
+'''
+#!/bin/bash
+./scripts/package-version.py bump-bugfix
+'''
+]
+
+[tasks.bump-version-minor]
+dependencies = ["install-toml"]
+script = [
+'''
+#!/bin/bash
+./scripts/package-version.py bump-minor
+'''
+]
+
+[tasks.bump-version-major]
+dependencies = ["install-toml"]
+script = [
+'''
+#!/bin/bash
+./scripts/package-version.py bump-major
+'''
+]
+
+[tasks.release-bugfix]
+dependencies = ["bump-version-bugfix"]
+run_task = "release"
+
+[tasks.release-minor]
+dependencies = ["bump-version-minor"]
+run_task = "release"
+
+[tasks.release-major]
+dependencies = ["bump-version-major"]
+run_task = "release"
