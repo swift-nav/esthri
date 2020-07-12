@@ -156,6 +156,7 @@ where
         let cmur = CreateMultipartUploadRequest {
             bucket: bucket.into(),
             key: key.into(),
+            acl: Some("bucket-owner-full-control".into()),
             ..Default::default()
         };
 
