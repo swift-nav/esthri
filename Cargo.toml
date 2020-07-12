@@ -1,16 +1,17 @@
+[[bin]]
+name = "esthri"
+path = "src/main.rs"
+
 [package]
 name = "esthri"
-version = "2.1.2"
-authors = ["Jason Mobarak <jason@swift-nav.com>"]
+version = "2.1.3"
+authors = [ "Jason Mobarak <jason@swift-nav.com>",]
 edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 rusoto_core = "0.44"
 rusoto_s3 = "0.44"
 rusoto_credential = "0.44"
-ctrlc = { version = "3.1", features = ["termination"] }
 once_cell = "1.4"
 rust-crypto = "0.2"
 hex = "0.4"
@@ -26,10 +27,6 @@ tokio = "0.2"
 hyper = "0.13.6"
 hyper-tls = "0.4.3"
 
-[dependencies.log-derive]
-git = "https://github.com/elichai/log-derive.git"
-rev = "a6431c4bce0cca55d042ec86e2939894233c0cc3"
-
 [dev-dependencies]
 md5 = "0.7"
 
@@ -37,10 +34,14 @@ md5 = "0.7"
 name = "esthri_lib"
 path = "src/lib.rs"
 
-[[bin]]
-name = "esthri"
-path = "src/main.rs"
-
 [features]
 default = []
 aggressive_lint = []
+
+[dependencies.ctrlc]
+version = "3.1"
+features = [ "termination",]
+
+[dependencies.log-derive]
+git = "https://github.com/elichai/log-derive.git"
+rev = "a6431c4bce0cca55d042ec86e2939894233c0cc3"
