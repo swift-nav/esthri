@@ -58,6 +58,6 @@ script = [
 '''
 #!/bin/bash
 relver=$(./scripts/package-version.py get-current)
-git push origin master $(relver)
+git push origin master ${relver}
 '''
 ]
