@@ -52,3 +52,12 @@ run_task = "release"
 [tasks.release-major]
 dependencies = ["bump-version-major"]
 run_task = "release"
+
+[tasks.publish-release]
+script = [
+'''
+#!/bin/bash
+relver=$(./scripts/package-version.py get-current)
+git push origin master $(relver)
+'''
+]
