@@ -24,7 +24,7 @@ thiserror = "1.0"
 log = "0.4"
 env_logger = "0.7"
 tokio = "0.2"
-hyper = "0.13.6"
+hyper = "0.13.7"
 hyper-tls = "0.4.3"
 
 [dev-dependencies]
