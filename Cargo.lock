@@ -733,8 +733,9 @@ dependencies = [
 
 [[package]]
 name = "log-derive"
-version = "0.4.0"
-source = "git+https://github.com/elichai/log-derive.git?rev=a6431c4bce0cca55d042ec86e2939894233c0cc3#a6431c4bce0cca55d042ec86e2939894233c0cc3"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a42526bb432bcd1b43571d5f163984effa25409a29f1a3242a54d0577d55bcf"
 dependencies = [
  "darling",
  "proc-macro2",

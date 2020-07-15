@@ -26,6 +26,7 @@ env_logger = "0.7"
 tokio = "0.2"
 hyper = "0.13.7"
 hyper-tls = "0.4.3"
+log-derive = "0.4.1"
 
 [dev-dependencies]
 md5 = "0.7"
@@ -41,7 +42,3 @@ aggressive_lint = []
 [dependencies.ctrlc]
 version = "3.1"
 features = [ "termination",]
-
-[dependencies.log-derive]
-git = "https://github.com/elichai/log-derive.git"
-rev = "a6431c4bce0cca55d042ec86e2939894233c0cc3"
