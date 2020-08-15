@@ -9,9 +9,9 @@ authors = [ "Jason Mobarak <jason@swift-nav.com>",]
 edition = "2018"
 
 [dependencies]
-rusoto_core = "0.44"
-rusoto_s3 = "0.44"
-rusoto_credential = "0.44"
+rusoto_core = ">= 0.43, < 1"
+rusoto_s3 = ">= 0.43, < 1"
+rusoto_credential = ">= 0.43, < 1"
 once_cell = "1.4"
 rust-crypto = "0.2"
 hex = "0.4"
