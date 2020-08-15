@@ -1,6 +1,9 @@
+use futures::TryStreamExt;
+
 use esthri_lib::blocking;
 use esthri_lib::s3_head_object;
 use esthri_lib::s3_list_objects;
+use esthri_lib::s3_stream_objects;
 use esthri_lib::s3_upload;
 
 mod common;
@@ -94,4 +97,19 @@ async fn test_handle_list_objects_async() {
     let res = s3_list_objects(s3client.as_ref(), common::TEST_BUCKET, &empty_folder);
     let bucket_contents = res.await.unwrap();
     assert!(bucket_contents.is_empty())
+}
+
+#[tokio::test]
+async fn test_handle_stream_objects() {
+    let s3client = common::get_s3client();
+    // Test data created with ./tests/scripts/populate_stream_obj_test_data.bash
+    let folder = "test_handle_stream_objects";
+
+    let mut stream = s3_stream_objects(s3client.as_ref(), common::TEST_BUCKET, folder);
+
+    let objs = stream.try_next().await.unwrap().unwrap();
+    assert_eq!(objs.len(), 1000);
+
+    let objs = stream.try_next().await.unwrap().unwrap();
+    assert_eq!(objs.len(), 10);
 }

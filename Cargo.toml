@@ -27,6 +27,7 @@ tokio = "0.2"
 hyper = "0.13.7"
 hyper-tls = "0.4.3"
 log-derive = "0.4.1"
+futures = "0.3.5"
 
 [dev-dependencies]
 md5 = "0.7"

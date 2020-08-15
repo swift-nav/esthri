@@ -17,6 +17,7 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::io::ErrorKind;
 use std::io::{BufReader, BufWriter};
+use std::marker::Unpin;
 use std::path::Path;
 use std::process;
 use std::sync::Mutex;
@@ -24,6 +25,7 @@ use std::sync::Mutex;
 use anyhow::{anyhow, ensure, Context};
 use crypto::digest::Digest;
 use crypto::md5::Md5;
+use futures::{stream, TryStream, TryStreamExt};
 use glob::Pattern;
 use log::*;
 use log_derive::logfn;
@@ -388,23 +390,61 @@ where
 {
     info!("list-objects: bucket={}, key={}", bucket, key);
 
-    let mut bucket_contents = Vec::new();
-    let mut continuation: Option<String> = None;
-    loop {
-        let listing = list_objects(s3, bucket, key, continuation).await?;
-        if !listing.objects.is_empty() {
-            for entry in listing.objects {
-                info!("key={}, etag={}", entry.key, entry.e_tag);
-                bucket_contents.push(entry.key);
-            }
-        }
-        if listing.continuation.is_none() {
-            break;
-        }
-        continuation = listing.continuation;
-    }
+    let batches: Vec<_> = s3_stream_objects(s3, bucket, key).try_collect().await?;
 
-    Ok(bucket_contents)
+    let keys: Vec<_> = batches
+        .into_iter()
+        .flat_map(|batch| {
+            batch.into_iter().map(|entry| {
+                info!("key={}, etag={}", entry.key, entry.e_tag);
+                entry.key
+            })
+        })
+        .collect();
+
+    Ok(keys)
+}
+
+pub fn s3_stream_objects<'a, T>(
+    s3: &'a T,
+    bucket: &'a str,
+    key: &'a str,
+) -> impl TryStream<Ok = Vec<S3Obj>, Error = anyhow::Error> + Unpin + 'a
+where
+    T: S3 + Send,
+{
+    info!("stream-objects: bucket={}, key={}", bucket, key);
+
+    let continuation: Option<String> = None;
+    let state = (s3, bucket, key, continuation, false);
+
+    Box::pin(stream::try_unfold(
+        state,
+        |(s3, bucket, key, prev_continuation, done)| async move {
+            // You can't yield a value and stop unfold at the same time, so do this
+            if done {
+                return Ok(None);
+            }
+
+            let S3Listing {
+                objects,
+                continuation,
+                count,
+            } = list_objects(s3, &bucket, &key, prev_continuation).await?;
+
+            info!("found count={:?}", count);
+
+            if continuation.is_some() {
+                Ok(Some((objects, (s3, bucket, key, continuation, false))))
+            } else if !objects.is_empty() {
+                // Yield the last values, and exit on the next loop
+                Ok(Some((objects, (s3, bucket, key, continuation, true))))
+            } else {
+                // Nothing to yield and we're done
+                Ok(None)
+            }
+        },
+    ))
 }
 
 pub fn setup_cancel_handler() {
@@ -529,7 +569,8 @@ struct S3Listing {
     objects: Vec<S3Obj>,
 }
 
-struct S3Obj {
+#[derive(Debug, Clone)]
+pub struct S3Obj {
     key: String,
     e_tag: String,
 }
