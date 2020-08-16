@@ -571,8 +571,8 @@ struct S3Listing {
 
 #[derive(Debug, Clone)]
 pub struct S3Obj {
-    key: String,
-    e_tag: String,
+    pub key: String,
+    pub e_tag: String,
 }
 
 async fn list_objects<T>(
