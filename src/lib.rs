@@ -538,29 +538,23 @@ where
 
     match res {
         Ok(hoo) => {
-            if let Some(delete_marker) = hoo.delete_marker {
-                eprintln!("delete_marker: {}", delete_marker);
-                if delete_marker {
-                    return Ok(None);
-                }
-            }
-            if let Some(e_tag) = hoo.e_tag {
-                return Ok(Some(e_tag));
+            if let Some(true) = hoo.delete_marker {
+                Ok(None)
+            } else if let Some(e_tag) = hoo.e_tag {
+                Ok(Some(e_tag))
+            } else {
+                Err(anyhow!("head_object failed (3): No e_tag found: {:?}", hoo))
             }
         }
         Err(RusotoError::Unknown(e)) => {
             if e.status == 404 {
-                return Ok(None);
+                Ok(None)
             } else {
-                return Err(anyhow!("head_object failed (1): {:?}", e));
+                Err(anyhow!("head_object failed (1): {:?}", e))
             }
         }
-        Err(e) => {
-            return Err(anyhow!("head_object failed (2): {:?}", e));
-        }
+        Err(e) => Err(anyhow!("head_object failed (2): {:?}", e)),
     }
-
-    panic!("should NOT get here");
 }
 
 struct S3Listing {
