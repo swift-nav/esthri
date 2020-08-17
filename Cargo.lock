@@ -337,6 +337,7 @@ dependencies = [
  "clap",
  "ctrlc",
  "env_logger",
+ "futures",
  "glob",
  "hex",
  "hyper",

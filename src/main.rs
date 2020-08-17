@@ -136,11 +136,11 @@ async fn main() -> Result<()> {
 
     match cli.cmd {
         Put { bucket, key, file } => {
-            s3_upload(&s3, &bucket, &key, &file).await?;
+            upload(&s3, &bucket, &key, &file).await?;
         }
 
         Get { bucket, key, file } => {
-            s3_download(&s3, &bucket, &key, &file).await?;
+            download(&s3, &bucket, &key, &file).await?;
         }
 
         Abort {
@@ -148,11 +148,11 @@ async fn main() -> Result<()> {
             key,
             upload_id,
         } => {
-            s3_abort_upload(&s3, &bucket, &key, &upload_id).await?;
+            abort_upload(&s3, &bucket, &key, &upload_id).await?;
         }
 
         S3Etag { file } => {
-            s3_log_etag(&file)?;
+            log_etag(&file)?;
         }
 
         SyncCmd {
@@ -163,18 +163,18 @@ async fn main() -> Result<()> {
             include,
             exclude,
         } => {
-            s3_sync(
+            sync(
                 &s3, direction, &bucket, &key, &directory, &include, &exclude,
             )
             .await?;
         }
 
         HeadObject { bucket, key } => {
-            s3_head_object(&s3, &bucket, &key).await?;
+            head_object(&s3, &bucket, &key).await?;
         }
 
         ListObjects { bucket, key } => {
-            s3_list_objects(&s3, &bucket, &key).await?;
+            list_objects(&s3, &bucket, &key).await?;
         }
     }
 
