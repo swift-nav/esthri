@@ -1,6 +1,6 @@
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
-use esthri_lib::{blocking, s3_download};
+use esthri_lib::{blocking, download};
 
 mod common;
 
@@ -11,7 +11,7 @@ fn test_download() {
     let filepath = format!("tests/data/{}", filename);
     let s3_key = format!("test_folder/{}", filename);
 
-    let res = blocking::s3_download(s3client.as_ref(), common::TEST_BUCKET, &s3_key, &filepath);
+    let res = blocking::download(s3client.as_ref(), common::TEST_BUCKET, &s3_key, &filepath);
     assert!(res.is_ok());
 }
 
@@ -22,6 +22,6 @@ async fn test_download_async() {
     let filepath = format!("tests/data/{}", filename);
     let s3_key = format!("test_folder/{}", filename);
 
-    let res = s3_download(s3client.as_ref(), common::TEST_BUCKET, &s3_key, &filepath).await;
+    let res = download(s3client.as_ref(), common::TEST_BUCKET, &s3_key, &filepath).await;
     assert!(res.is_ok());
 }

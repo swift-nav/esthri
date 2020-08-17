@@ -3,7 +3,7 @@
 use std::io::Cursor;
 
 use esthri_lib::blocking;
-use esthri_lib::s3_upload;
+use esthri_lib::upload;
 
 mod common;
 
@@ -14,7 +14,7 @@ fn test_upload() {
     let filepath = format!("tests/data/{}", filename);
     let s3_key = format!("test_upload/{}", filename);
 
-    let res = blocking::s3_upload(s3client.as_ref(), common::TEST_BUCKET, &s3_key, &filepath);
+    let res = blocking::upload(s3client.as_ref(), common::TEST_BUCKET, &s3_key, &filepath);
     assert!(res.is_ok());
 }
 
@@ -25,7 +25,7 @@ async fn test_upload_async() {
     let filepath = format!("tests/data/{}", filename);
     let s3_key = format!("test_upload/{}", filename);
 
-    let res = s3_upload(s3client.as_ref(), common::TEST_BUCKET, &s3_key, &filepath).await;
+    let res = upload(s3client.as_ref(), common::TEST_BUCKET, &s3_key, &filepath).await;
     assert!(res.is_ok());
 }
 
@@ -37,7 +37,7 @@ fn test_upload_reader() {
     let contents = "file contents";
     let mut reader = Cursor::new(contents);
 
-    let res = blocking::s3_upload_from_reader(
+    let res = blocking::upload_from_reader(
         s3client.as_ref(),
         common::TEST_BUCKET,
         &filepath,
@@ -54,6 +54,6 @@ fn test_upload_zero_size() {
     let filepath = format!("tests/data/{}", filename);
     let s3_key = format!("test_upload_zero_size/{}", filename);
 
-    let res = blocking::s3_upload(s3client.as_ref(), common::TEST_BUCKET, &s3_key, &filepath);
+    let res = blocking::upload(s3client.as_ref(), common::TEST_BUCKET, &s3_key, &filepath);
     assert!(res.is_ok());
 }
