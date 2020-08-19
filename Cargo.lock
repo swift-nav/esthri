@@ -71,6 +71,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8aac770f1885fd7e387acedd76065302551364496e46b3dd00860b2f8359b9d"
 
 [[package]]
+name = "backoff"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "721c249ab59cbc483ad4294c9ee2671835c1e43e9ffc277e6b4ecfef733cfdc5"
+dependencies = [
+ "futures-core",
+ "instant",
+ "pin-project",
+ "rand 0.7.3",
+ "tokio",
+]
+
+[[package]]
 name = "base-x"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -334,6 +347,7 @@ name = "esthri"
 version = "2.1.4"
 dependencies = [
  "anyhow",
+ "backoff",
  "clap",
  "ctrlc",
  "env_logger",
@@ -685,6 +699,12 @@ checksum = "c398b2b113b55809ceb9ee3e753fcbac793f1956663f3c36549c1346015c2afe"
 dependencies = [
  "autocfg",
 ]
+
+[[package]]
+name = "instant"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5b141fdc7836c525d4d594027d318c84161ca17aaf8113ab1f81ab93ae897485"
 
 [[package]]
 name = "iovec"

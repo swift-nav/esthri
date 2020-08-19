@@ -33,12 +33,13 @@ use once_cell::sync::Lazy;
 use tokio::io::AsyncReadExt;
 use walkdir::WalkDir;
 
+pub mod blocking;
 pub mod errors;
+pub mod retry;
 pub mod types;
 
-pub mod blocking;
-
 use crate::errors::EsthriError;
+use crate::retry::handle_dispatch_error;
 use crate::types::SyncDirection;
 
 use rusoto_s3::{
@@ -103,15 +104,18 @@ where
         bucket, key, upload_id
     );
 
-    let amur = AbortMultipartUploadRequest {
-        bucket: bucket.into(),
-        key: key.into(),
-        upload_id: upload_id.into(),
-        ..Default::default()
-    };
+    handle_dispatch_error(|| async {
+        let amur = AbortMultipartUploadRequest {
+            bucket: bucket.into(),
+            key: key.into(),
+            upload_id: upload_id.into(),
+            ..Default::default()
+        };
 
-    let res = s3.abort_multipart_upload(amur).await;
-    let _ = res.context("abort_multipart_upload failed")?;
+        s3.abort_multipart_upload(amur).await
+    })
+    .await
+    .context("abort_multipart_upload failed")?;
 
     Ok(())
 }
@@ -155,16 +159,18 @@ where
     );
 
     if file_size >= CHUNK_SIZE {
-        let cmur = CreateMultipartUploadRequest {
-            bucket: bucket.into(),
-            key: key.into(),
-            acl: Some("bucket-owner-full-control".into()),
-            ..Default::default()
-        };
+        let cmuo = handle_dispatch_error(|| async {
+            let cmur = CreateMultipartUploadRequest {
+                bucket: bucket.into(),
+                key: key.into(),
+                acl: Some("bucket-owner-full-control".into()),
+                ..Default::default()
+            };
 
-        let res = s3.create_multipart_upload(cmur).await;
-
-        let cmuo = res.context("create_multipart_upload failed")?;
+            s3.create_multipart_upload(cmur).await
+        })
+        .await
+        .context("create_multipart_upload failed")?;
 
         let upload_id = cmuo
             .upload_id
@@ -199,19 +205,22 @@ where
                 return Err(anyhow!("read size zero"));
             }
 
-            let body: StreamingBody = buf.into();
+            let upo = handle_dispatch_error(|| async {
+                let body: StreamingBody = buf.clone().into();
 
-            let upr = UploadPartRequest {
-                bucket: bucket.into(),
-                key: key.into(),
-                part_number,
-                upload_id: upload_id.clone(),
-                body: Some(body),
-                ..Default::default()
-            };
+                let upr = UploadPartRequest {
+                    bucket: bucket.into(),
+                    key: key.into(),
+                    part_number,
+                    upload_id: upload_id.clone(),
+                    body: Some(body),
+                    ..Default::default()
+                };
 
-            let res = s3.upload_part(upr).await;
-            let upo = res.context("upload_part failed")?;
+                s3.upload_part(upr).await
+            })
+            .await
+            .context("upload_part failed")?;
 
             if upo.e_tag.is_none() {
                 warn!("upload_part e_tag was not present");
@@ -228,20 +237,23 @@ where
             part_number += 1;
         }
 
-        let cmpu = CompletedMultipartUpload {
-            parts: Some(completed_parts),
-        };
+        handle_dispatch_error(|| async {
+            let cmpu = CompletedMultipartUpload {
+                parts: Some(completed_parts.clone()),
+            };
 
-        let cmur = CompleteMultipartUploadRequest {
-            bucket: bucket.into(),
-            key: key.into(),
-            upload_id,
-            multipart_upload: Some(cmpu),
-            ..Default::default()
-        };
+            let cmur = CompleteMultipartUploadRequest {
+                bucket: bucket.into(),
+                key: key.into(),
+                upload_id: upload_id.clone(),
+                multipart_upload: Some(cmpu),
+                ..Default::default()
+            };
 
-        let res = s3.complete_multipart_upload(cmur).await;
-        let _ = res.context("complete_multipart_upload failed")?;
+            s3.complete_multipart_upload(cmur).await
+        })
+        .await
+        .context("complete_multipart_upload failed")?;
 
         // Clear multi-part upload
         {
@@ -258,18 +270,21 @@ where
             return Err(anyhow!("read size zero"));
         }
 
-        let body: StreamingBody = buf.into();
+        handle_dispatch_error(|| async {
+            let body: StreamingBody = buf.clone().into();
 
-        let por = PutObjectRequest {
-            bucket: bucket.into(),
-            key: key.into(),
-            body: Some(body),
-            acl: Some("bucket-owner-full-control".into()),
-            ..Default::default()
-        };
+            let por = PutObjectRequest {
+                bucket: bucket.into(),
+                key: key.into(),
+                body: Some(body),
+                acl: Some("bucket-owner-full-control".into()),
+                ..Default::default()
+            };
 
-        let res = s3.put_object(por).await;
-        let _ = res.context("put_object failed")?;
+            s3.put_object(por).await
+        })
+        .await
+        .context("put_object failed")?;
     }
 
     Ok(())
@@ -285,15 +300,18 @@ where
     let f = File::create(file)?;
     let mut writer = BufWriter::new(f);
 
-    let gor = GetObjectRequest {
-        bucket: bucket.into(),
-        key: key.into(),
-        ..Default::default()
-    };
+    let goo = handle_dispatch_error(|| async {
+        let gor = GetObjectRequest {
+            bucket: bucket.into(),
+            key: key.into(),
+            ..Default::default()
+        };
 
-    let res = s3.get_object(gor).await;
+        s3.get_object(gor).await
+    })
+    .await
+    .context("get_object failed")?;
 
-    let goo = res.context("get_object failed")?;
     let body = goo
         .body
         .ok_or_else(|| anyhow!("did not expect body field of GetObjectOutput to be none"))?;
@@ -528,13 +546,16 @@ async fn head_object_request<T>(s3: &T, bucket: &str, key: &str) -> Result<Optio
 where
     T: S3 + Send,
 {
-    let hor = HeadObjectRequest {
-        bucket: bucket.into(),
-        key: key.into(),
-        ..Default::default()
-    };
+    let res = handle_dispatch_error(|| async {
+        let hor = HeadObjectRequest {
+            bucket: bucket.into(),
+            key: key.into(),
+            ..Default::default()
+        };
 
-    let res = s3.head_object(hor).await;
+        s3.head_object(hor).await
+    })
+    .await;
 
     match res {
         Ok(hoo) => {
@@ -578,16 +599,19 @@ async fn list_objects_request<T>(
 where
     T: S3 + Send,
 {
-    let lov2r = ListObjectsV2Request {
-        bucket: bucket.into(),
-        prefix: Some(key.into()),
-        continuation_token: continuation,
-        ..Default::default()
-    };
+    let lov2o = handle_dispatch_error(|| async {
+        let lov2r = ListObjectsV2Request {
+            bucket: bucket.into(),
+            prefix: Some(key.into()),
+            continuation_token: continuation.clone(),
+            ..Default::default()
+        };
 
-    let res = s3.list_objects_v2(lov2r).await;
+        s3.list_objects_v2(lov2r).await
+    })
+    .await
+    .context("listing objects failed")?;
 
-    let lov2o = res.context("listing objects failed")?;
     let contents = if lov2o.contents.is_none() {
         warn!("listing returned no contents");
         return Ok(S3Listing {
