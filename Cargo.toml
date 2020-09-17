@@ -29,6 +29,8 @@ hyper-tls = "0.4.3"
 log-derive = "0.4.1"
 futures = "0.3.5"
 backoff = { version = "0.2.1", features = ["tokio"] }
+warp = { version = "0.2", optional = true }
+futures-util = "0.3"
 
 [dev-dependencies]
 md5 = "0.7"
@@ -40,6 +42,7 @@ path = "src/lib.rs"
 [features]
 default = []
 aggressive_lint = []
+s3serve = ["warp"]
 
 [dependencies.ctrlc]
 version = "3.1"

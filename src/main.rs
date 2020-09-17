@@ -28,6 +28,9 @@ use structopt::StructOpt;
 use hyper::Client;
 use hyper_tls::HttpsConnector;
 
+#[cfg(feature)]
+use esthri_lib::s3serve;
+
 #[derive(Debug, StructOpt)]
 #[structopt(name = "esthri", about = "Simple S3 file transfer utility.")]
 struct Cli {
@@ -106,6 +109,8 @@ enum Command {
         #[structopt(long)]
         key: String,
     },
+    #[cfg(feature = "s3serve")]
+    Serve,
 }
 
 #[tokio::main]
@@ -175,6 +180,11 @@ async fn main() -> Result<()> {
 
         ListObjects { bucket, key } => {
             list_objects(&s3, &bucket, &key).await?;
+        }
+
+        #[cfg(feature = "s3serve")]
+        Serve => {
+            s3serve::s3serve(s3.clone()).await?;
         }
     }
 

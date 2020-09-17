@@ -36,6 +36,8 @@ use walkdir::WalkDir;
 pub mod blocking;
 pub mod errors;
 pub mod retry;
+#[cfg(feature = "s3serve")]
+pub mod s3serve;
 pub mod types;
 
 use crate::errors::EsthriError;
@@ -48,7 +50,7 @@ use rusoto_s3::{
     ListObjectsV2Request, PutObjectRequest, S3Client, StreamingBody, UploadPartRequest, S3,
 };
 
-use rusoto_core::{Region, RusotoError};
+use rusoto_core::{ByteStream, Region, RusotoError};
 
 struct GlobalData {
     bucket: Option<String>,
@@ -288,6 +290,29 @@ where
     }
 
     Ok(())
+}
+
+#[logfn(err = "ERROR")]
+pub async fn streaming_download<T>(s3: &T, bucket: &str, key: &str) -> Result<ByteStream>
+where
+    T: S3 + Send,
+{
+    info!("get: bucket={}, key={}", bucket, key);
+
+    let goo = handle_dispatch_error(|| async {
+        let gor = GetObjectRequest {
+            bucket: bucket.into(),
+            key: key.into(),
+            ..Default::default()
+        };
+
+        s3.get_object(gor).await
+    })
+    .await
+    .context("get_object failed")?;
+
+    goo.body
+        .ok_or_else(|| anyhow!("did not expect body field of GetObjectOutput to be none"))
 }
 
 #[logfn(err = "ERROR")]
