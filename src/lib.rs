@@ -83,9 +83,18 @@ where
     T: S3 + Send,
 {
     info!("head-object: buckey={}, key={}", bucket, key);
-    let e_tag = head_object_request(s3, bucket, key).await?;
-    debug!("etag: e_tag={:?}", e_tag);
-    Ok(e_tag)
+    let info = head_object_request(s3, bucket, key).await?;
+    debug!("object_info: {:?}", info);
+    Ok(info.map(|x| x.e_tag))
+}
+
+#[logfn(err = "ERROR")]
+pub async fn head_object2<T>(s3: &T, bucket: &str, key: &str) -> Result<Option<ObjectInfo>>
+where
+    T: S3 + Send,
+{
+    info!("head-object: buckey={}, key={}", bucket, key);
+    head_object_request(s3, bucket, key).await
 }
 
 #[logfn(err = "ERROR")]
@@ -566,8 +575,14 @@ fn s3_compute_etag(path: &str) -> Result<String> {
     }
 }
 
+#[derive(Debug)]
+pub struct ObjectInfo {
+    pub e_tag: String,
+    pub size: i64,
+}
+
 #[logfn(err = "ERROR")]
-async fn head_object_request<T>(s3: &T, bucket: &str, key: &str) -> Result<Option<String>>
+async fn head_object_request<T>(s3: &T, bucket: &str, key: &str) -> Result<Option<ObjectInfo>>
 where
     T: S3 + Send,
 {
@@ -587,7 +602,11 @@ where
             if let Some(true) = hoo.delete_marker {
                 Ok(None)
             } else if let Some(e_tag) = hoo.e_tag {
-                Ok(Some(e_tag))
+                if let Some(size) = hoo.content_length {
+                    Ok(Some(ObjectInfo { e_tag, size }))
+                } else {
+                    Err(anyhow!("head_object failed (3): No content_length found"))
+                }
             } else {
                 Err(anyhow!("head_object failed (3): No e_tag found: {:?}", hoo))
             }
@@ -765,9 +784,10 @@ where
             let stripped_path = format!("{}", stripped_path.display());
             let remote_path: String = format!("{}", remote_path.join(&stripped_path).display());
             debug!("checking remote: {}", remote_path);
-            let remote_etag = head_object_request(s3, bucket, &remote_path).await?;
+            let object_info = head_object_request(s3, bucket, &remote_path).await?;
             let local_etag = s3_compute_etag(&path)?;
-            if let Some(remote_etag) = remote_etag {
+            if let Some(object_info) = object_info {
+                let remote_etag = object_info.e_tag;
                 if remote_etag != local_etag {
                     info!(
                         "etag mis-match: {}, remote_etag={}, local_etag={}",

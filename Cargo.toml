@@ -23,7 +23,6 @@ anyhow = "1.0"
 thiserror = "1.0"
 log = "0.4"
 env_logger = "0.7"
-tokio = "0.2"
 hyper = "0.13.7"
 hyper-tls = "0.4.3"
 log-derive = "0.4.1"
@@ -31,6 +30,18 @@ futures = "0.3.5"
 backoff = { version = "0.2.1", features = ["tokio"] }
 warp = { version = "0.2", optional = true }
 futures-util = "0.3"
+#async-tar = { git = "https://github.com/swift-nav/async-tar.git" }
+async-tar = { path = "async-tar" }
+async-compression = { version = "0.3", features = ["tokio-02", "stream", "gzip"] }
+tokio = "0.2"
+sluice = "0.5"
+bytes = "0.5"
+tokio-util = { version = "0.3.1", features = ["compat", "codec"] }
+
+#[dependencies.tokio]
+#git = "https://github.com/tokio-rs/tokio.git"
+#ref = "3fd043931e6d37f211e682980edc6e12e9d4fc54"
+#features = ["full"]
 
 [dev-dependencies]
 md5 = "0.7"
@@ -40,7 +51,7 @@ name = "esthri_lib"
 path = "src/lib.rs"
 
 [features]
-default = []
+default = ["s3serve"]
 aggressive_lint = []
 s3serve = ["warp"]
 
