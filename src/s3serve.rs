@@ -24,6 +24,8 @@ use tokio::sync::mpsc;
 
 use async_tar::{Builder, Header};
 
+use async_compression::futures::bufread::GzipEncoder;
+
 use crate::head_object2;
 use crate::streaming_download;
 
@@ -80,8 +82,11 @@ async fn download(path: String, s3: S3Client) -> Result<http::Response<Body>, wa
     let (tar_pipe_reader, tar_pipe_writer) = sluice::pipe::pipe();
     let mut archive = Builder::new(tar_pipe_writer);
 
+    let gzip = GzipEncoder::new(tar_pipe_reader);
+
     tokio::spawn(async move {
         let mut header = Header::new_gnu();
+        header.set_mode(0o0644);
         header.set_size(obj_info.size as u64);
 
         let mut stream_reader = stream.into_async_read().compat();
@@ -96,7 +101,7 @@ async fn download(path: String, s3: S3Client) -> Result<http::Response<Body>, wa
         }
     });
 
-    let framed_reader = FramedRead::new(tar_pipe_reader.compat(), BytesCodec::new());
+    let framed_reader = FramedRead::new(gzip.compat(), BytesCodec::new());
 
     let body = Body::wrap_stream(framed_reader);
 
