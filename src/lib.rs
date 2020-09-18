@@ -22,9 +22,9 @@ use std::path::Path;
 use std::process;
 use std::sync::Mutex;
 
-use anyhow::{anyhow, ensure, Context};
 use crypto::digest::Digest;
 use crypto::md5::Md5;
+use eyre::{anyhow, ensure, Context, Result};
 use futures::{stream, TryStream, TryStreamExt};
 use glob::Pattern;
 use log::*;
@@ -72,8 +72,6 @@ static GLOBAL_DATA: Lazy<Mutex<GlobalData>> = Lazy::new(|| {
 const CHUNK_SIZE: u64 = 8 * 1024 * 1024;
 
 const READ_SIZE: usize = 4096;
-
-pub use anyhow::Result;
 
 #[logfn(err = "ERROR")]
 pub async fn head_object<T>(s3: &T, bucket: &str, key: &str) -> Result<Option<String>>
@@ -427,7 +425,7 @@ pub fn list_objects_stream<'a, T>(
     s3: &'a T,
     bucket: &'a str,
     key: &'a str,
-) -> impl TryStream<Ok = Vec<S3Obj>, Error = anyhow::Error> + Unpin + 'a
+) -> impl TryStream<Ok = Vec<S3Obj>, Error = eyre::Error> + Unpin + 'a
 where
     T: S3 + Send,
 {
