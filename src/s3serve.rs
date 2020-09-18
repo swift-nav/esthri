@@ -38,7 +38,7 @@ fn with_s3_client(
 }
 
 pub async fn s3serve(s3_client: S3Client) -> Result<(), Infallible> {
-    let routes = warp::path!("s3" / String)
+    let routes = warp::path::full()
         .and(with_s3_client(s3_client.clone()))
         .and_then(download);
 
@@ -51,7 +51,12 @@ struct EsthriInternalError;
 
 impl Reject for EsthriInternalError {}
 
-async fn download(path: String, s3: S3Client) -> Result<http::Response<Body>, warp::Rejection> {
+async fn download(
+    path: warp::path::FullPath,
+    s3: S3Client,
+) -> Result<http::Response<Body>, warp::Rejection> {
+    let path = path.as_str().to_owned();
+    let path = path.get(1..).map(Into::<String>::into).unwrap_or_default();
     let obj_info = {
         match head_object2(&s3, "esthri-test", &path).await {
             Ok(obj_info) => {
