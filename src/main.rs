@@ -28,6 +28,8 @@ use structopt::StructOpt;
 use hyper::Client;
 use hyper_tls::HttpsConnector;
 
+use stable_eyre::eyre::Result;
+
 #[derive(Debug, StructOpt)]
 #[structopt(name = "esthri", about = "Simple S3 file transfer utility.")]
 struct Cli {
@@ -110,6 +112,8 @@ enum Command {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    stable_eyre::install()?;
+
     if std::env::var("RUST_LOG").is_err() {
         std::env::set_var("RUST_LOG", "esthri=debug,esthri_lib=debug");
     }
