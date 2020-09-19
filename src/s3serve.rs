@@ -1,26 +1,23 @@
 use std::convert::Infallible;
-use std::str::FromStr;
-use std::time::Duration;
+use std::net::SocketAddr;
 
-use log::{debug, warn};
+use log::*;
 
 use warp::http;
 use warp::hyper::Body;
 use warp::reject::Reject;
-use warp::{http::Error, http::Response};
-use warp::{http::StatusCode, Filter};
+use warp::http::Response;
+use warp::Filter;
+//use warp::http::Error;
+//use warp::http::StatusCode;
 
-use rusoto_s3::{S3Client, S3};
+use rusoto_s3::S3Client;
 
+// Import all extensions that allow converting between futures-rs and tokio types
 use tokio_util::compat::*;
-
-use futures::io::AsyncReadExt;
-use futures::StreamExt;
 
 use tokio_util::codec::BytesCodec;
 use tokio_util::codec::FramedRead;
-
-use tokio::sync::mpsc;
 
 use async_tar::{Builder, Header};
 
@@ -28,8 +25,6 @@ use async_compression::futures::bufread::GzipEncoder;
 
 use crate::download_streaming;
 use crate::head_object_info;
-
-use bytes::{Bytes, BytesMut};
 
 fn with_bucket(bucket: String) -> impl Filter<Extract = (String,), Error = Infallible> + Clone {
     warp::any().map(move || bucket.clone())
@@ -41,13 +36,13 @@ fn with_s3_client(
     warp::any().map(move || s3_client.clone())
 }
 
-pub async fn s3serve(s3_client: S3Client, bucket: &str) -> Result<(), Infallible> {
+pub async fn s3serve(s3_client: S3Client, bucket: &str, address: &SocketAddr) -> Result<(), Infallible> {
     let routes = warp::path::full()
         .and(with_s3_client(s3_client.clone()))
         .and(with_bucket(bucket.to_string()))
         .and_then(download);
 
-    warp::serve(routes).run(([127, 0, 0, 1], 3030)).await;
+    warp::serve(routes).run(*address).await;
 
     Ok(())
 }

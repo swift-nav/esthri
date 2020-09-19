@@ -12,6 +12,7 @@
 
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
+use std::net::SocketAddr;
 use std::time::Duration;
 
 use log::*;
@@ -113,6 +114,9 @@ enum Command {
     Serve {
         #[structopt(long)]
         bucket: String,
+
+        #[structopt(long, default_value = "127.0.0.1:3030")]
+        address: SocketAddr,
     },
 }
 
@@ -186,8 +190,8 @@ async fn main() -> Result<()> {
         }
 
         #[cfg(feature = "s3serve")]
-        Serve { bucket } => {
-            s3serve::s3serve(s3.clone(), &bucket).await?;
+        Serve { bucket, address } => {
+            s3serve::s3serve(s3.clone(), &bucket, &address).await?;
         }
     }
 
