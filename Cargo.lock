@@ -156,12 +156,11 @@ dependencies = [
 [[package]]
 name = "async-tar"
 version = "0.3.0"
-source = "git+https://github.com/swift-nav/async-tar.git#1b9d2d6e312eb8377bbae69917f411a8868c5e3a"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb619eae01ab289095debb1ff7c02710d5124c20edde1b2eca926572a34c3998"
 dependencies = [
  "async-std",
  "filetime",
- "futures",
- "futures-io",
  "libc",
  "pin-project",
  "redox_syscall",

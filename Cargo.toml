@@ -30,18 +30,14 @@ futures = "0.3.5"
 backoff = { version = "0.2.1", features = ["tokio"] }
 warp = { version = "0.2", optional = true }
 futures-util = "0.3"
-async-tar = { git = "https://github.com/swift-nav/async-tar.git" }
+#async-tar = { git = "https://github.com/swift-nav/async-tar.git" }
 #async-tar = { path = "async-tar" }
+async-tar = "0.3"
 async-compression = { version = "0.3", features = ["gzip", "futures-io"] }
 tokio = "0.2"
 sluice = "0.5"
 bytes = "0.5"
 tokio-util = { version = "0.3.1", features = ["compat", "codec"] }
-
-#[dependencies.tokio]
-#git = "https://github.com/tokio-rs/tokio.git"
-#ref = "3fd043931e6d37f211e682980edc6e12e9d4fc54"
-#features = ["full"]
 
 [dev-dependencies]
 md5 = "0.7"

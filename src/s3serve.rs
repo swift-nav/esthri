@@ -26,10 +26,14 @@ use async_tar::{Builder, Header};
 
 use async_compression::futures::bufread::GzipEncoder;
 
-use crate::head_object2;
-use crate::streaming_download;
+use crate::download_streaming;
+use crate::head_object_info;
 
 use bytes::{Bytes, BytesMut};
+
+fn with_bucket(bucket: String) -> impl Filter<Extract = (String,), Error = Infallible> + Clone {
+    warp::any().map(move || bucket.clone())
+}
 
 fn with_s3_client(
     s3_client: S3Client,
@@ -37,9 +41,10 @@ fn with_s3_client(
     warp::any().map(move || s3_client.clone())
 }
 
-pub async fn s3serve(s3_client: S3Client) -> Result<(), Infallible> {
+pub async fn s3serve(s3_client: S3Client, bucket: &str) -> Result<(), Infallible> {
     let routes = warp::path::full()
         .and(with_s3_client(s3_client.clone()))
+        .and(with_bucket(bucket.to_string()))
         .and_then(download);
 
     warp::serve(routes).run(([127, 0, 0, 1], 3030)).await;
@@ -54,11 +59,12 @@ impl Reject for EsthriInternalError {}
 async fn download(
     path: warp::path::FullPath,
     s3: S3Client,
+    bucket: String,
 ) -> Result<http::Response<Body>, warp::Rejection> {
     let path = path.as_str().to_owned();
     let path = path.get(1..).map(Into::<String>::into).unwrap_or_default();
     let obj_info = {
-        match head_object2(&s3, "esthri-test", &path).await {
+        match head_object_info(&s3, &bucket, &path).await {
             Ok(obj_info) => {
                 if let Some(obj_info) = obj_info {
                     obj_info
@@ -75,7 +81,7 @@ async fn download(
     };
 
     let stream = {
-        match streaming_download(&s3, "esthri-test", &path).await {
+        match download_streaming(&s3, &bucket, &path).await {
             Ok(obj_info) => obj_info,
             Err(err) => {
                 warn!("head_object failed: {}", err);
@@ -96,10 +102,8 @@ async fn download(
 
         let mut stream_reader = stream.into_async_read().compat();
 
-        let mut buffer: [u8; 4096] = [0; 4096];
-
         if let Err(err) = archive
-            .async_append_data(&mut header, path, &mut stream_reader, &mut buffer[..])
+            .append_data(&mut header, path, &mut stream_reader)
             .await
         {
             warn!("tar append_data failed: {}", err);

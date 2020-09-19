@@ -89,7 +89,15 @@ where
 }
 
 #[logfn(err = "ERROR")]
-pub async fn head_object2<T>(s3: &T, bucket: &str, key: &str) -> Result<Option<ObjectInfo>>
+pub async fn head_object_etag<T>(s3: &T, bucket: &str, key: &str) -> Result<Option<String>>
+where
+    T: S3 + Send,
+{
+    head_object(s3, bucket, key).await
+}
+
+#[logfn(err = "ERROR")]
+pub async fn head_object_info<T>(s3: &T, bucket: &str, key: &str) -> Result<Option<ObjectInfo>>
 where
     T: S3 + Send,
 {
@@ -302,7 +310,7 @@ where
 }
 
 #[logfn(err = "ERROR")]
-pub async fn streaming_download<T>(s3: &T, bucket: &str, key: &str) -> Result<ByteStream>
+pub async fn download_streaming<T>(s3: &T, bucket: &str, key: &str) -> Result<ByteStream>
 where
     T: S3 + Send,
 {
@@ -334,22 +342,7 @@ where
     let f = File::create(file)?;
     let mut writer = BufWriter::new(f);
 
-    let goo = handle_dispatch_error(|| async {
-        let gor = GetObjectRequest {
-            bucket: bucket.into(),
-            key: key.into(),
-            ..Default::default()
-        };
-
-        s3.get_object(gor).await
-    })
-    .await
-    .context("get_object failed")?;
-
-    let body = goo
-        .body
-        .ok_or_else(|| anyhow!("did not expect body field of GetObjectOutput to be none"))?;
-
+    let body = download_streaming(s3, bucket, key).await?;
     let mut reader = body.into_async_read();
 
     loop {

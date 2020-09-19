@@ -110,7 +110,10 @@ enum Command {
         key: String,
     },
     #[cfg(feature = "s3serve")]
-    Serve,
+    Serve {
+        #[structopt(long)]
+        bucket: String,
+    },
 }
 
 #[tokio::main]
@@ -183,8 +186,8 @@ async fn main() -> Result<()> {
         }
 
         #[cfg(feature = "s3serve")]
-        Serve => {
-            s3serve::s3serve(s3.clone()).await?;
+        Serve { bucket } => {
+            s3serve::s3serve(s3.clone(), &bucket).await?;
         }
     }
 
