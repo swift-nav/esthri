@@ -29,6 +29,8 @@ use structopt::StructOpt;
 use hyper::Client;
 use hyper_tls::HttpsConnector;
 
+use stable_eyre::eyre::Result;
+
 #[cfg(feature)]
 use esthri_lib::s3serve;
 
@@ -122,6 +124,8 @@ enum Command {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    stable_eyre::install()?;
+
     if std::env::var("RUST_LOG").is_err() {
         std::env::set_var("RUST_LOG", "esthri=debug,esthri_lib=debug");
     }
