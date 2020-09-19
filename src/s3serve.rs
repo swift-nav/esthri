@@ -131,6 +131,8 @@ async fn download(
             }
         }
     });
+    // TODO: will probably need to use https://docs.rs/futures/0.3.5/futures/stream/fn.try_unfold.html or just stream::unfold
+    //       to wrap the body stream, this should give us a hook to break the stream and pass errors warp
     let framed_reader = FramedRead::new(gzip.compat(), BytesCodec::new());
     let body = Body::wrap_stream(framed_reader);
     Response::builder()
