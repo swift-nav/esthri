@@ -180,9 +180,9 @@ impl Into<Option<io::Error>> for ErrorTrackerArc {
             }
         };
         if let Some(the_error) = the_error.downcast_ref::<io::Error>() {
-            return Some(io::Error::new(the_error.kind(), format!("{}", the_error)));
+            Some(io::Error::new(the_error.kind(), format!("{}", the_error)))
         } else {
-            return Some(io::Error::new(ErrorKind::Other, format!("{}", the_error)));
+            Some(io::Error::new(ErrorKind::Other, format!("{}", the_error)))
         }
     }
 }
