@@ -11,6 +11,7 @@
 */
 
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
+#![recursion_limit = "256"]
 
 use std::fs;
 use std::fs::File;
