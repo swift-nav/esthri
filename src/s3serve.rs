@@ -1,6 +1,9 @@
 use std::convert::Infallible;
 use std::net::SocketAddr;
-use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
 use std::{io, io::ErrorKind};
 
 use log::*;
