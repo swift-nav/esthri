@@ -23,9 +23,15 @@ use async_tar::{Builder, Header};
 
 use async_compression::futures::bufread::GzipEncoder;
 
-use futures::stream::TryStreamExt;
+use futures::stream::{Stream, TryStreamExt};
 
 use sluice::{pipe, pipe::PipeWriter};
+
+use bytes::BytesMut;
+
+use async_stream::stream;
+use futures::stream::StreamExt;
+use std::io;
 
 use crate::download_streaming;
 use crate::head_object_info;
@@ -104,6 +110,22 @@ async fn stream_object_to_archive<T: S3 + Send>(
     }
 }
 
+async fn wrap_stream<T: Stream<Item = io::Result<BytesMut>> + Unpin>(
+    mut source_stream: T,
+) -> impl Stream<Item = io::Result<BytesMut>> {
+    stream! {
+        loop {
+            let item = source_stream.next().await;
+            if let Some(item) = item {
+                yield item;
+            } else {
+                debug!("wrapped stream done");
+                break;
+            }
+        }
+    }
+}
+
 async fn download(
     path: warp::path::FullPath,
     s3: S3Client,
@@ -134,7 +156,9 @@ async fn download(
     // TODO: will probably need to use https://docs.rs/futures/0.3.5/futures/stream/fn.try_unfold.html or just stream::unfold
     //       to wrap the body stream, this should give us a hook to break the stream and pass errors warp
     let framed_reader = FramedRead::new(gzip.compat(), BytesCodec::new());
-    let body = Body::wrap_stream(framed_reader);
+    let wrapped_stream = wrap_stream(framed_reader).await;
+
+    let body = Body::wrap_stream(wrapped_stream);
     Response::builder()
         .header("Content-Type", "application/binary")
         .body(body)
