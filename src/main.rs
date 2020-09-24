@@ -57,6 +57,15 @@ enum Command {
         /// The path of the local file to write
         file: String,
     },
+    /// Tail an object from S3
+    Tail {
+        #[structopt(long)]
+        bucket: String,
+        #[structopt(long)]
+        key: String,
+        #[structopt(long, default_value = "10")]
+        interval: u64,
+    },
     /// Manually abort a multipart upload
     Abort {
         /// The bucket for the multipart upload
@@ -145,6 +154,15 @@ async fn main() -> Result<()> {
 
         Get { bucket, key, file } => {
             download(&s3, &bucket, &key, &file).await?;
+        }
+
+        Tail {
+            bucket,
+            key,
+            interval,
+        } => {
+            let mut writer = tokio::io::stdout();
+            tail(&s3, &mut writer, interval, &bucket, &key).await?;
         }
 
         Abort {
