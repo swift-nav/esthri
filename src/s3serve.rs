@@ -159,7 +159,11 @@ impl ErrorTracker {
     }
     fn record_error(error_tracker: ErrorTrackerArc, err: eyre::Report) {
         error_tracker.0.has_error.store(true, Ordering::Release);
-        let mut the_error = error_tracker.0.the_error.lock().expect("locking error field");
+        let mut the_error = error_tracker
+            .0
+            .the_error
+            .lock()
+            .expect("locking error field");
         *the_error = Some(Box::new(err));
     }
 }
@@ -168,7 +172,9 @@ impl ErrorTracker {
 struct ErrorTrackerArc(Arc<ErrorTracker>);
 
 impl ErrorTrackerArc {
-    fn new() -> ErrorTrackerArc { ErrorTrackerArc(Arc::new(ErrorTracker::new())) }
+    fn new() -> ErrorTrackerArc {
+        ErrorTrackerArc(Arc::new(ErrorTracker::new()))
+    }
     fn has_error(&self) -> bool {
         self.0.has_error.load(Ordering::Acquire)
     }
