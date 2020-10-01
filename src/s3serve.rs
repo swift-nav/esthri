@@ -13,8 +13,6 @@ use warp::http::Response;
 use warp::hyper::Body;
 use warp::reject::Reject;
 use warp::Filter;
-//use warp::http::Error;
-//use warp::http::StatusCode;
 
 use rusoto_s3::{S3Client, S3};
 
@@ -44,6 +42,8 @@ use crate::download_streaming;
 use crate::head_object_info;
 use crate::list_objects_stream;
 
+use serde_derive::{Deserialize, Serialize};
+
 fn with_bucket(bucket: String) -> impl Filter<Extract = (String,), Error = Infallible> + Clone {
     warp::any().map(move || bucket.clone())
 }
@@ -54,6 +54,11 @@ fn with_s3_client(
     warp::any().map(move || s3_client.clone())
 }
 
+#[derive(Deserialize, Serialize)]
+struct Params {
+    archive: Option<bool>,
+}
+
 pub async fn s3serve(
     s3_client: S3Client,
     bucket: &str,
@@ -61,21 +66,18 @@ pub async fn s3serve(
 ) -> Result<(), Infallible> {
     let routes = warp::path::full()
         .and(with_s3_client(s3_client.clone()))
-        .and(with_bucket(bucket.to_string()))
+        .and(with_bucket(bucket.to_owned()))
+        .and(warp::query::<Params>())
         .and_then(download);
 
     warp::serve(routes).run(*address).await;
 
     Ok(())
 }
-#[derive(Debug, PartialEq)]
-struct EsthriInternalError;
-
-impl Reject for EsthriInternalError {}
 
 async fn abort_with_error(
     archive: &mut Builder<PipeWriter>,
-    error_tracker: Arc<ErrorTracker>,
+    error_tracker: ErrorTrackerArc,
     err: Report,
 ) {
     let err = {
@@ -88,13 +90,12 @@ async fn abort_with_error(
     ErrorTracker::record_error(error_tracker, err);
 }
 
-// TODO: Better error handling?
 async fn stream_object_to_archive<T: S3 + Send>(
     s3: &T,
     bucket: &str,
     path: &str,
     archive: &mut Builder<PipeWriter>,
-    error_tracker: Arc<ErrorTracker>,
+    error_tracker: ErrorTrackerArc,
 ) {
     let obj_info = {
         match head_object_info(s3, bucket, path).await {
@@ -156,9 +157,9 @@ impl ErrorTracker {
             the_error: Mutex::new(None),
         }
     }
-    fn record_error(error_tracker: Arc<ErrorTracker>, err: eyre::Report) {
-        error_tracker.has_error.store(true, Ordering::Release);
-        let mut the_error = error_tracker.the_error.lock().expect("locking error field");
+    fn record_error(error_tracker: ErrorTrackerArc, err: eyre::Report) {
+        error_tracker.0.has_error.store(true, Ordering::Release);
+        let mut the_error = error_tracker.0.the_error.lock().expect("locking error field");
         *the_error = Some(Box::new(err));
     }
 }
@@ -167,6 +168,7 @@ impl ErrorTracker {
 struct ErrorTrackerArc(Arc<ErrorTracker>);
 
 impl ErrorTrackerArc {
+    fn new() -> ErrorTrackerArc { ErrorTrackerArc(Arc::new(ErrorTracker::new())) }
     fn has_error(&self) -> bool {
         self.0.has_error.load(Ordering::Acquire)
     }
@@ -190,7 +192,7 @@ impl Into<Option<io::Error>> for ErrorTrackerArc {
     }
 }
 
-async fn create_error_monitor_stream<'a, T: Stream<Item = io::Result<BytesMut>> + Unpin>(
+async fn create_error_monitor_stream<T: Stream<Item = io::Result<BytesMut>> + Unpin>(
     error_tracker: ErrorTrackerArc,
     mut source_stream: T,
 ) -> impl Stream<Item = io::Result<BytesMut>> {
@@ -214,26 +216,22 @@ async fn create_error_monitor_stream<'a, T: Stream<Item = io::Result<BytesMut>> 
                 }
                 break;
             }
-
         }
     }
 }
 
-async fn download(
-    path: warp::path::FullPath,
+async fn create_archive_stream(
     s3: S3Client,
     bucket: String,
-) -> Result<http::Response<Body>, warp::Rejection> {
-    let path = path.as_str().to_owned();
-    let path = path.get(1..).map(Into::<String>::into).unwrap_or_default();
+    path: String,
+    error_tracker: ErrorTrackerArc,
+) -> impl Stream<Item = io::Result<BytesMut>> {
     let (tar_pipe_reader, tar_pipe_writer) = pipe::pipe();
     let mut archive = Builder::new(tar_pipe_writer);
-    let gzip = GzipEncoder::new(tar_pipe_reader);
-    let error_tracker = Arc::new(ErrorTracker::new());
-    let error_tracker_spawn = error_tracker.clone();
+    let error_tracker_reader = error_tracker.clone();
     tokio::spawn(async move {
         let mut object_list_stream = list_objects_stream(&s3, &bucket, &path);
-        let error_tracker = error_tracker_spawn.clone();
+        let error_tracker = error_tracker.clone();
         loop {
             match object_list_stream.try_next().await {
                 Ok(None) => break,
@@ -251,16 +249,38 @@ async fn download(
                 }
                 Err(err) => {
                     let err = err.wrap_err("listing objects");
-                    abort_with_error(&mut archive, error_tracker, err).await;
+                    abort_with_error(&mut archive, error_tracker.clone(), err).await;
                     break;
                 }
             }
         }
     });
+    let gzip = GzipEncoder::new(tar_pipe_reader);
     let framed_reader = FramedRead::new(gzip.compat(), BytesCodec::new());
-    let wrapped_stream =
-        create_error_monitor_stream(ErrorTrackerArc(error_tracker), framed_reader).await;
-    let body = Body::wrap_stream(wrapped_stream);
+    create_error_monitor_stream(error_tracker_reader, framed_reader).await
+}
+
+#[derive(Debug, PartialEq)]
+struct EsthriInternalError;
+
+impl Reject for EsthriInternalError {}
+
+async fn download(
+    path: warp::path::FullPath,
+    s3: S3Client,
+    bucket: String,
+    params: Params,
+) -> Result<http::Response<Body>, warp::Rejection> {
+    let path = path.as_str().to_owned();
+    let path = path.get(1..).map(Into::<String>::into).unwrap_or_default();
+
+    let error_tracker = ErrorTrackerArc::new();
+
+    debug!("params: archive: {:?}", params.archive);
+
+    let archive_stream = create_archive_stream(s3.clone(), bucket, path, error_tracker).await;
+    let body = Body::wrap_stream(archive_stream);
+
     Response::builder()
         .header("Content-Type", "application/binary")
         .body(body)

@@ -476,7 +476,7 @@ where
                 count,
             } = list_objects_request(s3, &bucket, &key, prev_continuation).await?;
 
-            info!("found count={:?}", count);
+            info!("found count: {}", count);
 
             if continuation.is_some() {
                 Ok(Some((objects, (s3, bucket, key, continuation, false))))

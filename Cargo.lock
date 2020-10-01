@@ -634,6 +634,8 @@ dependencies = [
  "rusoto_credential",
  "rusoto_s3",
  "rust-crypto",
+ "serde",
+ "serde_derive",
  "sluice",
  "stable-eyre",
  "structopt",
