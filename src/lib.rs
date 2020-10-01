@@ -31,7 +31,7 @@ use glob::Pattern;
 use log::*;
 use log_derive::logfn;
 use once_cell::sync::Lazy;
-use tokio::io::AsyncReadExt;
+use tokio::{io::AsyncReadExt, time};
 use walkdir::WalkDir;
 
 pub mod blocking;
@@ -47,8 +47,9 @@ use crate::types::SyncDirection;
 
 use rusoto_s3::{
     AbortMultipartUploadRequest, CompleteMultipartUploadRequest, CompletedMultipartUpload,
-    CompletedPart, CreateMultipartUploadRequest, GetObjectRequest, HeadObjectRequest,
-    ListObjectsV2Request, PutObjectRequest, S3Client, StreamingBody, UploadPartRequest, S3,
+    CompletedPart, CreateMultipartUploadRequest, GetObjectError, GetObjectOutput, GetObjectRequest,
+    HeadObjectRequest, ListObjectsV2Request, PutObjectRequest, S3Client, StreamingBody,
+    UploadPartRequest, S3,
 };
 
 use rusoto_core::{ByteStream, Region, RusotoError};
@@ -81,7 +82,7 @@ pub async fn head_object<T>(s3: &T, bucket: &str, key: &str) -> Result<Option<St
 where
     T: S3 + Send,
 {
-    info!("head-object: buckey={}, key={}", bucket, key);
+    info!("head-object: bucket={}, key={}", bucket, key);
     let info = head_object_request(s3, bucket, key).await?;
     debug!("object_info: {:?}", info);
     Ok(info.map(|x| x.e_tag))
@@ -100,7 +101,7 @@ pub async fn head_object_info<T>(s3: &T, bucket: &str, key: &str) -> Result<Opti
 where
     T: S3 + Send,
 {
-    info!("head-object: buckey={}, key={}", bucket, key);
+    info!("head-object: bucket={}, key={}", bucket, key);
     head_object_request(s3, bucket, key).await
 }
 
@@ -315,17 +316,15 @@ where
 {
     info!("get: bucket={}, key={}", bucket, key);
 
-    let goo = handle_dispatch_error(|| async {
-        let gor = GetObjectRequest {
+    let goo = get_object_request(
+        s3,
+        &GetObjectRequest {
             bucket: bucket.into(),
             key: key.into(),
             ..Default::default()
-        };
-
-        s3.get_object(gor).await
-    })
-    .await
-    .context("get_object failed")?;
+        },
+    )
+    .await?;
 
     goo.body
         .ok_or_else(|| anyhow!("did not expect body field of GetObjectOutput to be none"))
@@ -362,6 +361,53 @@ where
     }
 
     Ok(())
+}
+
+#[logfn(err = "ERROR")]
+pub async fn tail<T, W>(
+    s3: &T,
+    writer: &mut W,
+    interval_seconds: u64,
+    bucket: &str,
+    key: &str,
+) -> Result<()>
+where
+    T: S3 + Send,
+    W: tokio::io::AsyncWrite + Unpin,
+{
+    info!("tail: bucket={}, key={}", bucket, key);
+
+    let mut bytes_copied = 0;
+    let mut get_obj_params = GetObjectRequest {
+        bucket: bucket.into(),
+        key: key.into(),
+        ..Default::default()
+    };
+    let mut interval = time::interval(time::Duration::from_secs(interval_seconds));
+
+    loop {
+        interval.tick().await;
+
+        let goo = match get_object_request(s3, &get_obj_params).await {
+            Ok(goo) => goo,
+            Err(RusotoError::Unknown(e)) if e.status == 304 => continue,
+            Err(e) => return Err(e.into()),
+        };
+
+        let mut reader = goo
+            .body
+            .ok_or_else(|| anyhow!("did not expect body field of GetObjectOutput to be none"))?
+            .into_async_read();
+
+        bytes_copied += tokio::io::copy(&mut reader, writer).await?;
+
+        get_obj_params.if_none_match = goo.e_tag;
+        get_obj_params.range = Some(bytes_range(bytes_copied));
+    }
+}
+
+fn bytes_range(offset: u64) -> String {
+    format!("bytes={}-", offset)
 }
 
 #[logfn(err = "ERROR")]
@@ -571,6 +617,16 @@ fn s3_compute_etag(path: &str) -> Result<String> {
 pub struct ObjectInfo {
     pub e_tag: String,
     pub size: i64,
+}
+
+async fn get_object_request<T>(
+    s3: &T,
+    gor: &GetObjectRequest,
+) -> Result<GetObjectOutput, RusotoError<GetObjectError>>
+where
+    T: S3 + Send,
+{
+    handle_dispatch_error(|| s3.get_object(gor.clone())).await
 }
 
 #[logfn(err = "ERROR")]
