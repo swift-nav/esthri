@@ -107,8 +107,12 @@ async fn stream_object_to_archive<T: S3 + Send>(
                 if let Some(obj_info) = obj_info {
                     obj_info
                 } else {
-                    abort_with_error(Some(archive), error_tracker, eyre!("object not found: {}", path))
-                        .await;
+                    abort_with_error(
+                        Some(archive),
+                        error_tracker,
+                        eyre!("object not found: {}", path),
+                    )
+                    .await;
                     return;
                 }
             }
@@ -127,7 +131,12 @@ async fn stream_object_to_archive<T: S3 + Send>(
         match download_streaming(s3, bucket, path).await {
             Ok(byte_stream) => byte_stream,
             Err(err) => {
-                abort_with_error(Some(archive), error_tracker, err.wrap_err("s3 download failed")).await;
+                abort_with_error(
+                    Some(archive),
+                    error_tracker,
+                    err.wrap_err("s3 download failed"),
+                )
+                .await;
                 return;
             }
         }
