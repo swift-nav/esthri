@@ -30,7 +30,7 @@ use futures::stream::{Stream, TryStreamExt};
 
 use sluice::{pipe, pipe::PipeWriter};
 
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 
 use async_stream::stream;
 
@@ -76,13 +76,17 @@ pub async fn s3serve(
 }
 
 async fn abort_with_error(
-    archive: &mut Builder<PipeWriter>,
+    archive: Option<&mut Builder<PipeWriter>>,
     error_tracker: ErrorTrackerArc,
     err: Report,
 ) {
     let err = {
-        if let Err(err) = archive.finish().await {
-            Report::new(err).wrap_err("closing the archive")
+        if let Some(archive) = archive {
+            if let Err(err) = archive.finish().await {
+                Report::new(err).wrap_err("closing the archive")
+            } else {
+                err
+            }
         } else {
             err
         }
@@ -103,14 +107,14 @@ async fn stream_object_to_archive<T: S3 + Send>(
                 if let Some(obj_info) = obj_info {
                     obj_info
                 } else {
-                    abort_with_error(archive, error_tracker, eyre!("object not found: {}", path))
+                    abort_with_error(Some(archive), error_tracker, eyre!("object not found: {}", path))
                         .await;
                     return;
                 }
             }
             Err(err) => {
                 abort_with_error(
-                    archive,
+                    Some(archive),
                     error_tracker,
                     err.wrap_err("s3 head operation failed"),
                 )
@@ -123,7 +127,7 @@ async fn stream_object_to_archive<T: S3 + Send>(
         match download_streaming(s3, bucket, path).await {
             Ok(byte_stream) => byte_stream,
             Err(err) => {
-                abort_with_error(archive, error_tracker, err.wrap_err("s3 download failed")).await;
+                abort_with_error(Some(archive), error_tracker, err.wrap_err("s3 download failed")).await;
                 return;
             }
         }
@@ -137,7 +141,7 @@ async fn stream_object_to_archive<T: S3 + Send>(
         .await
     {
         abort_with_error(
-            archive,
+            Some(archive),
             error_tracker,
             Report::new(err).wrap_err("tar append failed"),
         )
@@ -255,7 +259,7 @@ async fn create_archive_stream(
                 }
                 Err(err) => {
                     let err = err.wrap_err("listing objects");
-                    abort_with_error(&mut archive, error_tracker.clone(), err).await;
+                    abort_with_error(Some(&mut archive), error_tracker.clone(), err).await;
                     break;
                 }
             }
@@ -264,6 +268,35 @@ async fn create_archive_stream(
     let gzip = GzipEncoder::new(tar_pipe_reader);
     let framed_reader = FramedRead::new(gzip.compat(), BytesCodec::new());
     create_error_monitor_stream(error_tracker_reader, framed_reader).await
+}
+
+fn into_io_error(err: &eyre::Report) -> io::Error {
+    io::Error::new(ErrorKind::Other, format!("{}", err))
+}
+
+async fn create_item_stream(
+    s3: S3Client,
+    bucket: String,
+    path: String,
+) -> impl Stream<Item = io::Result<Bytes>> {
+    stream! {
+        let mut stream = {
+            match download_streaming(&s3, &bucket, &path).await {
+                Ok(byte_stream) => byte_stream,
+                Err(err) => {
+                    yield Err(into_io_error(&err));
+                    return;
+                }
+            }
+        };
+        loop {
+            if let Some(data) = stream.next().await {
+                yield data;
+            } else {
+                break;
+            }
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -284,8 +317,13 @@ async fn download(
 
     debug!("params: archive: {:?}", params.archive);
 
-    let archive_stream = create_archive_stream(s3.clone(), bucket, path, error_tracker).await;
-    let body = Body::wrap_stream(archive_stream);
+    let body = if params.archive.unwrap_or(false) {
+        let stream = create_archive_stream(s3.clone(), bucket, path, error_tracker).await;
+        Body::wrap_stream(stream)
+    } else {
+        let stream = create_item_stream(s3.clone(), bucket, path).await;
+        Body::wrap_stream(stream)
+    };
 
     Response::builder()
         .header("Content-Type", "application/binary")
