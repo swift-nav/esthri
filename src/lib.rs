@@ -478,16 +478,39 @@ pub async fn list_objects<T>(s3: &T, bucket: &str, key: &str) -> Result<Vec<Stri
 where
     T: S3 + Send,
 {
-    info!("list-objects: bucket={}, key={}", bucket, key);
+    list_objects_with_delim(s3, bucket, key, None).await
+}
 
-    let batches: Vec<_> = list_objects_stream(s3, bucket, key).try_collect().await?;
+#[logfn(err = "ERROR")]
+pub async fn list_directory<T>(s3: &T, bucket: &str, dir_path: &str) -> Result<Vec<String>>
+where
+    T: S3 + Send,
+{
+    list_objects_with_delim(s3, bucket, dir_path, Some("/")).await
+}
+
+async fn list_objects_with_delim<T>(
+    s3: &T,
+    bucket: &str,
+    key: &str,
+    delim: Option<&str>,
+) -> Result<Vec<String>>
+where
+    T: S3 + Send,
+{
+    let batches: Vec<_> = list_objects_stream_with_delim(s3, bucket, key, delim)
+        .try_collect()
+        .await?;
 
     let keys: Vec<_> = batches
         .into_iter()
         .flat_map(|batch| {
             batch.into_iter().map(|entry| {
-                info!("key={}, etag={}", entry.key, entry.e_tag);
-                entry.key
+                match &entry {
+                    S3ListingItem::S3Object(obj) => info!("key={}, etag={}", obj.key, obj.e_tag),
+                    S3ListingItem::S3CommonPrefix(cp) => info!("common_prefix={}", cp),
+                }
+                entry.prefix()
             })
         })
         .collect();
@@ -499,36 +522,66 @@ pub fn list_objects_stream<'a, T>(
     s3: &'a T,
     bucket: &'a str,
     key: &'a str,
-) -> impl TryStream<Ok = Vec<S3Obj>, Error = eyre::Error> + Unpin + 'a
+) -> impl TryStream<Ok = Vec<S3ListingItem>, Error = eyre::Error> + Unpin + 'a
+where
+    T: S3 + Send,
+{
+    list_objects_stream_with_delim(s3, bucket, key, None)
+}
+
+pub fn list_directory_stream<'a, T>(
+    s3: &'a T,
+    bucket: &'a str,
+    key: &'a str,
+) -> impl TryStream<Ok = Vec<S3ListingItem>, Error = eyre::Error> + Unpin + 'a
+where
+    T: S3 + Send,
+{
+    list_objects_stream_with_delim(s3, bucket, key, Some("/"))
+}
+
+fn list_objects_stream_with_delim<'a, T>(
+    s3: &'a T,
+    bucket: &'a str,
+    key: &'a str,
+    delimiter: Option<&'a str>,
+) -> impl TryStream<Ok = Vec<S3ListingItem>, Error = eyre::Error> + Unpin + 'a
 where
     T: S3 + Send,
 {
     info!("stream-objects: bucket={}, key={}", bucket, key);
 
     let continuation: Option<String> = None;
-    let state = (s3, bucket, key, continuation, false);
+    let delimiter = delimiter.map(|s| s.to_owned());
+
+    let state = (s3, bucket, key, continuation, delimiter, false);
 
     Box::pin(stream::try_unfold(
         state,
-        |(s3, bucket, key, prev_continuation, done)| async move {
+        |(s3, bucket, key, prev_continuation, delimiter, done)| async move {
             // You can't yield a value and stop unfold at the same time, so do this
             if done {
                 return Ok(None);
             }
 
-            let S3Listing {
-                objects,
-                continuation,
-                count,
-            } = list_objects_request(s3, &bucket, &key, prev_continuation).await?;
+            let listing =
+                list_objects_request(s3, &bucket, &key, prev_continuation, delimiter.clone())
+                    .await?;
+            let continuation = listing.continuation.clone();
 
-            info!("found count: {}", count);
+            info!("found count: {}", listing.count());
 
-            if continuation.is_some() {
-                Ok(Some((objects, (s3, bucket, key, continuation, false))))
-            } else if !objects.is_empty() {
+            if listing.continuation.is_some() {
+                Ok(Some((
+                    listing.combined(),
+                    (s3, bucket, key, continuation, delimiter, false),
+                )))
+            } else if !listing.is_empty() {
                 // Yield the last values, and exit on the next loop
-                Ok(Some((objects, (s3, bucket, key, continuation, true))))
+                Ok(Some((
+                    listing.combined(),
+                    (s3, bucket, key, continuation, delimiter, true),
+                )))
             } else {
                 // Nothing to yield and we're done
                 Ok(None)
@@ -670,14 +723,64 @@ where
     }
 }
 
+#[derive(Default)]
 struct S3Listing {
-    count: i64,
     continuation: Option<String>,
-    objects: Vec<S3Obj>,
+    contents: Vec<S3Object>,
+    common_prefixes: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
-pub struct S3Obj {
+pub enum S3ListingItem {
+    S3Object(S3Object),
+    S3CommonPrefix(String),
+}
+
+impl S3ListingItem {
+    fn object(o: crate::S3Object) -> S3ListingItem {
+        S3ListingItem::S3Object(o)
+    }
+    fn common_prefix(cp: String) -> S3ListingItem {
+        S3ListingItem::S3CommonPrefix(cp)
+    }
+    fn prefix(&self) -> String {
+        match self {
+            S3ListingItem::S3Object(o) => o.key.clone(),
+            S3ListingItem::S3CommonPrefix(cp) => cp.clone(),
+        }
+    }
+    fn unwrap_object(self) -> crate::S3Object {
+        match self {
+            S3ListingItem::S3Object(o) => o,
+            S3ListingItem::S3CommonPrefix(_cp) => panic!("invalid type"),
+        }
+    }
+}
+
+impl S3Listing {
+    fn combined(self) -> Vec<S3ListingItem> {
+        let common_prefixes: Vec<S3ListingItem> = self
+            .common_prefixes
+            .into_iter()
+            .map(S3ListingItem::common_prefix)
+            .collect();
+        let contents: Vec<S3ListingItem> = self
+            .contents
+            .into_iter()
+            .map(S3ListingItem::object)
+            .collect();
+        [common_prefixes, contents].concat()
+    }
+    fn count(&self) -> usize {
+        self.contents.len() + self.common_prefixes.len()
+    }
+    fn is_empty(&self) -> bool {
+        self.count() == 0
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct S3Object {
     pub key: String,
     pub e_tag: String,
 }
@@ -687,6 +790,7 @@ async fn list_objects_request<T>(
     bucket: &str,
     key: &str,
     continuation: Option<String>,
+    delimiter: Option<String>,
 ) -> Result<S3Listing>
 where
     T: S3 + Send,
@@ -696,6 +800,7 @@ where
             bucket: bucket.into(),
             prefix: Some(key.into()),
             continuation_token: continuation.clone(),
+            delimiter: delimiter.clone(),
             ..Default::default()
         };
 
@@ -704,41 +809,39 @@ where
     .await
     .context("listing objects failed")?;
 
-    let contents = if lov2o.contents.is_none() {
-        warn!("listing returned no contents");
-        return Ok(S3Listing {
-            count: 0,
-            continuation: None,
-            objects: vec![],
-        });
-    } else {
-        lov2o.contents.unwrap()
-    };
-
-    let count = lov2o
-        .key_count
-        .ok_or_else(|| anyhow!("unexpected: key count was none"))?;
-
     let mut listing = S3Listing {
-        count,
         continuation: lov2o.next_continuation_token,
-        objects: vec![],
+        ..Default::default()
     };
 
-    for object in contents {
-        let key = if object.key.is_some() {
-            object.key.unwrap()
-        } else {
-            warn!("unexpected: object key was null");
-            continue;
-        };
-        let e_tag = if object.e_tag.is_some() {
-            object.e_tag.unwrap()
-        } else {
-            warn!("unexpected: object ETag was null");
-            continue;
-        };
-        listing.objects.push(S3Obj { key, e_tag });
+    if let Some(contents) = lov2o.contents {
+        for object in contents {
+            let key = if object.key.is_some() {
+                object.key.unwrap()
+            } else {
+                warn!("unexpected: object key was null");
+                continue;
+            };
+            let e_tag = if object.e_tag.is_some() {
+                object.e_tag.unwrap()
+            } else {
+                warn!("unexpected: object ETag was null");
+                continue;
+            };
+            listing.contents.push(S3Object { key, e_tag });
+        }
+    }
+
+    for common_prefixes in lov2o.common_prefixes {
+        for common_prefix in common_prefixes {
+            let prefix = if common_prefix.prefix.is_some() {
+                common_prefix.prefix.unwrap()
+            } else {
+                warn!("unexpected: prefix was null");
+                continue;
+            };
+            listing.common_prefixes.push(prefix);
+        }
     }
 
     Ok(listing)
@@ -879,6 +982,7 @@ where
 
     while let Some(entries) = stream.try_next().await? {
         for entry in entries {
+            let entry = entry.unwrap_object();
             debug!("key={}", entry.key);
 
             let path = format!(

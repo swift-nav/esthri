@@ -2,6 +2,7 @@ use futures::TryStreamExt;
 
 use esthri_lib::blocking;
 use esthri_lib::head_object;
+use esthri_lib::list_directory;
 use esthri_lib::list_objects;
 use esthri_lib::list_objects_stream;
 use esthri_lib::upload;
@@ -112,4 +113,32 @@ async fn test_handle_stream_objects() {
 
     let objs = stream.try_next().await.unwrap().unwrap();
     assert_eq!(objs.len(), 10);
+}
+
+#[tokio::test]
+async fn test_list_directory() {
+    let s3client = common::get_s3client();
+    let filename = "tests/data/test_file.txt".to_owned();
+    let folder1 = "test_list_directory/folder1/file.txt".to_owned();
+    let folder2 = "test_list_directory/folder2/file.txt".to_owned();
+    let leaf = "test_list_directory/leaf.txt".to_owned();
+
+    for s3_key in &[&folder1, &folder2, &leaf] {
+        let res = upload(s3client.as_ref(), common::TEST_BUCKET, s3_key, &filename).await;
+        assert!(res.is_ok());
+    }
+
+    let res = list_directory(
+        s3client.as_ref(),
+        common::TEST_BUCKET,
+        "test_list_directory/",
+    )
+    .await;
+    assert!(res.is_ok());
+
+    let listing = res.unwrap();
+
+    assert_eq!(listing[0], "test_list_directory/folder1/");
+    assert_eq!(listing[1], "test_list_directory/folder2/");
+    assert_eq!(listing[2], "test_list_directory/leaf.txt");
 }

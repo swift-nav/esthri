@@ -9,10 +9,15 @@ use std::{io, io::ErrorKind};
 use log::*;
 
 use warp::http;
+use warp::http::header::{CACHE_CONTROL, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_TYPE, ETAG};
+use warp::http::response;
+//use warp::http::HeaderMap;
 use warp::http::Response;
 use warp::hyper::Body;
 use warp::reject::Reject;
 use warp::Filter;
+
+use mime_guess::mime::{APPLICATION_OCTET_STREAM, TEXT_HTML_UTF_8};
 
 use rusoto_s3::{S3Client, S3};
 
@@ -40,7 +45,9 @@ use eyre::{eyre, Report};
 
 use crate::download_streaming;
 use crate::head_object_info;
+use crate::list_directory_stream;
 use crate::list_objects_stream;
+use crate::S3ListingItem;
 
 use serde_derive::{Deserialize, Serialize};
 
@@ -64,11 +71,25 @@ pub async fn s3serve(
     bucket: &str,
     address: &SocketAddr,
 ) -> Result<(), Infallible> {
+    let log = warp::log("esthri_warp");
+
+    /*
+    let headers =
+        warp::header::headers_cloned()
+        .map(|headers: HeaderMap| {
+            debug!("headers: {:?}", headers); headers
+        });
+    */
+
     let routes = warp::path::full()
         .and(with_s3_client(s3_client.clone()))
         .and(with_bucket(bucket.to_owned()))
         .and(warp::query::<Params>())
-        .and_then(download);
+        .and(warp::header::optional::<String>("if-none-match"))
+        //.and(headers)
+        .and_then(download)
+        .with(log)
+        .with(warp::filters::trace::request());
 
     warp::serve(routes).run(*address).await;
 
@@ -100,7 +121,7 @@ async fn stream_object_to_archive<T: S3 + Send>(
     path: &str,
     archive: &mut Builder<PipeWriter>,
     error_tracker: ErrorTrackerArc,
-) {
+) -> bool {
     let obj_info = {
         match head_object_info(s3, bucket, path).await {
             Ok(obj_info) => {
@@ -109,21 +130,21 @@ async fn stream_object_to_archive<T: S3 + Send>(
                 } else {
                     abort_with_error(
                         Some(archive),
-                        error_tracker,
+                        error_tracker.clone(),
                         eyre!("object not found: {}", path),
                     )
                     .await;
-                    return;
+                    return !error_tracker.has_error();
                 }
             }
             Err(err) => {
                 abort_with_error(
                     Some(archive),
-                    error_tracker,
+                    error_tracker.clone(),
                     err.wrap_err("s3 head operation failed"),
                 )
                 .await;
-                return;
+                return !error_tracker.has_error();
             }
         }
     };
@@ -133,11 +154,11 @@ async fn stream_object_to_archive<T: S3 + Send>(
             Err(err) => {
                 abort_with_error(
                     Some(archive),
-                    error_tracker,
+                    error_tracker.clone(),
                     err.wrap_err("s3 download failed"),
                 )
                 .await;
-                return;
+                return !error_tracker.has_error();
             }
         }
     };
@@ -151,11 +172,12 @@ async fn stream_object_to_archive<T: S3 + Send>(
     {
         abort_with_error(
             Some(archive),
-            error_tracker,
+            error_tracker.clone(),
             Report::new(err).wrap_err("tar append failed"),
         )
         .await;
     }
+    return !error_tracker.has_error();
 }
 
 struct ErrorTracker {
@@ -256,14 +278,21 @@ async fn create_archive_stream(
                 Ok(None) => break,
                 Ok(Some(items)) => {
                     for s3obj in items {
-                        stream_object_to_archive(
+                        let s3obj = s3obj.unwrap_object();
+                        if !stream_object_to_archive(
                             &s3,
                             &bucket,
                             &s3obj.key,
                             &mut archive,
                             error_tracker.clone(),
                         )
-                        .await;
+                        .await
+                        {
+                            break;
+                        }
+                    }
+                    if error_tracker.has_error() {
+                        break;
                     }
                 }
                 Err(err) => {
@@ -281,6 +310,48 @@ async fn create_archive_stream(
 
 fn into_io_error(err: &eyre::Report) -> io::Error {
     io::Error::new(ErrorKind::Other, format!("{}", err))
+}
+
+fn format_link(base: &str, path: &str, archive: bool) -> String {
+    let path = path.strip_prefix(base).unwrap();
+    if archive {
+        format!(
+            "<li><a href=\"{}\">{}</a> [<a href=\"{}?archive=true\">tgz</a>]</li>\n",
+            path, path, path
+        )
+    } else {
+        format!("<li><a href=\"{}\">{}</a></li>\n", path, path)
+    }
+}
+
+async fn create_index_stream(
+    s3: S3Client,
+    bucket: String,
+    path: String,
+) -> impl Stream<Item = io::Result<Bytes>> {
+    stream! {
+        yield Ok(Bytes::from(format!("<html><h3>{}</h3>", path)));
+        yield Ok(Bytes::from("<ul><li><a href=\".\">.</a> [<a href=\"?archive=true\">tgz</a>]</li>"));
+        yield Ok(Bytes::from("<li><a href=\"..\">.. [<a href=\"..?archive=true\">tgz</a>]</a></li>\n"));
+        let mut directory_list_stream = list_directory_stream(&s3, &bucket, &path);
+        loop {
+            match directory_list_stream.try_next().await {
+                Ok(None) => break,
+                Ok(Some(items)) => {
+                    for s3obj in items {
+                        match s3obj {
+                            S3ListingItem::S3Object(o) => yield Ok(Bytes::from(format_link(&path, &o.key, false))),
+                            S3ListingItem::S3CommonPrefix(cp) => yield Ok(Bytes::from(format_link(&path, &cp, true))),
+                        }
+                    }
+                }
+                Err(err) => {
+                    yield Err(into_io_error(&err));
+                }
+            }
+        }
+        yield Ok(Bytes::from("</ul></html>\n"));
+    }
 }
 
 async fn create_item_stream(
@@ -313,32 +384,113 @@ struct EsthriInternalError;
 
 impl Reject for EsthriInternalError {}
 
+impl EsthriInternalError {
+    fn rejection() -> warp::Rejection {
+        warp::reject::custom(EsthriInternalError {})
+    }
+    fn result<T>() -> Result<T, warp::Rejection> {
+        Err(EsthriInternalError::rejection())
+    }
+}
+
+async fn item_pre_response<'a, T: S3 + Send>(
+    s3: &T,
+    bucket: String,
+    path: String,
+    if_none_match: Option<String>,
+    mut resp_builder: response::Builder,
+) -> Result<(response::Builder, Option<(String, String)>), warp::Rejection> {
+    let obj_info = {
+        match head_object_info(s3, &bucket, &path).await {
+            Ok(obj_info) => {
+                if let Some(obj_info) = obj_info {
+                    obj_info
+                } else {
+                    return Err(warp::reject::not_found());
+                }
+            }
+            Err(err) => {
+                error!("error listing item: {}", err);
+                return EsthriInternalError::result();
+            }
+        }
+    };
+    let not_modified = if_none_match
+        .map(|etag| etag == obj_info.e_tag)
+        .unwrap_or(false);
+    if not_modified {
+        use warp::http::status::StatusCode;
+        resp_builder = resp_builder.status(StatusCode::NOT_MODIFIED);
+        Ok((resp_builder, None))
+    } else {
+        resp_builder = resp_builder.header(CONTENT_LENGTH, obj_info.size);
+        resp_builder = resp_builder.header(ETAG, obj_info.e_tag);
+        resp_builder = resp_builder.header(CACHE_CONTROL, "private,max-age=0");
+        let mime = mime_guess::from_path(&path);
+        let mime = mime.first();
+        if let Some(mime) = mime {
+            resp_builder = resp_builder.header(CONTENT_TYPE, mime.essence_str());
+        } else {
+            resp_builder =
+                resp_builder.header(CONTENT_TYPE, APPLICATION_OCTET_STREAM.essence_str());
+        }
+        Ok((resp_builder, Some((bucket, path))))
+    }
+}
+
 async fn download(
     path: warp::path::FullPath,
     s3: S3Client,
     bucket: String,
     params: Params,
+    if_none_match: Option<String>,
+    //_headers: HeaderMap,
 ) -> Result<http::Response<Body>, warp::Rejection> {
-    let path = path.as_str().to_owned();
-    let path = path.get(1..).map(Into::<String>::into).unwrap_or_default();
-
+    let path = path
+        .as_str()
+        .to_owned()
+        .get(1..)
+        .map(Into::<String>::into)
+        .unwrap_or_default();
     let error_tracker = ErrorTrackerArc::new();
+    let resp_builder = Response::builder();
+    debug!("path: {}, params: archive: {:?}", path, params.archive);
 
-    debug!("params: archive: {:?}", params.archive);
-
-    let body = if params.archive.unwrap_or(false) {
-        let stream = create_archive_stream(s3.clone(), bucket, path, error_tracker).await;
-        Body::wrap_stream(stream)
+    let (body, resp_builder) = if params.archive.unwrap_or(false) {
+        let stream = create_archive_stream(s3.clone(), bucket, path.clone(), error_tracker).await;
+        let archive_filename = path.strip_suffix("/").unwrap_or(&path).replace("/", "_");
+        (
+            Some(Body::wrap_stream(stream)),
+            resp_builder
+                .header(CONTENT_TYPE, APPLICATION_OCTET_STREAM.essence_str())
+                .header(
+                    CONTENT_DISPOSITION,
+                    format!("attachment; filename=\"{}.tgz\"", archive_filename),
+                ),
+        )
     } else {
-        let stream = create_item_stream(s3.clone(), bucket, path).await;
-        Body::wrap_stream(stream)
+        if path.ends_with("/") || path.is_empty() {
+            let stream = create_index_stream(s3.clone(), bucket, path).await;
+            (
+                Some(Body::wrap_stream(stream)),
+                resp_builder.header(CONTENT_TYPE, TEXT_HTML_UTF_8.essence_str()),
+            )
+        } else {
+            let (resp_builder, create_stream) =
+                item_pre_response(&s3, bucket, path, if_none_match, resp_builder).await?;
+            if let Some((bucket, path)) = create_stream {
+                let stream = create_item_stream(s3.clone(), bucket, path).await;
+                (Some(Body::wrap_stream(stream)), resp_builder)
+            } else {
+                (None, resp_builder)
+            }
+        }
     };
 
-    Response::builder()
-        .header("Content-Type", "application/binary")
-        .body(body)
+    resp_builder
+        .body(body.unwrap_or_else(|| Body::empty()))
         .map_err(|err| {
             error!("esthri internal error: {}", err);
-            warp::reject::custom(EsthriInternalError {})
+            EsthriInternalError::rejection()
         })
 }
