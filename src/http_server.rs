@@ -82,7 +82,6 @@ pub async fn run(
     bucket: &str,
     address: &SocketAddr,
 ) -> Result<(), Infallible> {
-
     let routes = esthri_filter(s3_client, bucket);
     warp::serve(routes).run(*address).await;
 

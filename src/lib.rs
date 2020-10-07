@@ -36,9 +36,9 @@ use walkdir::WalkDir;
 
 pub mod blocking;
 pub mod errors;
-pub mod retry;
 #[cfg(feature = "http_server")]
 pub mod http_server;
+pub mod retry;
 pub mod types;
 
 use crate::errors::EsthriError;

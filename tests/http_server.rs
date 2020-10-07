@@ -1,17 +1,16 @@
 #![cfg(feature = "s3serve")]
 
-use esthri_lib::upload;
 use esthri_lib::http_server::esthri_filter;
+use esthri_lib::upload;
 
 mod common;
 
 #[tokio::test]
 async fn test_fetch_object() {
- 
     let filename = "tests/data/test_file.txt".to_owned();
 
     let s3client = common::get_s3client();
-    let bucket= common::TEST_BUCKET;
+    let bucket = common::TEST_BUCKET;
 
     let s3_key = "test_file.txt".to_owned();
 
