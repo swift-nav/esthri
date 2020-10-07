@@ -12,7 +12,6 @@
 
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
-use std::net::SocketAddr;
 use std::time::Duration;
 
 use log::*;

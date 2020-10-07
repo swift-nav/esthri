@@ -70,7 +70,7 @@ pub fn esthri_filter(
     bucket: &str,
 ) -> impl Filter<Extract = (http::Response<Body>,), Error = warp::Rejection> + Clone {
     warp::path::full()
-        .and(with_s3_client(s3_client.clone()))
+        .and(with_s3_client(s3_client))
         .and(with_bucket(bucket.to_owned()))
         .and(warp::query::<Params>())
         .and(warp::header::optional::<String>("if-none-match"))
@@ -170,7 +170,7 @@ async fn stream_object_to_archive<T: S3 + Send>(
         )
         .await;
     }
-    return !error_tracker.has_error();
+    !error_tracker.has_error()
 }
 
 struct ErrorTracker {
@@ -460,27 +460,25 @@ async fn download(
                     format!("attachment; filename=\"{}.tgz\"", archive_filename),
                 ),
         )
+    } else if path.ends_with('/') || path.is_empty() {
+        let stream = create_index_stream(s3.clone(), bucket, path).await;
+        (
+            Some(Body::wrap_stream(stream)),
+            resp_builder.header(CONTENT_TYPE, TEXT_HTML_UTF_8.essence_str()),
+        )
     } else {
-        if path.ends_with("/") || path.is_empty() {
-            let stream = create_index_stream(s3.clone(), bucket, path).await;
-            (
-                Some(Body::wrap_stream(stream)),
-                resp_builder.header(CONTENT_TYPE, TEXT_HTML_UTF_8.essence_str()),
-            )
+        let (resp_builder, create_stream) =
+            item_pre_response(&s3, bucket, path, if_none_match, resp_builder).await?;
+        if let Some((bucket, path)) = create_stream {
+            let stream = create_item_stream(s3.clone(), bucket, path).await;
+            (Some(Body::wrap_stream(stream)), resp_builder)
         } else {
-            let (resp_builder, create_stream) =
-                item_pre_response(&s3, bucket, path, if_none_match, resp_builder).await?;
-            if let Some((bucket, path)) = create_stream {
-                let stream = create_item_stream(s3.clone(), bucket, path).await;
-                (Some(Body::wrap_stream(stream)), resp_builder)
-            } else {
-                (None, resp_builder)
-            }
+            (None, resp_builder)
         }
     };
 
     resp_builder
-        .body(body.unwrap_or_else(|| Body::empty()))
+        .body(body.unwrap_or_else(Body::empty))
         .map_err(|err| {
             error!("esthri internal error: {}", err);
             EsthriInternalError::rejection()

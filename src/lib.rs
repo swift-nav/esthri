@@ -37,7 +37,7 @@ use walkdir::WalkDir;
 pub mod blocking;
 pub mod errors;
 pub mod retry;
-#[cfg(feature = "s3serve")]
+#[cfg(feature = "http_server")]
 pub mod http_server;
 pub mod types;
 
@@ -832,7 +832,7 @@ where
         }
     }
 
-    for common_prefixes in lov2o.common_prefixes {
+    if let Some(common_prefixes) = lov2o.common_prefixes {
         for common_prefix in common_prefixes {
             let prefix = if common_prefix.prefix.is_some() {
                 common_prefix.prefix.unwrap()
