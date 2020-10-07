@@ -11,7 +11,6 @@ use log::*;
 use warp::http;
 use warp::http::header::{CACHE_CONTROL, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_TYPE, ETAG};
 use warp::http::response;
-//use warp::http::HeaderMap;
 use warp::http::Response;
 use warp::hyper::Body;
 use warp::reject::Reject;
@@ -72,14 +71,6 @@ pub async fn s3serve(
     address: &SocketAddr,
 ) -> Result<(), Infallible> {
     let log = warp::log("esthri_warp");
-
-    /*
-    let headers =
-        warp::header::headers_cloned()
-        .map(|headers: HeaderMap| {
-            debug!("headers: {:?}", headers); headers
-        });
-    */
 
     let routes = warp::path::full()
         .and(with_s3_client(s3_client.clone()))
@@ -444,7 +435,6 @@ async fn download(
     bucket: String,
     params: Params,
     if_none_match: Option<String>,
-    //_headers: HeaderMap,
 ) -> Result<http::Response<Body>, warp::Rejection> {
     let path = path
         .as_str()
