@@ -213,7 +213,7 @@ async fn main() -> Result<()> {
 
         #[cfg(feature = "s3serve")]
         Serve { bucket, address } => {
-            s3serve::s3serve(s3.clone(), &bucket, &address).await?;
+            http_server::run(s3.clone(), &bucket, &address).await?;
         }
     }
 

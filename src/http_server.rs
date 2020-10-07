@@ -65,23 +65,25 @@ struct Params {
     archive: Option<bool>,
 }
 
-pub async fn s3serve(
+pub fn esthri_filter(
     s3_client: S3Client,
     bucket: &str,
-    address: &SocketAddr,
-) -> Result<(), Infallible> {
-    let log = warp::log("esthri_warp");
-
-    let routes = warp::path::full()
+) -> impl Filter<Extract = (http::Response<Body>,), Error = warp::Rejection> + Clone {
+    warp::path::full()
         .and(with_s3_client(s3_client.clone()))
         .and(with_bucket(bucket.to_owned()))
         .and(warp::query::<Params>())
         .and(warp::header::optional::<String>("if-none-match"))
-        //.and(headers)
         .and_then(download)
-        .with(log)
-        .with(warp::filters::trace::request());
+}
 
+pub async fn run(
+    s3_client: S3Client,
+    bucket: &str,
+    address: &SocketAddr,
+) -> Result<(), Infallible> {
+
+    let routes = esthri_filter(s3_client, bucket);
     warp::serve(routes).run(*address).await;
 
     Ok(())

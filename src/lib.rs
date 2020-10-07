@@ -38,7 +38,7 @@ pub mod blocking;
 pub mod errors;
 pub mod retry;
 #[cfg(feature = "s3serve")]
-pub mod s3serve;
+pub mod http_server;
 pub mod types;
 
 use crate::errors::EsthriError;
