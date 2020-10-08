@@ -5,8 +5,6 @@ use std::fs;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use std::time::Duration;
-
 use hyper::Client;
 use hyper_tls::HttpsConnector;
 

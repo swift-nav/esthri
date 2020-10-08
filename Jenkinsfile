@@ -30,7 +30,7 @@ pipeline {
         stage('Build (release)') {
           agent { dockerfile { reuseNode true } }
           steps {
-            sh("cargo build --release")
+            sh("cargo build --features http_server --release")
           }
         }
         stage('Test') {
@@ -48,7 +48,7 @@ pipeline {
                   | git lfs install
                   | git lfs pull
                   |
-                  | cargo test -- --nocapture
+                  | cargo test --features http_server -- --nocapture
                   |
                  """.stripMargin())
             }
@@ -58,7 +58,7 @@ pipeline {
           agent { dockerfile { reuseNode true } }
           steps {
             script {
-              sh("cargo clippy --all-targets --features aggressive_lint")
+              sh("cargo clippy --all-targets --features aggressive_lint,http_server")
             }
           }
         }
