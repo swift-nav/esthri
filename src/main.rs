@@ -120,13 +120,13 @@ enum Command {
         #[structopt(long)]
         key: String,
     },
-    #[cfg(feature = "s3serve")]
+    #[cfg(feature = "http_server")]
+    /// Launch and HTTP server attached to the specified bucket
     Serve {
         #[structopt(long)]
         bucket: String,
-
         #[structopt(long, default_value = "127.0.0.1:3030")]
-        address: SocketAddr,
+        address: std::net::SocketAddr,
     },
 }
 
@@ -210,7 +210,7 @@ async fn main() -> Result<()> {
             list_objects(&s3, &bucket, &key).await?;
         }
 
-        #[cfg(feature = "s3serve")]
+        #[cfg(feature = "http_server")]
         Serve { bucket, address } => {
             http_server::run(s3.clone(), &bucket, &address).await?;
         }
