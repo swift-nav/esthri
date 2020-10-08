@@ -8,7 +8,7 @@ use esthri_lib::types::SyncDirection;
 
 mod common;
 
-struct KeyHashPair(&'static str, &'static str);
+use common::{validate_key_hash_pairs, KeyHashPair};
 
 #[test]
 fn test_sync_down() {
@@ -193,15 +193,5 @@ fn test_sync_down_default() {
         KeyHashPair("3-three.junk", "388f9763d78cecece332459baecb4b85"),
     ];
 
-    for key_hash_pair in &key_hash_pairs[..] {
-        let path = format!("{}/{}", local_directory, key_hash_pair.0);
-        let data = fs::read(&path).unwrap();
-        let digest = md5::compute(data);
-        let digest = format!("{:x}", digest);
-        assert_eq!(
-            digest, key_hash_pair.1,
-            "md5 digest did not match: {}",
-            path
-        );
-    }
+    validate_key_hash_pairs(local_directory, &key_hash_pairs);
 }

@@ -620,6 +620,7 @@ dependencies = [
  "ctrlc",
  "env_logger",
  "eyre",
+ "flate2",
  "futures",
  "futures-util",
  "glob",
@@ -640,6 +641,8 @@ dependencies = [
  "sluice",
  "stable-eyre",
  "structopt",
+ "tar",
+ "tempdir",
  "thiserror",
  "tokio",
  "tokio-util",
@@ -2279,6 +2282,28 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-xid",
+]
+
+[[package]]
+name = "tar"
+version = "0.4.30"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "489997b7557e9a43e192c527face4feacc78bfbe6eed67fd55c4c9e381cba290"
+dependencies = [
+ "filetime",
+ "libc",
+ "redox_syscall",
+ "xattr",
+]
+
+[[package]]
+name = "tempdir"
+version = "0.3.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "15f2b5fb00ccdf689e0149d1b1b3c03fead81c2b37735d812fa8bddbbf41b6d8"
+dependencies = [
+ "rand 0.4.6",
+ "remove_dir_all",
 ]
 
 [[package]]
