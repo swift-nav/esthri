@@ -122,7 +122,7 @@ enum Command {
     },
     #[cfg(feature = "http_server")]
     /// Launch an HTTP server attached to the specified bucket
-    /// 
+    ///
     /// This also supports serving dynamic archives of bucket contents
     Serve {
         /// The bucket to serve over HTTP

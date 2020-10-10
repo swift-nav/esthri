@@ -104,6 +104,13 @@ fn test_fetch_archive_helper(
 
     upload_test_data().unwrap();
 
+    std::panic::set_hook(Box::new(move |panic_info| {
+        panic_success.store(false, Ordering::Release);
+        panic_done.store(true, Ordering::Relaxed);
+        eprint!("{:?}", backtrace::Backtrace::new());
+        eprint!("\n{}\n", panic_info);
+    }));
+
     std::thread::spawn(move || {
         let mut runtime = Runtime::new().unwrap();
         runtime.block_on(fetch_archive_and_validate(
@@ -116,14 +123,6 @@ fn test_fetch_archive_helper(
     });
 
     let mut timeout_count: i64 = (TIMEOUT_MILLIS / SLEEP_MILLIS) as i64;
-
-    std::panic::set_hook(Box::new(move |panic_info| {
-        panic_success.store(false, Ordering::Release);
-        panic_done.store(true, Ordering::Relaxed);
-
-        eprint!("{:?}", backtrace::Backtrace::new());
-        eprint!("\n{}\n", panic_info);
-    }));
 
     while !done.load(Ordering::Relaxed) && timeout_count > 0 {
         std::thread::sleep(std::time::Duration::from_millis(SLEEP_MILLIS));
