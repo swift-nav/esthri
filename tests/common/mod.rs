@@ -1,5 +1,8 @@
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
+// Not all test modules use everything in this helper module
+#![allow(dead_code)]
+
 use std::fs;
 
 use std::sync::Arc;
@@ -59,7 +62,6 @@ pub fn get_s3client() -> Arc<S3Client> {
     test_global.s3client.as_ref().unwrap().clone()
 }
 
-#[allow(dead_code)]
 pub struct KeyHashPair(pub &'static str, pub &'static str);
 
 pub struct EphemeralTempDir {
@@ -68,9 +70,8 @@ pub struct EphemeralTempDir {
 }
 
 impl EphemeralTempDir {
-    #[allow(dead_code)]
     pub fn pushd() -> EphemeralTempDir {
-        let temp_dir = TempDir::new("eshtri_tmp").expect("creating temporary directory");
+        let temp_dir = TempDir::new("esthri_tmp").expect("creating temporary directory");
         let old_dir = std::env::current_dir().expect("getting current directory");
         std::env::set_current_dir(temp_dir.path()).expect("changing to new temporary directory");
         EphemeralTempDir {
@@ -86,7 +87,6 @@ impl Drop for EphemeralTempDir {
     }
 }
 
-#[allow(dead_code)]
 pub fn validate_key_hash_pairs(local_directory: &str, key_hash_pairs: &[KeyHashPair]) {
     for key_hash_pair in &key_hash_pairs[..] {
         let path = format!("{}/{}", local_directory, key_hash_pair.0);

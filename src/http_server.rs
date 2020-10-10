@@ -1,3 +1,5 @@
+#![cfg_attr(feature = "aggressive_lint", deny(warnings))]
+
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::sync::{
@@ -382,7 +384,7 @@ async fn create_index_stream(
     stream! {
         yield Ok(Bytes::from(format!("<html><h3>{}</h3>", path)));
         yield Ok(Bytes::from("<ul><li><a href=\".\">.</a> [<a href=\"?archive=true\">tgz</a>]</li>"));
-        yield Ok(Bytes::from("<li><a href=\"..\">.. [<a href=\"..?archive=true\">tgz</a>]</a></li>\n"));
+        yield Ok(Bytes::from("<li><a href=\"..\">..</a> [<a href=\"..?archive=true\">tgz</a>]</li>\n"));
         let mut directory_list_stream = list_directory_stream(&s3, &bucket, &path);
         loop {
             match directory_list_stream.try_next().await {
