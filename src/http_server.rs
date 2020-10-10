@@ -488,7 +488,10 @@ async fn handle_rejection(err: warp::Rejection) -> Result<impl warp::Reply, Infa
     {
         code = StatusCode::BAD_REQUEST;
         message = message_inner.to_owned();
-    } else if err.find::<warp::filters::body::BodyDeserializeError>().is_some() {
+    } else if err
+        .find::<warp::filters::body::BodyDeserializeError>()
+        .is_some()
+    {
         message = "deserialization error".to_owned();
         code = StatusCode::BAD_REQUEST;
     } else if err.find::<warp::reject::MethodNotAllowed>().is_some() {
