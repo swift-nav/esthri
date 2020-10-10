@@ -68,7 +68,7 @@ impl<'de> serde::Deserialize<'de> for S3PrefixList {
     {
         let s = String::deserialize(deserializer)?;
 
-        let s = s.split("|").map(|x| {
+        let s = s.split('|').map(|x| {
             if !x.is_empty() {
                 Ok(String::from(x))
             } else {
@@ -148,13 +148,13 @@ struct EsthriRejection {
 impl warp::reject::Reject for EsthriRejection {}
 
 impl EsthriRejection {
-    fn as_warp_rejection<MsgT: AsRef<str>>(message: MsgT) -> warp::Rejection {
+    fn warp_rejection<MsgT: AsRef<str>>(message: MsgT) -> warp::Rejection {
         warp::reject::custom(EsthriRejection {
             message: message.as_ref().to_owned(),
         })
     }
-    fn as_warp_result<T, MsgT: AsRef<str>>(message: MsgT) -> Result<T, warp::Rejection> {
-        Err(EsthriRejection::as_warp_rejection(message))
+    fn warp_result<T, MsgT: AsRef<str>>(message: MsgT) -> Result<T, warp::Rejection> {
+        Err(EsthriRejection::warp_rejection(message))
     }
 }
 
@@ -447,7 +447,7 @@ async fn item_pre_response<'a, T: S3 + Send>(
             }
             Err(err) => {
                 let message = format!("error listing item: {}", err);
-                return EsthriRejection::as_warp_result(message);
+                return EsthriRejection::warp_result(message);
             }
         }
     };
@@ -488,22 +488,22 @@ async fn handle_rejection(err: warp::Rejection) -> Result<impl warp::Reply, Infa
     {
         code = StatusCode::BAD_REQUEST;
         message = message_inner.to_owned();
-    } else if let Some(_) = err.find::<warp::filters::body::BodyDeserializeError>() {
+    } else if err.find::<warp::filters::body::BodyDeserializeError>().is_some() {
         message = "deserialization error".to_owned();
         code = StatusCode::BAD_REQUEST;
-    } else if let Some(_) = err.find::<warp::reject::MethodNotAllowed>() {
+    } else if err.find::<warp::reject::MethodNotAllowed>().is_some() {
         code = StatusCode::METHOD_NOT_ALLOWED;
         message = "not allowed".to_owned();
-    } else if let Some(_) = err.find::<warp::reject::InvalidQuery>() {
+    } else if err.find::<warp::reject::InvalidQuery>().is_some() {
         code = StatusCode::METHOD_NOT_ALLOWED;
-        message = format!("invalid query string");
+        message = "invalid query string".to_owned();
     } else {
         code = StatusCode::INTERNAL_SERVER_ERROR;
         message = format!("internal error: {:?}", err);
     }
     let json = warp::reply::json(&ErrorMessage {
         code: code.as_u16(),
-        message: message,
+        message,
     });
     Ok(warp::reply::with_status(json, code))
 }
@@ -545,15 +545,15 @@ async fn download(
             (format!("{}.tgz", archive_filename), Some(vec![path]))
         } else if let Some(prefixes) = params.prefixes {
             if path.is_empty() {
-                let archive_filename = params.archive_name.unwrap_or("archive.tgz".into());
+                let archive_filename = params.archive_name.unwrap_or_else(|| "archive.tgz".into());
                 (sanitize_filename(archive_filename), Some(prefixes.prefixes))
             } else {
-                return Err(EsthriRejection::as_warp_rejection(
+                return Err(EsthriRejection::warp_rejection(
                     "path must be empty with prefixes",
                 ));
             }
         } else {
-            return Err(EsthriRejection::as_warp_rejection(
+            return Err(EsthriRejection::warp_rejection(
                 "path and prefixes were empty",
             ));
         };
@@ -590,5 +590,5 @@ async fn download(
 
     resp_builder
         .body(body.unwrap_or_else(Body::empty))
-        .map_err(|err| EsthriRejection::as_warp_rejection(format!("{}", err)))
+        .map_err(|err| EsthriRejection::warp_rejection(format!("{}", err)))
 }
