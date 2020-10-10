@@ -59,18 +59,18 @@ path = "src/lib.rs"
 default = ["http_server"]
 aggressive_lint = []
 http_server = [
-    "warp",
-    "futures-util",
     "async-tar",
     "async-compression",
     "async-stream",
-    "sluice",
     "bytes",
-    "tokio-util",
+    "futures-util",
+    "mime_guess",
+    "sluice",
+    "sanitize-filename",
     "serde",
     "serde_derive",
-    "mime_guess",
-    "sanitize-filename",
+    "tokio-util",
+    "warp",
     ]
 
 [dependencies.ctrlc]
