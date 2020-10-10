@@ -136,6 +136,7 @@ fn test_fetch_archive_helper(
         println!("****************");
     }
 
+    let _ = std::panic::take_hook();
     assert!(success.load(Ordering::Acquire) || timeout_count == 0);
 }
 
