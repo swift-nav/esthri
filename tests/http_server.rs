@@ -57,52 +57,73 @@ fn upload_test_data() -> Result<(), eyre::Report> {
     )
 }
 
-fn validate_fetch_archive(body: bytes::Bytes) {
+fn validate_fetch_archive(body: bytes::Bytes, local_dir: &str, key_hash_pairs: &[KeyHashPair]) {
     let tar = GzDecoder::new(&body[..]);
     let mut archive = Archive::new(tar);
     let _tmp_dir = common::EphemeralTempDir::pushd();
     archive.unpack(".").unwrap();
-    let key_hash_pairs = [
-        KeyHashPair("1-one.data", "827aa1b392c93cb25d2348bdc9b907b0"),
-        KeyHashPair("2-two.bin", "35500e07a35b413fc5f434397a4c6bfa"),
-        KeyHashPair("3-three.junk", "388f9763d78cecece332459baecb4b85"),
-    ];
-    validate_key_hash_pairs("test_fetch_archive", &key_hash_pairs);
+    validate_key_hash_pairs(local_dir, key_hash_pairs);
 }
 
-async fn fetch_archive_and_validate(success: Arc<AtomicBool>) {
+async fn fetch_archive_and_validate(
+    request_path: &str,
+    success: Arc<AtomicBool>,
+    local_dir: &str,
+    key_hash_pairs: &[KeyHashPair],
+) {
     let s3client = common::get_s3client();
     let filter = esthri_filter((*s3client).clone(), common::TEST_BUCKET);
     let mut body = warp::test::request()
-        .path("/test_fetch_archive/?archive=true")
+        .path(request_path)
         .filter(&filter)
         .await
         .unwrap();
     let body_bytes = hyper::body::to_bytes(body.body_mut()).await.unwrap();
-    validate_fetch_archive(body_bytes);
+    validate_fetch_archive(body_bytes, local_dir, key_hash_pairs);
     success.store(true, Ordering::Release);
 }
 
-#[test]
-fn test_fetch_archive() {
+fn test_fetch_archive_helper(
+    request_path: &str,
+    local_dir: &str,
+    key_hash_pairs: Vec<KeyHashPair>,
+) {
     const TIMEOUT_MILLIS: u64 = 20_000;
     const SLEEP_MILLIS: u64 = 50;
 
     let success = Arc::new(AtomicBool::new(false));
     let thread_success = success.clone();
+    let panic_success = success.clone();
 
     let done = Arc::new(AtomicBool::new(false));
     let thread_done = done.clone();
+    let panic_done = done.clone();
+
+    let request_path = request_path.to_owned();
+    let local_dir = local_dir.to_owned();
 
     upload_test_data().unwrap();
 
     std::thread::spawn(move || {
         let mut runtime = Runtime::new().unwrap();
-        runtime.block_on(fetch_archive_and_validate(thread_success));
+        runtime.block_on(fetch_archive_and_validate(
+            &request_path,
+            thread_success,
+            &local_dir,
+            &key_hash_pairs,
+        ));
         thread_done.store(true, Ordering::Relaxed);
     });
 
-    let mut timeout_count = TIMEOUT_MILLIS / SLEEP_MILLIS;
+    let mut timeout_count: i64 = (TIMEOUT_MILLIS / SLEEP_MILLIS) as i64;
+
+    std::panic::set_hook(Box::new(move |panic_info| {
+        panic_success.store(false, Ordering::Release);
+        panic_done.store(true, Ordering::Relaxed);
+
+        eprint!("{:?}", backtrace::Backtrace::new());
+        eprint!("\n{}\n", panic_info);
+    }));
 
     while !done.load(Ordering::Relaxed) && timeout_count > 0 {
         std::thread::sleep(std::time::Duration::from_millis(SLEEP_MILLIS));
@@ -116,4 +137,31 @@ fn test_fetch_archive() {
     }
 
     assert!(success.load(Ordering::Acquire) || timeout_count == 0);
+}
+
+#[test]
+fn test_fetch_archive() {
+    let key_hash_pairs: Vec<KeyHashPair> = vec![
+        KeyHashPair("1-one.data", "827aa1b392c93cb25d2348bdc9b907b0"),
+        KeyHashPair("2-two.bin", "35500e07a35b413fc5f434397a4c6bfa"),
+        KeyHashPair("3-three.junk", "388f9763d78cecece332459baecb4b85"),
+    ];
+    test_fetch_archive_helper(
+        "/test_fetch_archive/?archive=true",
+        "test_fetch_archive",
+        key_hash_pairs,
+    );
+}
+
+#[test]
+fn test_fetch_archive_prefixes() {
+    let key_hash_pairs: Vec<KeyHashPair> = vec![
+        KeyHashPair("1-one.data", "827aa1b392c93cb25d2348bdc9b907b0"),
+        KeyHashPair("2-two.bin", "35500e07a35b413fc5f434397a4c6bfa"),
+    ];
+    test_fetch_archive_helper(
+        "/?prefixes=test_fetch_archive/1-one.data|test_fetch_archive/2-two.bin&archive=true",
+        "test_fetch_archive",
+        key_hash_pairs,
+    );
 }

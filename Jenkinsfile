@@ -48,7 +48,8 @@ pipeline {
                   | git lfs install
                   | git lfs pull
                   |
-                  | cargo test --features http_server -- --nocapture
+                  | RUST_LOG=debug RUST_BACKTRACE=1 \\
+                  |   cargo test --features http_server -- --nocapture
                   |
                  """.stripMargin())
             }

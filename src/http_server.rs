@@ -13,7 +13,6 @@ use warp::http::header::{CACHE_CONTROL, CONTENT_DISPOSITION, CONTENT_LENGTH, CON
 use warp::http::response;
 use warp::http::Response;
 use warp::hyper::Body;
-use warp::reject::Reject;
 use warp::Filter;
 
 use mime_guess::mime::{APPLICATION_OCTET_STREAM, TEXT_HTML_UTF_8};
@@ -50,6 +49,121 @@ use crate::S3ListingItem;
 
 use serde_derive::{Deserialize, Serialize};
 
+#[derive(Deserialize)]
+struct Params {
+    archive: Option<bool>,
+    archive_name: Option<String>,
+    prefixes: Option<S3PrefixList>,
+}
+
+#[derive(Debug)]
+struct S3PrefixList {
+    prefixes: Vec<String>,
+}
+
+impl<'de> serde::Deserialize<'de> for S3PrefixList {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+
+        let s = s.split("|").map(|x| {
+            if !x.is_empty() {
+                Ok(String::from(x))
+            } else {
+                Err("empty prefix")
+            }
+        });
+
+        let s: Result<Vec<String>, _> = s.collect();
+        let prefixes = s.map_err(serde::de::Error::custom)?;
+
+        if prefixes.is_empty() {
+            return Err(serde::de::Error::custom("empty prefix list"));
+        }
+
+        Ok(S3PrefixList { prefixes })
+    }
+}
+
+struct ErrorTracker {
+    has_error: AtomicBool,
+    the_error: Mutex<Option<Box<eyre::Report>>>,
+}
+
+impl ErrorTracker {
+    fn new() -> Self {
+        ErrorTracker {
+            has_error: AtomicBool::new(false),
+            the_error: Mutex::new(None),
+        }
+    }
+    fn record_error(error_tracker: ErrorTrackerArc, err: eyre::Report) {
+        error_tracker.0.has_error.store(true, Ordering::Release);
+        let mut the_error = error_tracker
+            .0
+            .the_error
+            .lock()
+            .expect("locking error field");
+        *the_error = Some(Box::new(err));
+    }
+}
+
+#[derive(Clone)]
+struct ErrorTrackerArc(Arc<ErrorTracker>);
+
+impl ErrorTrackerArc {
+    fn new() -> ErrorTrackerArc {
+        ErrorTrackerArc(Arc::new(ErrorTracker::new()))
+    }
+    fn has_error(&self) -> bool {
+        self.0.has_error.load(Ordering::Acquire)
+    }
+}
+
+impl Into<Option<io::Error>> for ErrorTrackerArc {
+    fn into(self) -> Option<io::Error> {
+        let the_error = self.0.the_error.lock().unwrap();
+        let the_error = {
+            if let Some(the_error) = &*the_error {
+                the_error
+            } else {
+                return None;
+            }
+        };
+        if let Some(the_error) = the_error.downcast_ref::<io::Error>() {
+            Some(io::Error::new(the_error.kind(), format!("{}", the_error)))
+        } else {
+            Some(io::Error::new(ErrorKind::Other, format!("{}", the_error)))
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+struct EsthriRejection {
+    message: String,
+}
+
+impl warp::reject::Reject for EsthriRejection {}
+
+impl EsthriRejection {
+    fn as_warp_rejection<MsgT: AsRef<str>>(message: MsgT) -> warp::Rejection {
+        warp::reject::custom(EsthriRejection {
+            message: message.as_ref().to_owned(),
+        })
+    }
+    fn as_warp_result<T, MsgT: AsRef<str>>(message: MsgT) -> Result<T, warp::Rejection> {
+        Err(EsthriRejection::as_warp_rejection(message))
+    }
+}
+
+#[derive(Serialize)]
+struct ErrorMessage {
+    code: u16,
+    message: String,
+}
+
 fn with_bucket(bucket: String) -> impl Filter<Extract = (String,), Error = Infallible> + Clone {
     warp::any().map(move || bucket.clone())
 }
@@ -58,11 +172,6 @@ fn with_s3_client(
     s3_client: S3Client,
 ) -> impl Filter<Extract = (S3Client,), Error = Infallible> + Clone {
     warp::any().map(move || s3_client.clone())
-}
-
-#[derive(Deserialize, Serialize)]
-struct Params {
-    archive: Option<bool>,
 }
 
 pub fn esthri_filter(
@@ -82,7 +191,7 @@ pub async fn run(
     bucket: &str,
     address: &SocketAddr,
 ) -> Result<(), Infallible> {
-    let routes = esthri_filter(s3_client, bucket);
+    let routes = esthri_filter(s3_client, bucket).recover(handle_rejection);
     warp::serve(routes).run(*address).await;
 
     Ok(())
@@ -172,59 +281,6 @@ async fn stream_object_to_archive<T: S3 + Send>(
     !error_tracker.has_error()
 }
 
-struct ErrorTracker {
-    has_error: AtomicBool,
-    the_error: Mutex<Option<Box<eyre::Report>>>,
-}
-
-impl ErrorTracker {
-    fn new() -> Self {
-        ErrorTracker {
-            has_error: AtomicBool::new(false),
-            the_error: Mutex::new(None),
-        }
-    }
-    fn record_error(error_tracker: ErrorTrackerArc, err: eyre::Report) {
-        error_tracker.0.has_error.store(true, Ordering::Release);
-        let mut the_error = error_tracker
-            .0
-            .the_error
-            .lock()
-            .expect("locking error field");
-        *the_error = Some(Box::new(err));
-    }
-}
-
-#[derive(Clone)]
-struct ErrorTrackerArc(Arc<ErrorTracker>);
-
-impl ErrorTrackerArc {
-    fn new() -> ErrorTrackerArc {
-        ErrorTrackerArc(Arc::new(ErrorTracker::new()))
-    }
-    fn has_error(&self) -> bool {
-        self.0.has_error.load(Ordering::Acquire)
-    }
-}
-
-impl Into<Option<io::Error>> for ErrorTrackerArc {
-    fn into(self) -> Option<io::Error> {
-        let the_error = self.0.the_error.lock().unwrap();
-        let the_error = {
-            if let Some(the_error) = &*the_error {
-                the_error
-            } else {
-                return None;
-            }
-        };
-        if let Some(the_error) = the_error.downcast_ref::<io::Error>() {
-            Some(io::Error::new(the_error.kind(), format!("{}", the_error)))
-        } else {
-            Some(io::Error::new(ErrorKind::Other, format!("{}", the_error)))
-        }
-    }
-}
-
 async fn create_error_monitor_stream<T: Stream<Item = io::Result<BytesMut>> + Unpin>(
     error_tracker: ErrorTrackerArc,
     mut source_stream: T,
@@ -256,41 +312,43 @@ async fn create_error_monitor_stream<T: Stream<Item = io::Result<BytesMut>> + Un
 async fn create_archive_stream(
     s3: S3Client,
     bucket: String,
-    path: String,
+    prefixes: Vec<String>,
     error_tracker: ErrorTrackerArc,
 ) -> impl Stream<Item = io::Result<BytesMut>> {
     let (tar_pipe_reader, tar_pipe_writer) = pipe::pipe();
     let mut archive = Builder::new(tar_pipe_writer);
     let error_tracker_reader = error_tracker.clone();
     tokio::spawn(async move {
-        let mut object_list_stream = list_objects_stream(&s3, &bucket, &path);
-        let error_tracker = error_tracker.clone();
-        loop {
-            match object_list_stream.try_next().await {
-                Ok(None) => break,
-                Ok(Some(items)) => {
-                    for s3obj in items {
-                        let s3obj = s3obj.unwrap_object();
-                        if !stream_object_to_archive(
-                            &s3,
-                            &bucket,
-                            &s3obj.key,
-                            &mut archive,
-                            error_tracker.clone(),
-                        )
-                        .await
-                        {
+        for prefix in prefixes {
+            let mut object_list_stream = list_objects_stream(&s3, &bucket, &prefix);
+            let error_tracker = error_tracker.clone();
+            loop {
+                match object_list_stream.try_next().await {
+                    Ok(None) => break,
+                    Ok(Some(items)) => {
+                        for s3obj in items {
+                            let s3obj = s3obj.unwrap_object();
+                            if !stream_object_to_archive(
+                                &s3,
+                                &bucket,
+                                &s3obj.key,
+                                &mut archive,
+                                error_tracker.clone(),
+                            )
+                            .await
+                            {
+                                break;
+                            }
+                        }
+                        if error_tracker.has_error() {
                             break;
                         }
                     }
-                    if error_tracker.has_error() {
+                    Err(err) => {
+                        let err = err.wrap_err("listing objects");
+                        abort_with_error(Some(&mut archive), error_tracker.clone(), err).await;
                         break;
                     }
-                }
-                Err(err) => {
-                    let err = err.wrap_err("listing objects");
-                    abort_with_error(Some(&mut archive), error_tracker.clone(), err).await;
-                    break;
                 }
             }
         }
@@ -371,20 +429,6 @@ async fn create_item_stream(
     }
 }
 
-#[derive(Debug, PartialEq)]
-struct EsthriInternalError;
-
-impl Reject for EsthriInternalError {}
-
-impl EsthriInternalError {
-    fn rejection() -> warp::Rejection {
-        warp::reject::custom(EsthriInternalError {})
-    }
-    fn result<T>() -> Result<T, warp::Rejection> {
-        Err(EsthriInternalError::rejection())
-    }
-}
-
 async fn item_pre_response<'a, T: S3 + Send>(
     s3: &T,
     bucket: String,
@@ -402,8 +446,8 @@ async fn item_pre_response<'a, T: S3 + Send>(
                 }
             }
             Err(err) => {
-                error!("error listing item: {}", err);
-                return EsthriInternalError::result();
+                let message = format!("error listing item: {}", err);
+                return EsthriRejection::as_warp_result(message);
             }
         }
     };
@@ -430,6 +474,52 @@ async fn item_pre_response<'a, T: S3 + Send>(
     }
 }
 
+/// An API error serializable to JSON.
+async fn handle_rejection(err: warp::Rejection) -> Result<impl warp::Reply, Infallible> {
+    use warp::http::StatusCode;
+    let code;
+    let message;
+    if err.is_not_found() {
+        code = StatusCode::NOT_FOUND;
+        message = "not found".to_owned();
+    } else if let Some(EsthriRejection {
+        message: message_inner,
+    }) = err.find()
+    {
+        code = StatusCode::BAD_REQUEST;
+        message = message_inner.to_owned();
+    } else if let Some(_) = err.find::<warp::filters::body::BodyDeserializeError>() {
+        message = "deserialization error".to_owned();
+        code = StatusCode::BAD_REQUEST;
+    } else if let Some(_) = err.find::<warp::reject::MethodNotAllowed>() {
+        code = StatusCode::METHOD_NOT_ALLOWED;
+        message = "not allowed".to_owned();
+    } else if let Some(_) = err.find::<warp::reject::InvalidQuery>() {
+        code = StatusCode::METHOD_NOT_ALLOWED;
+        message = format!("invalid query string");
+    } else {
+        code = StatusCode::INTERNAL_SERVER_ERROR;
+        message = format!("internal error: {:?}", err);
+    }
+    let json = warp::reply::json(&ErrorMessage {
+        code: code.as_u16(),
+        message: message,
+    });
+    Ok(warp::reply::with_status(json, code))
+}
+
+fn sanitize_filename(filename: String) -> String {
+    let options = sanitize_filename::Options {
+        windows: true,
+        replacement: "_",
+        ..Default::default()
+    };
+    sanitize_filename::sanitize_with_options(
+        filename.strip_suffix("/").unwrap_or(&filename),
+        options,
+    )
+}
+
 async fn download(
     path: warp::path::FullPath,
     s3: S3Client,
@@ -445,20 +535,42 @@ async fn download(
         .unwrap_or_default();
     let error_tracker = ErrorTrackerArc::new();
     let resp_builder = Response::builder();
-    debug!("path: {}, params: archive: {:?}", path, params.archive);
-
+    debug!(
+        "path: {}, params: archive: {:?}, prefixes: {:?}",
+        path, params.archive, params.prefixes
+    );
     let (body, resp_builder) = if params.archive.unwrap_or(false) {
-        let stream = create_archive_stream(s3.clone(), bucket, path.clone(), error_tracker).await;
-        let archive_filename = path.strip_suffix("/").unwrap_or(&path).replace("/", "_");
-        (
-            Some(Body::wrap_stream(stream)),
-            resp_builder
-                .header(CONTENT_TYPE, APPLICATION_OCTET_STREAM.essence_str())
-                .header(
-                    CONTENT_DISPOSITION,
-                    format!("attachment; filename=\"{}.tgz\"", archive_filename),
-                ),
-        )
+        let (archive_filename, prefixes) = if !path.is_empty() && params.prefixes.is_none() {
+            let archive_filename = sanitize_filename(path.clone());
+            (format!("{}.tgz", archive_filename), Some(vec![path]))
+        } else if let Some(prefixes) = params.prefixes {
+            if path.is_empty() {
+                let archive_filename = params.archive_name.unwrap_or("archive.tgz".into());
+                (sanitize_filename(archive_filename), Some(prefixes.prefixes))
+            } else {
+                return Err(EsthriRejection::as_warp_rejection(
+                    "path must be empty with prefixes",
+                ));
+            }
+        } else {
+            return Err(EsthriRejection::as_warp_rejection(
+                "path and prefixes were empty",
+            ));
+        };
+        if let Some(prefixes) = prefixes {
+            let stream = create_archive_stream(s3.clone(), bucket, prefixes, error_tracker).await;
+            (
+                Some(Body::wrap_stream(stream)),
+                resp_builder
+                    .header(CONTENT_TYPE, APPLICATION_OCTET_STREAM.essence_str())
+                    .header(
+                        CONTENT_DISPOSITION,
+                        format!("attachment; filename=\"{}\"", archive_filename),
+                    ),
+            )
+        } else {
+            (None, resp_builder)
+        }
     } else if path.ends_with('/') || path.is_empty() {
         let stream = create_index_stream(s3.clone(), bucket, path).await;
         (
@@ -478,8 +590,5 @@ async fn download(
 
     resp_builder
         .body(body.unwrap_or_else(Body::empty))
-        .map_err(|err| {
-            error!("esthri internal error: {}", err);
-            EsthriInternalError::rejection()
-        })
+        .map_err(|err| EsthriRejection::as_warp_rejection(format!("{}", err)))
 }
