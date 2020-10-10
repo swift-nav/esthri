@@ -121,10 +121,14 @@ enum Command {
         key: String,
     },
     #[cfg(feature = "http_server")]
-    /// Launch and HTTP server attached to the specified bucket
+    /// Launch an HTTP server attached to the specified bucket
+    /// 
+    /// This also supports serving dynamic archives of bucket contents
     Serve {
+        /// The bucket to serve over HTTP
         #[structopt(long)]
         bucket: String,
+        /// The listening address for the server
         #[structopt(long, default_value = "127.0.0.1:3030")]
         address: std::net::SocketAddr,
     },
