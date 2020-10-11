@@ -1,7 +1,11 @@
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
-// Not all test modules use everything in this helper module
-#![allow(dead_code)]
+mod download_test;
+mod http_server;
+mod list_object_test;
+mod sync_test;
+mod tail_test;
+mod upload_test;
 
 use std::fs;
 
