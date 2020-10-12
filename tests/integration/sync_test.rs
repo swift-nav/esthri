@@ -6,13 +6,11 @@ use esthri_lib::blocking;
 use esthri_lib::sync;
 use esthri_lib::types::SyncDirection;
 
-mod common;
-
-use common::{validate_key_hash_pairs, KeyHashPair};
+use crate::{validate_key_hash_pairs, KeyHashPair};
 
 #[test]
 fn test_sync_down() {
-    let s3client = common::get_s3client();
+    let s3client = crate::get_s3client();
     let local_directory = "tests/data/";
     let s3_key = "test_folder/";
     let includes: Option<Vec<String>> = Some(vec!["*.txt".to_string()]);
@@ -21,7 +19,7 @@ fn test_sync_down() {
     let res = blocking::sync(
         s3client.as_ref(),
         SyncDirection::down,
-        common::TEST_BUCKET,
+        crate::TEST_BUCKET,
         &s3_key,
         &local_directory,
         &includes,
@@ -32,7 +30,7 @@ fn test_sync_down() {
 
 #[tokio::test]
 async fn test_sync_down_async() {
-    let s3client = common::get_s3client();
+    let s3client = crate::get_s3client();
     let local_directory = "tests/data/";
     let s3_key = "test_folder/";
     let includes: Option<Vec<String>> = Some(vec!["*.txt".to_string()]);
@@ -41,7 +39,7 @@ async fn test_sync_down_async() {
     let res = sync(
         s3client.as_ref(),
         SyncDirection::down,
-        common::TEST_BUCKET,
+        crate::TEST_BUCKET,
         &s3_key,
         &local_directory,
         &includes,
@@ -53,14 +51,14 @@ async fn test_sync_down_async() {
 
 #[test]
 fn test_sync_down_fail() {
-    let s3client = common::get_s3client();
+    let s3client = crate::get_s3client();
     let local_directory = "tests/data/";
     let s3_key = "test_folder";
 
     let res = blocking::sync(
         s3client.as_ref(),
         SyncDirection::down,
-        common::TEST_BUCKET,
+        crate::TEST_BUCKET,
         &s3_key,
         &local_directory,
         &None,
@@ -71,14 +69,14 @@ fn test_sync_down_fail() {
 
 #[test]
 fn test_sync_up_fail() {
-    let s3client = common::get_s3client();
+    let s3client = crate::get_s3client();
     let local_directory = "tests/data/";
     let s3_key = "test_folder";
 
     let res = blocking::sync(
         s3client.as_ref(),
         SyncDirection::up,
-        common::TEST_BUCKET,
+        crate::TEST_BUCKET,
         &local_directory,
         &s3_key,
         &None,
@@ -89,7 +87,7 @@ fn test_sync_up_fail() {
 
 #[test]
 fn test_sync_up() {
-    let s3client = common::get_s3client();
+    let s3client = crate::get_s3client();
     let local_directory = "tests/data/";
     let s3_key = "test_folder/";
     let includes: Option<Vec<String>> = Some(vec!["*.txt".to_string()]);
@@ -98,7 +96,7 @@ fn test_sync_up() {
     let res = blocking::sync(
         s3client.as_ref(),
         SyncDirection::up,
-        common::TEST_BUCKET,
+        crate::TEST_BUCKET,
         &s3_key,
         &local_directory,
         &includes,
@@ -109,7 +107,7 @@ fn test_sync_up() {
 
 #[tokio::test]
 async fn test_sync_up_async() {
-    let s3client = common::get_s3client();
+    let s3client = crate::get_s3client();
     let local_directory = "tests/data/";
     let s3_key = "test_folder/";
     let includes: Option<Vec<String>> = Some(vec!["*.txt".to_string()]);
@@ -118,7 +116,7 @@ async fn test_sync_up_async() {
     let res = sync(
         s3client.as_ref(),
         SyncDirection::up,
-        common::TEST_BUCKET,
+        crate::TEST_BUCKET,
         &s3_key,
         &local_directory,
         &includes,
@@ -130,13 +128,13 @@ async fn test_sync_up_async() {
 
 #[test]
 fn test_sync_up_default() {
-    let s3client = common::get_s3client();
+    let s3client = crate::get_s3client();
     let local_directory = "tests/data/sync_up";
     let s3_key = "test_sync_up_default/";
     let res = blocking::sync(
         s3client.as_ref(),
         SyncDirection::up,
-        common::TEST_BUCKET,
+        crate::TEST_BUCKET,
         &s3_key,
         &local_directory,
         &None,
@@ -152,7 +150,7 @@ fn test_sync_up_default() {
 
     for key_hash_pair in &key_hash_pairs[..] {
         let key = format!("{}{}", s3_key, key_hash_pair.0);
-        let res = blocking::head_object(s3client.as_ref(), common::TEST_BUCKET, &key);
+        let res = blocking::head_object(s3client.as_ref(), crate::TEST_BUCKET, &key);
         assert!(res.is_ok(), "fetching s3 etag failed for: {}", key);
         let res = res.unwrap();
         assert!(res.is_some(), "s3 etag returned was nil for: {}", key);
@@ -162,7 +160,7 @@ fn test_sync_up_default() {
 
 #[test]
 fn test_sync_down_default() {
-    let s3client = common::get_s3client();
+    let s3client = crate::get_s3client();
     let local_directory = "tests/data/sync_down/d";
     let sync_dir_meta = fs::metadata(local_directory);
 
@@ -179,7 +177,7 @@ fn test_sync_down_default() {
     let res = blocking::sync(
         s3client.as_ref(),
         SyncDirection::down,
-        common::TEST_BUCKET,
+        crate::TEST_BUCKET,
         &s3_key,
         &local_directory,
         &None,

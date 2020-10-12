@@ -14,20 +14,18 @@ use esthri_lib::http_server::esthri_filter;
 use esthri_lib::types::SyncDirection;
 use esthri_lib::upload;
 
-mod common;
-
-use common::{validate_key_hash_pairs, KeyHashPair};
+use crate::{validate_key_hash_pairs, KeyHashPair};
 
 #[tokio::test]
 async fn test_fetch_object() {
     let filename = "tests/data/test_file.txt".to_owned();
 
-    let s3client = common::get_s3client();
-    let bucket = common::TEST_BUCKET;
+    let s3client = crate::get_s3client();
+    let bucket = crate::TEST_BUCKET;
 
     let s3_key = "test_file.txt".to_owned();
 
-    let res = upload(s3client.as_ref(), common::TEST_BUCKET, &s3_key, &filename).await;
+    let res = upload(s3client.as_ref(), crate::TEST_BUCKET, &s3_key, &filename).await;
     assert!(res.is_ok());
 
     let filter = esthri_filter((*s3client).clone(), bucket);
@@ -43,13 +41,13 @@ async fn test_fetch_object() {
 }
 
 fn upload_test_data() -> Result<(), eyre::Report> {
-    let s3client = common::get_s3client();
+    let s3client = crate::get_s3client();
     let local_directory = "tests/data/sync_up";
     let s3_key = "test_fetch_archive/";
     blocking::sync(
         s3client.as_ref(),
         SyncDirection::up,
-        common::TEST_BUCKET,
+        crate::TEST_BUCKET,
         &s3_key,
         &local_directory,
         &None,
@@ -60,7 +58,7 @@ fn upload_test_data() -> Result<(), eyre::Report> {
 fn validate_fetch_archive(body: bytes::Bytes, local_dir: &str, key_hash_pairs: &[KeyHashPair]) {
     let tar = GzDecoder::new(&body[..]);
     let mut archive = Archive::new(tar);
-    let _tmp_dir = common::EphemeralTempDir::pushd();
+    let _tmp_dir = crate::EphemeralTempDir::pushd();
     archive.unpack(".").unwrap();
     validate_key_hash_pairs(local_dir, key_hash_pairs);
 }
@@ -71,8 +69,8 @@ async fn fetch_archive_and_validate(
     local_dir: &str,
     key_hash_pairs: &[KeyHashPair],
 ) {
-    let s3client = common::get_s3client();
-    let filter = esthri_filter((*s3client).clone(), common::TEST_BUCKET);
+    let s3client = crate::get_s3client();
+    let filter = esthri_filter((*s3client).clone(), crate::TEST_BUCKET);
     let mut body = warp::test::request()
         .path(request_path)
         .filter(&filter)
