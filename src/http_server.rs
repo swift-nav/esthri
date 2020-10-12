@@ -225,44 +225,40 @@ async fn stream_object_to_archive<T: S3 + Send>(
     archive: &mut Builder<PipeWriter>,
     error_tracker: ErrorTrackerArc,
 ) -> bool {
-    let obj_info = {
-        match head_object_info(s3, bucket, path).await {
-            Ok(obj_info) => {
-                if let Some(obj_info) = obj_info {
-                    obj_info
-                } else {
-                    abort_with_error(
-                        Some(archive),
-                        error_tracker.clone(),
-                        eyre!("object not found: {}", path),
-                    )
-                    .await;
-                    return !error_tracker.has_error();
-                }
-            }
-            Err(err) => {
+    let obj_info = match head_object_info(s3, bucket, path).await {
+        Ok(obj_info) => {
+            if let Some(obj_info) = obj_info {
+                obj_info
+            } else {
                 abort_with_error(
                     Some(archive),
                     error_tracker.clone(),
-                    err.wrap_err("s3 head operation failed"),
+                    eyre!("object not found: {}", path),
                 )
                 .await;
                 return !error_tracker.has_error();
             }
         }
+        Err(err) => {
+            abort_with_error(
+                Some(archive),
+                error_tracker.clone(),
+                err.wrap_err("s3 head operation failed"),
+            )
+            .await;
+            return !error_tracker.has_error();
+        }
     };
-    let stream = {
-        match download_streaming(s3, bucket, path).await {
-            Ok(byte_stream) => byte_stream,
-            Err(err) => {
-                abort_with_error(
-                    Some(archive),
-                    error_tracker.clone(),
-                    err.wrap_err("s3 download failed"),
-                )
-                .await;
-                return !error_tracker.has_error();
-            }
+    let stream = match download_streaming(s3, bucket, path).await {
+        Ok(byte_stream) => byte_stream,
+        Err(err) => {
+            abort_with_error(
+                Some(archive),
+                error_tracker.clone(),
+                err.wrap_err("s3 download failed"),
+            )
+            .await;
+            return !error_tracker.has_error();
         }
     };
     let mut header = Header::new_gnu();
@@ -412,15 +408,13 @@ async fn create_item_stream(
     path: String,
 ) -> impl Stream<Item = io::Result<Bytes>> {
     stream! {
-        let mut stream = {
-            match download_streaming(&s3, &bucket, &path).await {
-                Ok(byte_stream) => byte_stream,
-                Err(err) => {
-                    yield Err(into_io_error(&err));
-                    return;
-                }
-            }
-        };
+    let mut stream = match download_streaming(&s3, &bucket, &path).await {
+        Ok(byte_stream) => byte_stream,
+        Err(err) => {
+            yield Err(into_io_error(&err));
+            return;
+        }
+    };
         loop {
             if let Some(data) = stream.next().await {
                 yield data;
@@ -438,19 +432,17 @@ async fn item_pre_response<'a, T: S3 + Send>(
     if_none_match: Option<String>,
     mut resp_builder: response::Builder,
 ) -> Result<(response::Builder, Option<(String, String)>), warp::Rejection> {
-    let obj_info = {
-        match head_object_info(s3, &bucket, &path).await {
-            Ok(obj_info) => {
-                if let Some(obj_info) = obj_info {
-                    obj_info
-                } else {
-                    return Err(warp::reject::not_found());
-                }
+    let obj_info = match head_object_info(s3, &bucket, &path).await {
+        Ok(obj_info) => {
+            if let Some(obj_info) = obj_info {
+                obj_info
+            } else {
+                return Err(warp::reject::not_found());
             }
-            Err(err) => {
-                let message = format!("error listing item: {}", err);
-                return EsthriRejection::warp_result(message);
-            }
+        }
+        Err(err) => {
+            let message = format!("error listing item: {}", err);
+            return EsthriRejection::warp_result(message);
         }
     };
     let not_modified = if_none_match

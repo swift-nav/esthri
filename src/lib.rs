@@ -758,19 +758,12 @@ impl S3ListingItem {
 }
 
 impl S3Listing {
-    fn combined(self) -> Vec<S3ListingItem> {
-        let common_prefixes: Vec<S3ListingItem> = self
+        let common_prefixes = self
             .common_prefixes
             .into_iter()
-            .map(S3ListingItem::common_prefix)
-            .collect();
-        let contents: Vec<S3ListingItem> = self
-            .contents
-            .into_iter()
-            .map(S3ListingItem::object)
-            .collect();
-        [common_prefixes, contents].concat()
-    }
+            .map(S3ListingItem::common_prefix);
+        let contents = self.contents.into_iter().map(S3ListingItem::object);
+        common_prefixes.chain(contents).collect()
     fn count(&self) -> usize {
         self.contents.len() + self.common_prefixes.len()
     }
