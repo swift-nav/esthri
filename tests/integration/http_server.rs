@@ -11,10 +11,9 @@ use tokio::runtime::Runtime;
 
 use esthri_lib::blocking;
 use esthri_lib::http_server::esthri_filter;
-use esthri_lib::types::SyncDirection;
 use esthri_lib::upload;
 
-use crate::{validate_key_hash_pairs, KeyHashPair};
+use crate::{validate_key_hash_pairs, DateTime, KeyHashPair};
 
 #[tokio::test]
 async fn test_fetch_object() {
@@ -43,24 +42,45 @@ async fn test_fetch_object() {
 fn upload_test_data() -> Result<(), eyre::Report> {
     let s3client = crate::get_s3client();
     let local_directory = "tests/data/sync_up";
-    let s3_key = "test_fetch_archive/";
-    blocking::sync(
-        s3client.as_ref(),
-        SyncDirection::up,
-        crate::TEST_BUCKET,
-        &s3_key,
-        &local_directory,
-        &None,
-        &None,
-    )
+    let s3_key = "test_fetch_archive";
+    let filenames = ["1-one.data", "2-two.bin", "3-three.junk"];
+    for filename in &filenames {
+        let filepath = std::path::Path::new(local_directory).join(filename);
+        let s3_key = format!("{}/{}", s3_key, filename);
+        blocking::upload(
+            s3client.as_ref(),
+            crate::TEST_BUCKET,
+            &s3_key,
+            filepath.to_str().unwrap(),
+        )?;
+    }
+    Ok(())
 }
 
-fn validate_fetch_archive(body: bytes::Bytes, local_dir: &str, key_hash_pairs: &[KeyHashPair]) {
+fn validate_fetch_archive(
+    body: bytes::Bytes,
+    local_dir: &str,
+    key_hash_pairs: &[KeyHashPair],
+    upload_time: DateTime,
+) {
+    use std::path::Path;
     let tar = GzDecoder::new(&body[..]);
     let mut archive = Archive::new(tar);
     let _tmp_dir = crate::EphemeralTempDir::pushd();
     archive.unpack(".").unwrap();
     validate_key_hash_pairs(local_dir, key_hash_pairs);
+    for key_hash_pair in key_hash_pairs {
+        let filename = Path::new(key_hash_pair.0);
+        let filepath = Path::new(local_dir).join(filename);
+        let file_last_mod = std::fs::metadata(&filepath)
+            .expect("stat'ing test file path")
+            .modified()
+            .expect("last modified timestamp");
+        let mod_time: DateTime = file_last_mod.into();
+        let time_diff = mod_time - upload_time;
+        // Hopefully it never takes more than an hour to upload the files
+        assert_eq!(time_diff.num_hours(), 0);
+    }
 }
 
 async fn fetch_archive_and_validate(
@@ -68,6 +88,7 @@ async fn fetch_archive_and_validate(
     success: Arc<AtomicBool>,
     local_dir: &str,
     key_hash_pairs: &[KeyHashPair],
+    upload_time: DateTime,
 ) {
     let s3client = crate::get_s3client();
     let filter = esthri_filter((*s3client).clone(), crate::TEST_BUCKET);
@@ -77,7 +98,7 @@ async fn fetch_archive_and_validate(
         .await
         .unwrap();
     let body_bytes = hyper::body::to_bytes(body.body_mut()).await.unwrap();
-    validate_fetch_archive(body_bytes, local_dir, key_hash_pairs);
+    validate_fetch_archive(body_bytes, local_dir, key_hash_pairs, upload_time);
     success.store(true, Ordering::Release);
 }
 
@@ -100,6 +121,7 @@ fn test_fetch_archive_helper(
     let request_path = request_path.to_owned();
     let local_dir = local_dir.to_owned();
 
+    let upload_time: DateTime = std::time::SystemTime::now().into();
     upload_test_data().unwrap();
 
     std::panic::set_hook(Box::new(move |panic_info| {
@@ -116,6 +138,7 @@ fn test_fetch_archive_helper(
             thread_success,
             &local_dir,
             &key_hash_pairs,
+            upload_time,
         ));
         thread_done.store(true, Ordering::Relaxed);
     });

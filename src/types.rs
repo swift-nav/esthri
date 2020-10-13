@@ -10,6 +10,7 @@
 * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
 */
 
+use chrono::{DateTime, Utc};
 use clap::arg_enum;
 
 arg_enum! {
@@ -19,4 +20,11 @@ arg_enum! {
         up,
         down,
     }
+}
+
+#[derive(Debug)]
+pub struct ObjectInfo {
+    pub e_tag: String,
+    pub size: i64,
+    pub last_modified: DateTime<Utc>,
 }

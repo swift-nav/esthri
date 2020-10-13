@@ -43,13 +43,13 @@ pub mod types;
 
 use crate::errors::EsthriError;
 use crate::retry::handle_dispatch_error;
-use crate::types::SyncDirection;
+use crate::types::{ObjectInfo, SyncDirection};
 
 use rusoto_s3::{
     AbortMultipartUploadRequest, CompleteMultipartUploadRequest, CompletedMultipartUpload,
     CompletedPart, CreateMultipartUploadRequest, GetObjectError, GetObjectOutput, GetObjectRequest,
-    HeadObjectRequest, ListObjectsV2Request, PutObjectRequest, S3Client, StreamingBody,
-    UploadPartRequest, S3,
+    HeadObjectOutput, HeadObjectRequest, ListObjectsV2Request, PutObjectRequest, S3Client,
+    StreamingBody, UploadPartRequest, S3,
 };
 
 use rusoto_core::{ByteStream, Region, RusotoError};
@@ -78,26 +78,7 @@ const CHUNK_SIZE: u64 = 8 * 1024 * 1024;
 const READ_SIZE: usize = 4096;
 
 #[logfn(err = "ERROR")]
-pub async fn head_object<T>(s3: &T, bucket: &str, key: &str) -> Result<Option<String>>
-where
-    T: S3 + Send,
-{
-    info!("head-object: bucket={}, key={}", bucket, key);
-    let info = head_object_request(s3, bucket, key).await?;
-    debug!("object_info: {:?}", info);
-    Ok(info.map(|x| x.e_tag))
-}
-
-#[logfn(err = "ERROR")]
-pub async fn head_object_etag<T>(s3: &T, bucket: &str, key: &str) -> Result<Option<String>>
-where
-    T: S3 + Send,
-{
-    head_object(s3, bucket, key).await
-}
-
-#[logfn(err = "ERROR")]
-pub async fn head_object_info<T>(s3: &T, bucket: &str, key: &str) -> Result<Option<ObjectInfo>>
+pub async fn head_object<T>(s3: &T, bucket: &str, key: &str) -> Result<Option<ObjectInfo>>
 where
     T: S3 + Send,
 {
@@ -666,12 +647,6 @@ fn s3_compute_etag(path: &str) -> Result<String> {
     }
 }
 
-#[derive(Debug)]
-pub struct ObjectInfo {
-    pub e_tag: String,
-    pub size: i64,
-}
-
 async fn get_object_request<T>(
     s3: &T,
     gor: &GetObjectRequest,
@@ -680,6 +655,48 @@ where
     T: S3 + Send,
 {
     handle_dispatch_error(|| s3.get_object(gor.clone())).await
+}
+
+fn process_head_obj_resp(hoo: HeadObjectOutput) -> Result<Option<ObjectInfo>> {
+    if let Some(true) = hoo.delete_marker {
+        return Ok(None);
+    }
+
+    let e_tag = if let Some(e_tag) = hoo.e_tag {
+        e_tag
+    } else {
+        return Err(anyhow!("head_object failed (3): No e_tag found: {:?}", hoo));
+    };
+
+    let last_modified: String = if let Some(last_modified) = hoo.last_modified {
+        last_modified
+    } else {
+        return Err(anyhow!("head_object failed (3): No last_modified found"));
+    };
+
+    let last_modified: chrono::DateTime<chrono::Utc> =
+        match chrono::DateTime::parse_from_rfc2822(&last_modified) {
+            Ok(last_modified) => last_modified.into(),
+            Err(err) => {
+                return Err(anyhow!(
+                    "head_object failed (3): Failed to parse last_modified field: {} ({})",
+                    last_modified,
+                    err
+                ));
+            }
+        };
+
+    let size = if let Some(content_length) = hoo.content_length {
+        content_length
+    } else {
+        return Err(anyhow!("head_object failed (3): No content_length found"));
+    };
+
+    Ok(Some(ObjectInfo {
+        e_tag,
+        size,
+        last_modified,
+    }))
 }
 
 #[logfn(err = "ERROR")]
@@ -699,19 +716,7 @@ where
     .await;
 
     match res {
-        Ok(hoo) => {
-            if let Some(true) = hoo.delete_marker {
-                Ok(None)
-            } else if let Some(e_tag) = hoo.e_tag {
-                if let Some(size) = hoo.content_length {
-                    Ok(Some(ObjectInfo { e_tag, size }))
-                } else {
-                    Err(anyhow!("head_object failed (3): No content_length found"))
-                }
-            } else {
-                Err(anyhow!("head_object failed (3): No e_tag found: {:?}", hoo))
-            }
-        }
+        Ok(hoo) => process_head_obj_resp(hoo),
         Err(RusotoError::Unknown(e)) => {
             if e.status == 404 {
                 Ok(None)

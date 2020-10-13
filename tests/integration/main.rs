@@ -104,3 +104,5 @@ pub fn validate_key_hash_pairs(local_directory: &str, key_hash_pairs: &[KeyHashP
         );
     }
 }
+
+type DateTime = chrono::DateTime<chrono::Utc>;

@@ -15,10 +15,11 @@ use std::io::prelude::*;
 use rusoto_s3::S3;
 
 use super::types::SyncDirection;
+use super::ObjectInfo;
 use super::Result;
 
 #[tokio::main]
-pub async fn head_object<T>(s3: &T, bucket: &str, key: &str) -> Result<Option<String>>
+pub async fn head_object<T>(s3: &T, bucket: &str, key: &str) -> Result<Option<ObjectInfo>>
 where
     T: S3 + Send,
 {

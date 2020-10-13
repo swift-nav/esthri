@@ -44,12 +44,14 @@ use futures::stream::StreamExt;
 use eyre::{eyre, Report};
 
 use crate::download_streaming;
-use crate::head_object_info;
+use crate::head_object;
 use crate::list_directory_stream;
 use crate::list_objects_stream;
 use crate::S3ListingItem;
 
 use serde_derive::{Deserialize, Serialize};
+
+const ARCHIVE_ENTRY_MODE: u32 = 0o0644;
 
 #[derive(Deserialize)]
 struct Params {
@@ -225,7 +227,7 @@ async fn stream_object_to_archive<T: S3 + Send>(
     archive: &mut Builder<PipeWriter>,
     error_tracker: ErrorTrackerArc,
 ) -> bool {
-    let obj_info = match head_object_info(s3, bucket, path).await {
+    let obj_info = match head_object(s3, bucket, path).await {
         Ok(obj_info) => {
             if let Some(obj_info) = obj_info {
                 obj_info
@@ -262,7 +264,8 @@ async fn stream_object_to_archive<T: S3 + Send>(
         }
     };
     let mut header = Header::new_gnu();
-    header.set_mode(0o0644);
+    header.set_mode(ARCHIVE_ENTRY_MODE);
+    header.set_mtime(obj_info.last_modified.timestamp() as u64);
     header.set_size(obj_info.size as u64);
     let mut stream_reader = stream.into_async_read().compat();
     if let Err(err) = archive
@@ -432,7 +435,7 @@ async fn item_pre_response<'a, T: S3 + Send>(
     if_none_match: Option<String>,
     mut resp_builder: response::Builder,
 ) -> Result<(response::Builder, Option<(String, String)>), warp::Rejection> {
-    let obj_info = match head_object_info(s3, &bucket, &path).await {
+    let obj_info = match head_object(s3, &bucket, &path).await {
         Ok(obj_info) => {
             if let Some(obj_info) = obj_info {
                 obj_info

@@ -627,6 +627,7 @@ dependencies = [
  "backoff",
  "backtrace",
  "bytes",
+ "chrono",
  "clap",
  "ctrlc",
  "env_logger",

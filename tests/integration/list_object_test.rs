@@ -5,25 +5,39 @@ use esthri_lib::head_object;
 use esthri_lib::list_directory;
 use esthri_lib::list_objects;
 use esthri_lib::list_objects_stream;
+use esthri_lib::types::ObjectInfo;
 use esthri_lib::upload;
 
+use crate::DateTime;
+
 #[test]
-fn test_handle_head_object() {
+fn test_head_object() {
     let s3client = crate::get_s3client();
     let filename = "test1mb.bin";
     let filepath = format!("tests/data/{}", filename);
     let s3_key = format!("test_handle_head_object/{}", filename);
 
+    let upload_time: DateTime = std::time::SystemTime::now().into();
+
     let res = blocking::upload(s3client.as_ref(), crate::TEST_BUCKET, &s3_key, &filepath);
     assert!(res.is_ok());
 
     let res = blocking::head_object(s3client.as_ref(), crate::TEST_BUCKET, &s3_key);
-    let e_tag: Option<String> = res.unwrap();
-    assert!(e_tag.is_some());
+    let obj_info: Option<ObjectInfo> = res.unwrap();
+
+    assert!(obj_info.is_some());
+
+    let obj_info: ObjectInfo = obj_info.unwrap();
+    assert_eq!(obj_info.e_tag, "\"4af9313f448b7541f38dc3b0a33ce386\"");
+
+    let time_diff = obj_info.last_modified - upload_time;
+
+    // Hopefully it never takes more than an hour to upload the file
+    assert_eq!(time_diff.num_hours(), 0);
 }
 
 #[tokio::test]
-async fn test_handle_head_object_async() {
+async fn test_head_object_async() {
     let s3client = crate::get_s3client();
     let filename = "test1mb.bin";
     let filepath = format!("tests/data/{}", filename);
@@ -33,12 +47,12 @@ async fn test_handle_head_object_async() {
     assert!(res.is_ok());
 
     let res = head_object(s3client.as_ref(), crate::TEST_BUCKET, &s3_key).await;
-    let e_tag: Option<String> = res.unwrap();
-    assert!(e_tag.is_some());
+    let obj_info: Option<ObjectInfo> = res.unwrap();
+    assert!(obj_info.is_some());
 }
 
 #[test]
-fn test_handle_list_objects() {
+fn test_list_objects() {
     let s3client = crate::get_s3client();
     let filename = "test1mb.bin";
     let filepath = format!("tests/data/{}", filename);
@@ -68,7 +82,7 @@ fn test_handle_list_objects() {
 }
 
 #[tokio::test]
-async fn test_handle_list_objects_async() {
+async fn test_list_objects_async() {
     let s3client = crate::get_s3client();
     let filename = "test1mb.bin";
     let filepath = format!("tests/data/{}", filename);
@@ -99,7 +113,7 @@ async fn test_handle_list_objects_async() {
 }
 
 #[tokio::test]
-async fn test_handle_stream_objects() {
+async fn test_stream_objects() {
     let s3client = crate::get_s3client();
     // Test data created with ./tests/scripts/populate_stream_obj_test_data.bash
     let folder = "test_handle_stream_objects";

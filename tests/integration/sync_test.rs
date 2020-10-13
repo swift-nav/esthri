@@ -154,7 +154,7 @@ fn test_sync_up_default() {
         assert!(res.is_ok(), "fetching s3 etag failed for: {}", key);
         let res = res.unwrap();
         assert!(res.is_some(), "s3 etag returned was nil for: {}", key);
-        assert_eq!(res.unwrap(), key_hash_pair.1, "invalid hash: {}", key);
+        assert_eq!(res.unwrap().e_tag, key_hash_pair.1, "invalid hash: {}", key);
     }
 }
 

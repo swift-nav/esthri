@@ -30,6 +30,7 @@ futures = "0.3.6"
 backoff = { version = "0.2.1", features = ["tokio"] }
 eyre = "0.6.1"
 stable-eyre = "0.2.1"
+chrono = "0.4"
 # Libraries for `http_server` feature:
 warp = { version = "0.2", optional = true }
 futures-util = { version = "0.3", optional = true }
