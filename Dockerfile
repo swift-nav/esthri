@@ -1,4 +1,4 @@
-FROM rust:1.44-slim-stretch
+FROM rust:1.45-slim-stretch
 
 ARG DEBIAN_FRONTEND=noninterative
 

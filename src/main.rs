@@ -30,6 +30,9 @@ use hyper_tls::HttpsConnector;
 
 use stable_eyre::eyre::Result;
 
+#[cfg(feature)]
+use esthri_lib::s3serve;
+
 #[derive(Debug, StructOpt)]
 #[structopt(name = "esthri", about = "Simple S3 file transfer utility.")]
 struct Cli {
@@ -117,6 +120,18 @@ enum Command {
         #[structopt(long)]
         key: String,
     },
+    #[cfg(feature = "http_server")]
+    /// Launch an HTTP server attached to the specified bucket
+    ///
+    /// This also supports serving dynamic archives of bucket contents
+    Serve {
+        /// The bucket to serve over HTTP
+        #[structopt(long)]
+        bucket: String,
+        /// The listening address for the server
+        #[structopt(long, default_value = "127.0.0.1:3030")]
+        address: std::net::SocketAddr,
+    },
 }
 
 #[tokio::main]
@@ -197,6 +212,11 @@ async fn main() -> Result<()> {
 
         ListObjects { bucket, key } => {
             list_objects(&s3, &bucket, &key).await?;
+        }
+
+        #[cfg(feature = "http_server")]
+        Serve { bucket, address } => {
+            http_server::run(s3.clone(), &bucket, &address).await?;
         }
     }
 
