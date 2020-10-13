@@ -14,8 +14,10 @@ if len(sys.argv) < 2:
 
 if sys.argv[1] == "bump-major":
     major += 1
+    minor, bugfix = 0, 0
 elif sys.argv[1] == "bump-minor":
     minor += 1
+    bugfix = 0
 elif sys.argv[1] == "bump-bugfix":
     bugfix += 1
 elif sys.argv[1] == "get-current":
