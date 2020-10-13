@@ -11,7 +11,7 @@ use std::{io, io::ErrorKind};
 use log::*;
 
 use warp::http;
-use warp::http::header::{CACHE_CONTROL, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_TYPE, ETAG};
+use warp::http::header::{CACHE_CONTROL, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_TYPE, ETAG, LAST_MODIFIED};
 use warp::http::response;
 use warp::http::Response;
 use warp::hyper::Body;
@@ -52,6 +52,7 @@ use crate::S3ListingItem;
 use serde_derive::{Deserialize, Serialize};
 
 const ARCHIVE_ENTRY_MODE: u32 = 0o0644;
+const LAST_MODIFIED_TIME_FMT: &str = "%a, %d %b %Y %H:%M:%S GMT";
 
 #[derive(Deserialize)]
 struct Params {
@@ -459,6 +460,7 @@ async fn item_pre_response<'a, T: S3 + Send>(
         resp_builder = resp_builder.header(CONTENT_LENGTH, obj_info.size);
         resp_builder = resp_builder.header(ETAG, obj_info.e_tag);
         resp_builder = resp_builder.header(CACHE_CONTROL, "private,max-age=0");
+        resp_builder = resp_builder.header(LAST_MODIFIED, obj_info.last_modified.format(LAST_MODIFIED_TIME_FMT).to_string());
         let mime = mime_guess::from_path(&path);
         let mime = mime.first();
         if let Some(mime) = mime {
