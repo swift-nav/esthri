@@ -72,7 +72,7 @@ features = [ "gzip", "futures-io",]
 optional = true
 
 [dependencies.async-stream]
-version = "0.2"
+version = "0.3"
 optional = true
 
 [dependencies.sluice]
