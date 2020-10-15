@@ -102,6 +102,27 @@ enum Command {
         #[structopt(long)]
         exclude: Option<Vec<String>>,
     },
+    /// Sync across S3 buckets
+    SyncAcross {
+        #[structopt(long)]
+        src_bucket: String,
+
+        #[structopt(long)]
+        src_key: String,
+
+        #[structopt(long)]
+        dest_ucket: String,
+
+        #[structopt(long)]
+        dest_key: String,
+
+        /// Optional include glob pattern (see man 3 glob)
+        #[structopt(long)]
+        include: Option<Vec<String>>,
+        /// Optional exclude glob pattern (see man 3 glob)
+        #[structopt(long)]
+        exclude: Option<Vec<String>>,
+    },
     /// Retreive the ETag for a remote object
     HeadObject {
         /// The bucket to target
@@ -192,6 +213,21 @@ async fn main() -> Result<()> {
             log_etag(&file)?;
         }
 
+        SyncAcross {
+            src_bucket,
+            src_key,
+            dest_bucket,
+            dest_key,
+            include,
+            exclude,
+        } => {
+            let glob_include = create_globs(include)?;
+            let glob_exclude = create_globs(exclude)?;
+
+            sync_across(s3, bucket, key, directory, &glob_includes, &glob_excludes)
+                .await?;
+        }
+
         SyncCmd {
             direction,
             bucket,
@@ -200,10 +236,33 @@ async fn main() -> Result<()> {
             include,
             exclude,
         } => {
-            sync(
-                &s3, direction, &bucket, &key, &directory, &include, &exclude,
-            )
-            .await?;
+            let glob_include = create_globs(include)?;
+            let glob_exclude = create_globs(exclude)?;
+
+            match direction {
+                SyncDirection::up => {
+                    sync_local_to_remote(
+                        s3,
+                        bucket,
+                        key,
+                        directory,
+                        &glob_includes,
+                        &glob_excludes,
+                    )
+                    .await?;
+                }
+                SyncDirection::down => {
+                    sync_remote_to_local(
+                        s3,
+                        bucket,
+                        key,
+                        directory,
+                        &glob_includes,
+                        &glob_excludes,
+                    )
+                    .await?;
+                }
+            }
         }
 
         HeadObject { bucket, key } => {

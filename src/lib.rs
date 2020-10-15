@@ -48,7 +48,7 @@ use crate::types::{ObjectInfo, SyncDirection};
 use rusoto_s3::{
     AbortMultipartUploadRequest, CompleteMultipartUploadRequest, CompletedMultipartUpload,
     CompletedPart, CreateMultipartUploadRequest, GetObjectError, GetObjectOutput, GetObjectRequest,
-    HeadObjectOutput, HeadObjectRequest, ListObjectsV2Request, PutObjectRequest, S3Client,
+    HeadObjectOutput, HeadObjectRequest, ListObjectsV2Request, PutObjectRequest, S3Client, CopyObjectRequest, CopyObjectOutput
     StreamingBody, UploadPartRequest, S3,
 };
 
@@ -398,8 +398,8 @@ pub async fn sync<T>(
     bucket: &str,
     key: &str,
     directory: &str,
-    includes: &Option<Vec<String>>,
-    excludes: &Option<Vec<String>>,
+    includes: &Option<Vec<Pattern>>,
+    excludes: &Option<Vec<Pattern>>,
 ) -> Result<()>
 where
     T: S3 + Send,
@@ -409,36 +409,36 @@ where
         direction, bucket, key, directory, includes, excludes
     );
 
-    let mut glob_excludes: Vec<Pattern> = vec![];
-    let mut glob_includes: Vec<Pattern> = vec![];
+    // let mut glob_excludes: Vec<Pattern> = vec![];
+    // let mut glob_includes: Vec<Pattern> = vec![];
 
-    if let Some(excludes) = excludes {
-        for exclude in excludes {
-            match Pattern::new(exclude) {
-                Err(e) => {
-                    return Err(anyhow!("exclude glob pattern error for {}: {}", exclude, e));
-                }
-                Ok(p) => {
-                    glob_excludes.push(p);
-                }
-            }
-        }
-    }
+    // if let Some(excludes) = excludes {
+    //     for exclude in excludes {
+    //         match Pattern::new(exclude) {
+    //             Err(e) => {
+    //                 return Err(anyhow!("exclude glob pattern error for {}: {}", exclude, e));
+    //             }
+    //             Ok(p) => {
+    //                 glob_excludes.push(p);
+    //             }
+    //         }
+    //     }
+    // }
 
-    if let Some(includes) = includes {
-        for include in includes {
-            match Pattern::new(include) {
-                Err(e) => {
-                    return Err(anyhow!("include glob pattern error for {}: {}", include, e));
-                }
-                Ok(p) => {
-                    glob_includes.push(p);
-                }
-            }
-        }
-    } else {
-        glob_includes.push(Pattern::new("*")?);
-    }
+    // if let Some(includes) = includes {
+    //     for include in includes {
+    //         match Pattern::new(include) {
+    //             Err(e) => {
+    //                 return Err(anyhow!("include glob pattern error for {}: {}", include, e));
+    //             }
+    //             Ok(p) => {
+    //                 glob_includes.push(p);
+    //             }
+    //         }
+    //     }
+    // } else {
+    //     glob_includes.push(Pattern::new("*")?);
+    // }
 
     match direction {
         SyncDirection::up => {
@@ -725,6 +725,42 @@ where
             }
         }
         Err(e) => Err(anyhow!("head_object failed (2): {:?}", e)),
+    }
+}
+
+struct CopyObjectParams {
+    pub source_bucket: String,
+    pub source_key: String,
+    pub dest_bucket: String,
+    dest_key: Option<String>,
+}
+
+//impl CopyObjectParams {
+//    fn get_dest_key(&self) -> String {
+//////        self.dest_key.unwrap_or(self.source_key)
+    }
+//}
+
+#[logfn(err = "ERROR")]
+async fn copy_object_request<T>(s3: &T, params: &CopyObjectParams) -> Result<CopyObjectOutput>
+where
+    T: S3 + Send,
+{
+    let res = handle_dispatch_error(|| async {
+        let cor = CopyObjectRequest {
+            bucket: params.dest_bucket.into(),
+            key: params.get_dest_key(),
+            copy_source: format!("{}/{}", params.source_bucket, params.source_key),
+            ..Default::default()
+        };
+
+        s3.copy_object(cor).await
+    })
+    .await;
+
+    match res {
+        Ok(coo) => (coo),
+        Err(err) => Err(err.into())
     }
 }
 
@@ -1026,6 +1062,47 @@ where
     }
 
     Ok(())
+}
+
+async fn sync_across<T>(
+    s3: &T,
+    source_bucket: &str,
+    source_prefix: &str,
+    dest_bucket: &str,
+    dest_prefix: Option<&str>,
+    glob_includes: &[Pattern],
+    glob_excludes: &[Pattern],
+) -> Result<()>
+where
+    T: S3 + Send,
+{
+    if !source_prefix.ends_with(FORWARD_SLASH) {
+        return Err(EsthriError::DirlikePrefixRequired.into());
+    }
+
+    let mut stream = list_objects_stream(s3, source_bucket, prefix);
+
+    while let Some(from_entries) = stream.try_next().await? {
+        // let entries_to_copy = from_entries.iter().filter(should_sync_copy);
+        // let futs = entries_to_copy.map(|e| copy_object_request(...))
+        // try_join_all(futs).await?;
+
+        for entry in from_entries {
+            if let S3ListingItem::S3Object(obj) = entry {
+                // copy file
+                println!("{}",obj.key );
+            }
+        }
+    }
+
+    Ok(())
+}
+
+
+async fn should_sync_copy(params: &CopyObjectParams) -> bool {
+    // filename matches globs
+    // and
+    // file in dest does not exist or etags don't match
 }
 
 #[cfg(test)]
