@@ -2,9 +2,8 @@
 
 use std::fs;
 
-use esthri_lib::blocking;
-use esthri_lib::sync;
 use esthri_lib::types::SyncDirection;
+use esthri_lib::{blocking, sync, sync_across};
 
 use crate::{validate_key_hash_pairs, KeyHashPair};
 
@@ -25,6 +24,29 @@ fn test_sync_down() {
         &includes,
         &excludes,
     );
+    assert!(res.is_ok(), format!("s3_sync result: {:?}", res));
+}
+
+#[tokio::test]
+async fn test_sync_across() {
+    let s3client = crate::get_s3client();
+    let source_bucket = "esthri-test";
+    let source_prefix = "test_sync_folder1/";
+    let dest_bucket = "test-results-repository-staging";
+    let dest_prefix = "test_sync_folder2/";
+    let includes: Option<Vec<String>> = Some(vec!["*.txt".to_string()]);
+    let excludes: Option<Vec<String>> = Some(vec!["*".to_string()]);
+
+    let res = sync_across(
+        s3client.as_ref(),
+        &source_bucket,
+        &source_prefix,
+        &dest_bucket,
+        Some(&dest_prefix),
+        &includes,
+        &excludes,
+    )
+    .await;
     assert!(res.is_ok(), format!("s3_sync result: {:?}", res));
 }
 

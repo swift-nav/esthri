@@ -111,7 +111,7 @@ enum Command {
         src_key: String,
 
         #[structopt(long)]
-        dest_ucket: String,
+        dest_bucket: String,
 
         #[structopt(long)]
         dest_key: String,
@@ -221,11 +221,16 @@ async fn main() -> Result<()> {
             include,
             exclude,
         } => {
-            let glob_include = create_globs(include)?;
-            let glob_exclude = create_globs(exclude)?;
-
-            sync_across(s3, bucket, key, directory, &glob_includes, &glob_excludes)
-                .await?;
+            sync_across(
+                &s3,
+                &src_bucket,
+                &src_key,
+                &dest_bucket,
+                Some(&dest_key),
+                &include,
+                &exclude,
+            )
+            .await?;
         }
 
         SyncCmd {
@@ -236,33 +241,10 @@ async fn main() -> Result<()> {
             include,
             exclude,
         } => {
-            let glob_include = create_globs(include)?;
-            let glob_exclude = create_globs(exclude)?;
-
-            match direction {
-                SyncDirection::up => {
-                    sync_local_to_remote(
-                        s3,
-                        bucket,
-                        key,
-                        directory,
-                        &glob_includes,
-                        &glob_excludes,
-                    )
-                    .await?;
-                }
-                SyncDirection::down => {
-                    sync_remote_to_local(
-                        s3,
-                        bucket,
-                        key,
-                        directory,
-                        &glob_includes,
-                        &glob_excludes,
-                    )
-                    .await?;
-                }
-            }
+            sync(
+                &s3, direction, &bucket, &key, &directory, &include, &exclude,
+            )
+            .await?;
         }
 
         HeadObject { bucket, key } => {
