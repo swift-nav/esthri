@@ -906,7 +906,7 @@ where
             };
             let stripped_path = format!("{}", stripped_path.display());
             let remote_path: String = format!("{}", remote_path.join(&stripped_path).display());
-
+            debug!("checking remote: {}", remote_path);
             let object_info = head_object_request(s3, bucket, &remote_path).await?;
             let local_etag = s3_compute_etag(&path)?;
             if let Some(object_info) = object_info {
@@ -1018,9 +1018,9 @@ where
     if !source_prefix.ends_with(FORWARD_SLASH) {
         return Err(EsthriError::DirlikePrefixRequired.into());
     }
-    let mut dest_prefix2 = source_prefix;
+    let mut destination_key = source_prefix;
     if let Some(key) = dest_prefix {
-        dest_prefix2 = key
+        destination_key = key
     }
 
     let glob_includes: Vec<Pattern> = create_globs(&includes, true)?;
@@ -1035,7 +1035,7 @@ where
 
                 if let Some(_accept) = path {
                     let mut should_copy_file: bool = true;
-                    let new_file = src_object.key.replace(source_prefix, dest_prefix2);
+                    let new_file = src_object.key.replace(source_prefix, destination_key);
                     let dest_object_info = head_object_request(s3, dest_bucket, &new_file).await?;
 
                     if let Some(dest_object) = dest_object_info {
@@ -1051,7 +1051,7 @@ where
                             source_prefix,
                             &src_object.key,
                             dest_bucket,
-                            dest_prefix2,
+                            destination_key,
                         )
                         .await?;
                     }
