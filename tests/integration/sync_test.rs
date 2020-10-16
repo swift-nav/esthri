@@ -30,18 +30,17 @@ fn test_sync_down() {
 #[tokio::test]
 async fn test_sync_across() {
     let s3client = crate::get_s3client();
-    let source_bucket = "esthri-test";
     let source_prefix = "test_sync_folder1/";
     let dest_bucket = "test-results-repository-staging";
     let dest_prefix = "test_sync_folder2/";
     let includes: Option<Vec<String>> = Some(vec!["*.txt".to_string()]);
-    let excludes: Option<Vec<String>> = Some(vec!["*".to_string()]);
+    let excludes: Option<Vec<String>> = None;
 
     let res = sync_across(
         s3client.as_ref(),
-        &source_bucket,
+        crate::TEST_BUCKET,
         &source_prefix,
-        &dest_bucket,
+        dest_bucket,
         Some(&dest_prefix),
         &includes,
         &excludes,

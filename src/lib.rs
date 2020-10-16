@@ -900,6 +900,7 @@ fn process_globs<'a>(
 ) -> Option<&'a str> {
     let mut excluded = false;
     let mut included = false;
+
     for pattern in glob_excludes {
         if pattern.matches(path) {
             excluded = true;
@@ -1124,35 +1125,28 @@ where
     let mut stream = list_objects_stream(s3, source_bucket, source_prefix);
 
     while let Some(from_entries) = stream.try_next().await? {
-        // let entries_to_copy = from_entries.iter().filter(should_sync_copy);
-        // let futs = entries_to_copy.map(|e| copy_object_request(...))
-        // try_join_all(futs).await?;
-
         for entry in from_entries {
             if let S3ListingItem::S3Object(obj) = entry {
-                if obj.key.ends_with(".txt") {
-                    let object_info = copy_object_request(
-                        s3,
-                        source_bucket,
-                        source_prefix,
-                        &obj.key,
-                        dest_bucket,
-                        dest_prefix.unwrap(),
-                    )
-                    .await?;
+                let path = process_globs(&obj.key, &glob_includes, &glob_excludes);
+                match path {
+                    Some(y) => {
+                        let object_info = copy_object_request(
+                            s3,
+                            source_bucket,
+                            source_prefix,
+                            &obj.key,
+                            dest_bucket,
+                            dest_prefix.unwrap(),
+                        )
+                        .await?;
+                    }
+                    None => (),
                 }
             }
         }
     }
 
     Ok(())
-}
-
-async fn should_sync_copy(params: &CopyObjectParams) -> bool {
-    // filename matches globs
-    // and
-    // file in dest does not exist or etags don't match
-    true
 }
 
 #[cfg(test)]
