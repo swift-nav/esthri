@@ -88,7 +88,7 @@ enum Command {
         bucket: String,
         #[structopt(long)]
         key: String,
-        /// The directory to use for up/down sync
+        /// The directory to use for up sync
         #[structopt(long)]
         directory: String,
         /// Optional include glob pattern (see man 3 glob)
@@ -105,7 +105,7 @@ enum Command {
         bucket: String,
         #[structopt(long)]
         key: String,
-        /// The directory to use for up/down sync
+        /// The directory to use for down sync
         #[structopt(long)]
         directory: String,
         /// Optional include glob pattern (see man 3 glob)
@@ -117,18 +117,18 @@ enum Command {
     },
     /// Sync across S3 buckets
     SyncCmd {
+        /// The source bucket
         #[structopt(long)]
         src_bucket: String,
-
+        /// The directory to use for source bucket
         #[structopt(long)]
         src_key: String,
-
+         /// The destination bucket
         #[structopt(long)]
         dest_bucket: String,
-
+        /// Optional destination key.  Will use src key if omitted
         #[structopt(long)]
         dest_key: String,
-
         /// Optional include glob pattern (see man 3 glob)
         #[structopt(long)]
         include: Option<Vec<String>>,
