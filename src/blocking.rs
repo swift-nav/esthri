@@ -14,7 +14,6 @@ use std::io::prelude::*;
 
 use rusoto_s3::S3;
 
-use super::types::SyncDirection;
 use super::ObjectInfo;
 use super::Result;
 
@@ -65,9 +64,8 @@ where
 }
 
 #[tokio::main]
-pub async fn sync<T>(
+pub async fn sync_remote_to_local<T>(
     s3: &T,
-    direction: SyncDirection,
     bucket: &str,
     key: &str,
     directory: &str,
@@ -77,7 +75,22 @@ pub async fn sync<T>(
 where
     T: S3 + Send,
 {
-    super::sync(s3, direction, bucket, key, directory, includes, excludes).await
+    super::sync_remote_to_local(s3, bucket, key, directory, &includes, &excludes).await
+}
+
+#[tokio::main]
+pub async fn sync_local_to_remote<T>(
+    s3: &T,
+    bucket: &str,
+    key: &str,
+    directory: &str,
+    includes: &Option<Vec<String>>,
+    excludes: &Option<Vec<String>>,
+) -> Result<()>
+where
+    T: S3 + Send,
+{
+    super::sync_local_to_remote(s3, bucket, key, directory, &includes, &excludes).await
 }
 
 #[tokio::main]

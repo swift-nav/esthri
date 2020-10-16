@@ -16,7 +16,6 @@ use std::time::Duration;
 
 use log::*;
 
-use esthri_lib::types::*;
 use esthri_lib::*;
 
 use rusoto_core::{HttpClient, Region};
@@ -82,12 +81,26 @@ enum Command {
     },
     /// Compute and print the S3 ETag of the file
     S3Etag { file: String },
-    /// Sync a directory with S3
-    #[structopt(name = "sync")]
-    SyncCmd {
-        /// The direction of the sync: 'up' for local to remote, 'down' for remote to local
-        #[structopt(long, default_value = "up")]
-        direction: SyncDirection,
+    /// Sync a remote directory with S3
+    #[structopt(name = "sync-up")]
+    SyncUp {
+        #[structopt(long)]
+        bucket: String,
+        #[structopt(long)]
+        key: String,
+        /// The directory to use for up/down sync
+        #[structopt(long)]
+        directory: String,
+        /// Optional include glob pattern (see man 3 glob)
+        #[structopt(long)]
+        include: Option<Vec<String>>,
+        /// Optional exclude glob pattern (see man 3 glob)
+        #[structopt(long)]
+        exclude: Option<Vec<String>>,
+    },
+    /// Sync S3 with a remote directory
+    #[structopt(name = "sync-down")]
+    SyncDown {
         #[structopt(long)]
         bucket: String,
         #[structopt(long)]
@@ -103,7 +116,7 @@ enum Command {
         exclude: Option<Vec<String>>,
     },
     /// Sync across S3 buckets
-    SyncAcross {
+    SyncCmd {
         #[structopt(long)]
         src_bucket: String,
 
@@ -213,7 +226,7 @@ async fn main() -> Result<()> {
             log_etag(&file)?;
         }
 
-        SyncAcross {
+        SyncCmd {
             src_bucket,
             src_key,
             dest_bucket,
@@ -221,7 +234,7 @@ async fn main() -> Result<()> {
             include,
             exclude,
         } => {
-            sync_across(
+            sync(
                 &s3,
                 &src_bucket,
                 &src_key,
@@ -233,18 +246,24 @@ async fn main() -> Result<()> {
             .await?;
         }
 
-        SyncCmd {
-            direction,
+        SyncDown {
             bucket,
             key,
             directory,
             include,
             exclude,
         } => {
-            sync(
-                &s3, direction, &bucket, &key, &directory, &include, &exclude,
-            )
-            .await?;
+            sync_remote_to_local(&s3, &bucket, &key, &directory, &include, &exclude).await?;
+        }
+
+        SyncUp {
+            bucket,
+            key,
+            directory,
+            include,
+            exclude,
+        } => {
+            sync_local_to_remote(&s3, &bucket, &key, &directory, &include, &exclude).await?;
         }
 
         HeadObject { bucket, key } => {

@@ -43,7 +43,7 @@ pub mod types;
 
 use crate::errors::EsthriError;
 use crate::retry::handle_dispatch_error;
-use crate::types::{ObjectInfo, SyncDirection};
+use crate::types::ObjectInfo;
 
 use rusoto_s3::{
     AbortMultipartUploadRequest, CompleteMultipartUploadRequest, CompletedMultipartUpload,
@@ -392,69 +392,6 @@ fn bytes_range(offset: u64) -> String {
 }
 
 #[logfn(err = "ERROR")]
-pub async fn sync<T>(
-    s3: &T,
-    direction: SyncDirection,
-    bucket: &str,
-    key: &str,
-    directory: &str,
-    includes: &Option<Vec<String>>,
-    excludes: &Option<Vec<String>>,
-) -> Result<()>
-where
-    T: S3 + Send,
-{
-    info!(
-        "sync: direction={}, bucket={}, key={}, directory={}, include={:?}, exclude={:?}",
-        direction, bucket, key, directory, includes, excludes
-    );
-
-    let mut glob_excludes: Vec<Pattern> = vec![];
-    let mut glob_includes: Vec<Pattern> = vec![];
-
-    if let Some(excludes) = excludes {
-        for exclude in excludes {
-            match Pattern::new(exclude) {
-                Err(e) => {
-                    return Err(anyhow!("exclude glob pattern error for {}: {}", exclude, e));
-                }
-                Ok(p) => {
-                    glob_excludes.push(p);
-                }
-            }
-        }
-    }
-
-    if let Some(includes) = includes {
-        for include in includes {
-            match Pattern::new(include) {
-                Err(e) => {
-                    return Err(anyhow!("include glob pattern error for {}: {}", include, e));
-                }
-                Ok(p) => {
-                    glob_includes.push(p);
-                }
-            }
-        }
-    } else {
-        glob_includes.push(Pattern::new("*")?);
-    }
-
-    match direction {
-        SyncDirection::up => {
-            sync_local_to_remote(s3, bucket, key, directory, &glob_includes, &glob_excludes)
-                .await?;
-        }
-        SyncDirection::down => {
-            sync_remote_to_local(s3, bucket, key, directory, &glob_includes, &glob_excludes)
-                .await?;
-        }
-    }
-
-    Ok(())
-}
-
-#[logfn(err = "ERROR")]
 pub async fn list_objects<T>(s3: &T, bucket: &str, key: &str) -> Result<Vec<String>>
 where
     T: S3 + Send,
@@ -728,22 +665,6 @@ where
     }
 }
 
-struct CopyObjectParams {
-    pub source_bucket: String,
-    pub source_key: String,
-    pub dest_bucket: String,
-    dest_key: Option<String>,
-}
-
-impl CopyObjectParams {
-    fn get_dest_key(&self) -> String {
-        self.dest_key
-            .as_ref()
-            .unwrap_or(&self.source_key)
-            .to_string()
-    }
-}
-
 #[logfn(err = "ERROR")]
 async fn copy_object_request<T>(
     s3: &T,
@@ -759,7 +680,7 @@ where
     let res = handle_dispatch_error(|| async {
         let cor = CopyObjectRequest {
             bucket: dest_bucket.to_string(),
-            copy_source: format!("{}/{}", source_bucket.to_string(), &source_key),
+            copy_source: format!("{}/{}", source_bucket.to_string(), &file_name),
             key: file_name.replace(source_key, dest_key),
             ..Default::default()
         };
@@ -945,13 +866,13 @@ where
     Ok(())
 }
 
-async fn sync_local_to_remote<T>(
+pub async fn sync_local_to_remote<T>(
     s3: &T,
     bucket: &str,
     key: &str,
     directory: &str,
-    glob_includes: &[Pattern],
-    glob_excludes: &[Pattern],
+    includes: &Option<Vec<String>>,
+    excludes: &Option<Vec<String>>,
 ) -> Result<()>
 where
     T: S3 + Send,
@@ -959,6 +880,10 @@ where
     if !key.ends_with(FORWARD_SLASH) {
         return Err(EsthriError::DirlikePrefixRequired.into());
     }
+
+    let glob_includes: Vec<Pattern> = create_globs(&includes, true)?;
+    let glob_excludes: Vec<Pattern> = create_globs(&excludes, false)?;
+
     for entry in WalkDir::new(directory) {
         let entry = entry?;
         let stat = entry.metadata()?;
@@ -968,7 +893,7 @@ where
         // TODO: abort if symlink?
         let path = format!("{}", entry.path().display());
         debug!("local path={}", path);
-        let path = process_globs(&path, glob_includes, glob_excludes);
+        let path = process_globs(&path, &glob_includes, &glob_excludes);
         if let Some(path) = path {
             let remote_path = Path::new(key);
             let stripped_path = entry.path().strip_prefix(&directory);
@@ -981,7 +906,7 @@ where
             };
             let stripped_path = format!("{}", stripped_path.display());
             let remote_path: String = format!("{}", remote_path.join(&stripped_path).display());
-            debug!("checking remote: {}", remote_path);
+
             let object_info = head_object_request(s3, bucket, &remote_path).await?;
             let local_etag = s3_compute_etag(&path)?;
             if let Some(object_info) = object_info {
@@ -1008,13 +933,13 @@ where
     Ok(())
 }
 
-async fn sync_remote_to_local<T>(
+pub async fn sync_remote_to_local<T>(
     s3: &T,
     bucket: &str,
     key: &str,
     directory: &str,
-    glob_includes: &[Pattern],
-    glob_excludes: &[Pattern],
+    includes: &Option<Vec<String>>,
+    excludes: &Option<Vec<String>>,
 ) -> Result<()>
 where
     T: S3 + Send,
@@ -1022,6 +947,9 @@ where
     if !key.ends_with(FORWARD_SLASH) {
         return Err(EsthriError::DirlikePrefixRequired.into());
     }
+
+    let glob_includes: Vec<Pattern> = create_globs(&includes, true)?;
+    let glob_excludes: Vec<Pattern> = create_globs(&excludes, false)?;
 
     let dir_path = Path::new(directory);
 
@@ -1039,7 +967,7 @@ where
                     .with_context(|| format!("entry.key: {}, prefix: {}", &entry.key, &key))?
                     .display()
             );
-            let path = process_globs(&path, glob_includes, glob_excludes);
+            let path = process_globs(&path, &glob_includes, &glob_excludes);
 
             if let Some(path) = path {
                 let local_path: String = format!("{}", dir_path.join(&path).display());
@@ -1075,7 +1003,7 @@ where
     Ok(())
 }
 
-pub async fn sync_across<T>(
+pub async fn sync<T>(
     s3: &T,
     source_bucket: &str,
     source_prefix: &str,
@@ -1090,63 +1018,73 @@ where
     if !source_prefix.ends_with(FORWARD_SLASH) {
         return Err(EsthriError::DirlikePrefixRequired.into());
     }
-
-    let mut glob_excludes: Vec<Pattern> = vec![];
-    let mut glob_includes: Vec<Pattern> = vec![];
-
-    if let Some(excludes) = excludes {
-        for exclude in excludes {
-            match Pattern::new(exclude) {
-                Err(e) => {
-                    return Err(anyhow!("exclude glob pattern error for {}: {}", exclude, e));
-                }
-                Ok(p) => {
-                    glob_excludes.push(p);
-                }
-            }
-        }
+    let mut dest_prefix2 = source_prefix;
+    if let Some(key) = dest_prefix {
+        dest_prefix2 = key
     }
 
-    if let Some(includes) = includes {
-        for include in includes {
-            match Pattern::new(include) {
-                Err(e) => {
-                    return Err(anyhow!("include glob pattern error for {}: {}", include, e));
-                }
-                Ok(p) => {
-                    glob_includes.push(p);
-                }
-            }
-        }
-    } else {
-        glob_includes.push(Pattern::new("*")?);
-    }
+    let glob_includes: Vec<Pattern> = create_globs(&includes, true)?;
+    let glob_excludes: Vec<Pattern> = create_globs(&excludes, false)?;
 
     let mut stream = list_objects_stream(s3, source_bucket, source_prefix);
 
     while let Some(from_entries) = stream.try_next().await? {
         for entry in from_entries {
-            if let S3ListingItem::S3Object(obj) = entry {
-                let path = process_globs(&obj.key, &glob_includes, &glob_excludes);
-                match path {
-                    Some(y) => {
-                        let object_info = copy_object_request(
+            if let S3ListingItem::S3Object(src_object) = entry {
+                let path = process_globs(&src_object.key, &glob_includes, &glob_excludes);
+
+                if let Some(_accept) = path {
+                    let mut should_copy_file: bool = true;
+                    let new_file = src_object.key.replace(source_prefix, dest_prefix2);
+                    let dest_object_info = head_object_request(s3, dest_bucket, &new_file).await?;
+
+                    if let Some(dest_object) = dest_object_info {
+                        if dest_object.e_tag == src_object.e_tag {
+                            should_copy_file = false;
+                        }
+                    }
+
+                    if should_copy_file {
+                        copy_object_request(
                             s3,
                             source_bucket,
                             source_prefix,
-                            &obj.key,
+                            &src_object.key,
                             dest_bucket,
-                            dest_prefix.unwrap(),
+                            dest_prefix2,
                         )
                         .await?;
                     }
-                    None => (),
                 }
             }
         }
     }
 
     Ok(())
+}
+
+pub fn create_globs(
+    string_vector: &Option<Vec<String>>,
+    includes_flag: bool,
+) -> Result<Vec<Pattern>> {
+    let mut globs: Vec<Pattern> = vec![];
+
+    if let Some(filters) = string_vector {
+        for filter in filters {
+            match Pattern::new(filter) {
+                Err(e) => {
+                    return Err(anyhow!("glob pattern error for {}: {}", filter, e));
+                }
+                Ok(p) => {
+                    globs.push(p);
+                }
+            }
+        }
+    } else if includes_flag {
+        globs.push(Pattern::new("*")?);
+    }
+
+    Ok(globs)
 }
 
 #[cfg(test)]
