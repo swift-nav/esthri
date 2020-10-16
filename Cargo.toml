@@ -47,7 +47,7 @@ aggressive_lint = []
 http_server = [ "async-tar", "async-compression", "async-stream", "bytes", "futures-util", "mime_guess", "sluice", "sanitize-filename", "serde", "serde_derive", "tokio-util", "warp",]
 
 [dependencies.tokio]
-version = "0.2"
+version = "0.3"
 features = [ "io-std",]
 
 [dependencies.backoff]
