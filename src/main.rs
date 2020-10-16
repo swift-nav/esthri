@@ -123,7 +123,7 @@ enum Command {
         /// The directory to use for source bucket
         #[structopt(long)]
         src_key: String,
-         /// The destination bucket
+        /// The destination bucket
         #[structopt(long)]
         dest_bucket: String,
         /// Optional destination key.  Will use src key if omitted
