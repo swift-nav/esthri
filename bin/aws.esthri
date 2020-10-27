@@ -52,15 +52,15 @@ def handle_s3_sync(src, src_is_s3, dst, dst_is_s3):
         prefix = src_is_s3.group('prefix')
         if not prefix.endswith('/'):
             prefix = prefix + '/'
-        os.execvp('esthri', ['esthri', 'sync', '--bucket', bucket, '--key', prefix,
-                             '--directory', dst, '--direction', 'down'])
+        os.execvp('esthri', ['esthri', 'sync', '--src_bucket', bucket, '--src_path', prefix,
+                             '--dest_path', dst])
     elif dst_is_s3 is not None:
         bucket = dst_is_s3.group('bucket')
         prefix = dst_is_s3.group('prefix')
         if not prefix.endswith('/'):
             prefix = prefix + '/'
-        os.execvp('esthri', ['esthri', 'sync', '--bucket', bucket, '--key', prefix,
-                             '--directory', src, '--direction', 'up'])
+        os.execvp('esthri', ['esthri', 'sync', '--dest_bucket', bucket, '--dest_path', prefix,
+                             '--src_path', src])
     else:
         assert False
 
