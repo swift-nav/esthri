@@ -12,6 +12,7 @@
 
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 #![recursion_limit = "256"]
+extern crate regex;
 
 use std::fs;
 use std::fs::File;
@@ -31,6 +32,7 @@ use glob::Pattern;
 use log::*;
 use log_derive::logfn;
 use once_cell::sync::Lazy;
+use regex::Regex;
 use tokio::{io::AsyncReadExt, time};
 use walkdir::WalkDir;
 
@@ -391,14 +393,30 @@ fn bytes_range(offset: u64) -> String {
     format!("bytes={}-", offset)
 }
 
+#[derive(Debug)]
 pub enum SyncParam {
     Local { path: String },
     Bucket { bucket: String, path: String },
 }
 
-impl std::fmt::Debug for SyncParam {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+impl std::str::FromStr for SyncParam {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s3_format = Regex::new(r"^s3://+?(?P<bucket>[a-zA-Z0-9._-]+)/(?P<prefix>.*)$").unwrap();
+
+        if let Some(captures) = s3_format.captures(s) {
+            let bucket = captures.name("bucket").unwrap().as_str();
+            let path = captures.name("prefix").unwrap().as_str();
+            Ok(SyncParam::Bucket {
+                path: path.to_string(),
+                bucket: bucket.to_string(),
+            })
+        } else {
+            Ok(SyncParam::Local {
+                path: s.to_string(),
+            })
+        }
     }
 }
 

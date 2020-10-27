@@ -85,13 +85,9 @@ enum Command {
     #[structopt(name = "sync")]
     SyncCmd {
         #[structopt(long)]
-        src_path: String,
+        source: String,
         #[structopt(long)]
-        src_bucket: Option<String>,
-        #[structopt(long)]
-        dest_bucket: Option<String>,
-        #[structopt(long)]
-        dest_path: String,
+        destination: String,
         #[structopt(long)]
         include: Option<Vec<String>>,
         /// Optional exclude glob pattern (see man 3 glob)
@@ -189,51 +185,15 @@ async fn main() -> Result<()> {
         }
 
         SyncCmd {
-            src_bucket,
-            src_path,
-            dest_bucket,
-            dest_path,
+            source,
+            destination,
             include,
             exclude,
         } => {
-            let mut source = SyncParam::Local {
-                path: src_path.to_owned(),
-            };
+            let dest: SyncParam = destination.parse().unwrap();
+            let src: SyncParam = source.parse().unwrap();
 
-            let mut destination = SyncParam::Local {
-                path: dest_path.to_owned(),
-            };
-
-            match (src_bucket, dest_bucket) {
-                (Some(bucket), Some(bucket2)) => {
-                    source = SyncParam::Bucket {
-                        bucket,
-                        path: src_path.to_owned(),
-                    };
-                    destination = SyncParam::Bucket {
-                        bucket: bucket2,
-                        path: dest_path.to_owned(),
-                    };
-                }
-                (Some(bucket), None) => {
-                    source = SyncParam::Bucket {
-                        bucket,
-                        path: src_path.to_owned(),
-                    };
-                }
-                (None, Some(bucket)) => {
-                    destination = SyncParam::Bucket {
-                        bucket,
-                        path: dest_path.to_owned(),
-                    };
-                }
-                _ => {
-                    error!("No support for local to local copy");
-                    return Ok(());
-                }
-            }
-
-            sync(&s3, source, destination, &include, &exclude).await?;
+            sync(&s3, src, dest, &include, &exclude).await?;
         }
 
         HeadObject { bucket, key } => {
