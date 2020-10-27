@@ -14,12 +14,12 @@ fn test_sync_down() {
     let includes: Option<Vec<String>> = Some(vec!["*.txt".to_string()]);
     let excludes: Option<Vec<String>> = Some(vec!["*".to_string()]);
 
-    let source = SyncParam::Local {
-        path: local_directory.to_owned(),
-    };
-    let destination = SyncParam::Bucket {
+    let source = SyncParam::Bucket {
         bucket: crate::TEST_BUCKET.to_owned(),
         path: s3_key.to_owned(),
+    };
+    let destination = SyncParam::Local {
+        path: local_directory.to_owned(),
     };
 
     let res = blocking::sync(s3client.as_ref(), source, destination, &includes, &excludes);
@@ -34,12 +34,12 @@ async fn test_sync_down_async() {
     let includes: Option<Vec<String>> = Some(vec!["*.txt".to_string()]);
     let excludes: Option<Vec<String>> = Some(vec!["*".to_string()]);
 
-    let source = SyncParam::Local {
-        path: local_directory.to_owned(),
-    };
-    let destination = SyncParam::Bucket {
+    let source = SyncParam::Bucket {
         bucket: crate::TEST_BUCKET.to_owned(),
         path: s3_key.to_owned(),
+    };
+    let destination = SyncParam::Local {
+        path: local_directory.to_owned(),
     };
 
     let res = sync(s3client.as_ref(), source, destination, &includes, &excludes).await;
@@ -52,12 +52,12 @@ fn test_sync_down_fail() {
     let local_directory = "tests/data/";
     let s3_key = "test_folder";
 
-    let source = SyncParam::Local {
-        path: local_directory.to_owned(),
-    };
-    let destination = SyncParam::Bucket {
+    let source = SyncParam::Bucket {
         bucket: crate::TEST_BUCKET.to_owned(),
         path: s3_key.to_owned(),
+    };
+    let destination = SyncParam::Local {
+        path: local_directory.to_owned(),
     };
 
     let res = blocking::sync(s3client.as_ref(), source, destination, &None, &None);
@@ -172,12 +172,12 @@ fn test_sync_down_default() {
     //
     let s3_key = "test_sync_down_default/";
 
-    let source = SyncParam::Local {
-        path: local_directory.to_owned(),
-    };
-    let destination = SyncParam::Bucket {
+    let source = SyncParam::Bucket {
         bucket: crate::TEST_BUCKET.to_owned(),
         path: s3_key.to_owned(),
+    };
+    let destination = SyncParam::Local {
+        path: local_directory.to_owned(),
     };
 
     let res = blocking::sync(s3client.as_ref(), source, destination, &None, &None);

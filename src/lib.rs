@@ -402,23 +402,6 @@ impl std::fmt::Debug for SyncParam {
     }
 }
 
-impl std::str::FromStr for SyncParam {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s.starts_with("s3://") {
-            Ok(SyncParam::Bucket {
-                bucket: "todo".to_owned(),
-                path: "todo".to_owned(),
-            })
-        } else {
-            Ok(SyncParam::Local {
-                path: "todo".to_owned(),
-            })
-        }
-    }
-}
-
 #[logfn(err = "ERROR")]
 pub async fn sync<T>(
     s3: &T,
@@ -517,7 +500,7 @@ where
             },
         ) => {
             info!(
-                "sync-across, bucket: {}, bucket_path: {}, bucket2: {}, bucket_path2: {}",
+                "sync-across, bucket: {}, source_key: {}, bucket: {}, destination_key: {}",
                 source_bucket, source_key, destination_bucket, destination_key
             );
 
@@ -533,7 +516,7 @@ where
             .await?;
         }
         _ => {
-            println!("Local to Local copy not implemented");
+            warn!("Local to Local copy not implemented");
         }
     }
 
@@ -1060,6 +1043,10 @@ where
     T: S3 + Send,
 {
     if !source_prefix.ends_with(FORWARD_SLASH) {
+        return Err(EsthriError::DirlikePrefixRequired.into());
+    }
+
+    if !destination_key.ends_with(FORWARD_SLASH) {
         return Err(EsthriError::DirlikePrefixRequired.into());
     }
 
