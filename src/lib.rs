@@ -571,7 +571,7 @@ where
     ))
 }
 
-pub fn setup_cancel_handler() {
+pub fn setup_upload_ctrlc_handler() {
     ctrlc::set_handler(move || {
         let global_data = GLOBAL_DATA.lock().expect(EXPECT_GLOBAL_DATA);
         if global_data.bucket.is_none()

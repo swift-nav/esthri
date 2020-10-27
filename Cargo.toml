@@ -44,7 +44,7 @@ path = "src/lib.rs"
 [features]
 default = [ "http_server",]
 aggressive_lint = []
-http_server = [ "async-tar", "async-compression", "async-stream", "bytes", "futures-util", "mime_guess", "sluice", "sanitize-filename", "serde", "serde_derive", "tokio-util", "warp",]
+http_server = [ "async-tar", "async-compression", "async-stream", "bytes", "futures-util", "mime_guess", "sluice", "sanitize-filename", "serde", "serde_derive", "tokio-util", "warp", "ctrlc"]
 
 [dependencies.tokio]
 version = "0.2"
@@ -107,3 +107,4 @@ optional = true
 [dependencies.ctrlc]
 version = "3.1"
 features = [ "termination",]
+optional = true
