@@ -391,6 +391,155 @@ fn bytes_range(offset: u64) -> String {
     format!("bytes={}-", offset)
 }
 
+pub enum SyncParam {
+    Local { path: String },
+    Bucket { bucket: String, path: String },
+}
+
+impl std::fmt::Debug for SyncParam {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl std::str::FromStr for SyncParam {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.starts_with("s3://") {
+            Ok(SyncParam::Bucket {
+                bucket: "todo".to_owned(),
+                path: "todo".to_owned(),
+            })
+        } else {
+            Ok(SyncParam::Local {
+                path: "todo".to_owned(),
+            })
+        }
+    }
+}
+
+#[logfn(err = "ERROR")]
+pub async fn sync<T>(
+    s3: &T,
+    source: SyncParam,
+    destination: SyncParam,
+    includes: &Option<Vec<String>>,
+    excludes: &Option<Vec<String>>,
+) -> Result<()>
+where
+    T: S3 + Send,
+{
+    let mut glob_excludes: Vec<Pattern> = vec![];
+    let mut glob_includes: Vec<Pattern> = vec![];
+
+    if let Some(excludes) = excludes {
+        for exclude in excludes {
+            match Pattern::new(exclude) {
+                Err(e) => {
+                    return Err(anyhow!("exclude glob pattern error for {}: {}", exclude, e));
+                }
+                Ok(p) => {
+                    glob_excludes.push(p);
+                }
+            }
+        }
+    }
+
+    if let Some(includes) = includes {
+        for include in includes {
+            match Pattern::new(include) {
+                Err(e) => {
+                    return Err(anyhow!("include glob pattern error for {}: {}", include, e));
+                }
+                Ok(p) => {
+                    glob_includes.push(p);
+                }
+            }
+        }
+    } else {
+        glob_includes.push(Pattern::new("*")?);
+    }
+
+    match (source, destination) {
+        (
+            SyncParam::Local { path },
+            SyncParam::Bucket {
+                bucket,
+                path: bucket_path,
+            },
+        ) => {
+            info!(
+                "sync-up, local directory: {}, bucket: {}, key: {}",
+                path, bucket, bucket_path
+            );
+
+            sync_local_to_remote(
+                s3,
+                &bucket,
+                &bucket_path,
+                &path,
+                &glob_includes,
+                &glob_excludes,
+            )
+            .await?;
+        }
+        (
+            SyncParam::Bucket {
+                bucket,
+                path: bucket_path,
+            },
+            SyncParam::Local { path },
+        ) => {
+            info!(
+                "sync-down, local directory: {}, bucket: {}, key: {}",
+                path, bucket, bucket_path
+            );
+
+            sync_remote_to_local(
+                s3,
+                &bucket,
+                &bucket_path,
+                &path,
+                &glob_includes,
+                &glob_excludes,
+            )
+            .await?;
+        }
+        (
+            SyncParam::Bucket {
+                bucket: source_bucket,
+                path: source_key,
+            },
+            SyncParam::Bucket {
+                bucket: destination_bucket,
+                path: destination_key,
+            },
+        ) => {
+            info!(
+                "sync-across, bucket: {}, bucket_path: {}, bucket2: {}, bucket_path2: {}",
+                source_bucket, source_key, destination_bucket, destination_key
+            );
+
+            sync_across(
+                s3,
+                &source_bucket,
+                &source_key,
+                &destination_bucket,
+                &destination_key,
+                &glob_includes,
+                &glob_excludes,
+            )
+            .await?;
+        }
+        _ => {
+            println!("Local to Local copy not implemented");
+        }
+    }
+
+    Ok(())
+}
+
 #[logfn(err = "ERROR")]
 pub async fn list_objects<T>(s3: &T, bucket: &str, key: &str) -> Result<Vec<String>>
 where
@@ -665,36 +814,6 @@ where
     }
 }
 
-#[logfn(err = "ERROR")]
-async fn copy_object_request<T>(
-    s3: &T,
-    source_bucket: &str,
-    source_key: &str,
-    file_name: &str,
-    dest_bucket: &str,
-    dest_key: &str,
-) -> Result<CopyObjectOutput>
-where
-    T: S3 + Send,
-{
-    let res = handle_dispatch_error(|| async {
-        let cor = CopyObjectRequest {
-            bucket: dest_bucket.to_string(),
-            copy_source: format!("{}/{}", source_bucket.to_string(), &file_name),
-            key: file_name.replace(source_key, dest_key),
-            ..Default::default()
-        };
-
-        s3.copy_object(cor).await
-    })
-    .await;
-
-    match res {
-        Ok(coo) => Ok(coo),
-        Err(e) => Err(anyhow!("copy_object failed: {:?}", e)),
-    }
-}
-
 #[derive(Default)]
 struct S3Listing {
     continuation: Option<String>,
@@ -821,7 +940,6 @@ fn process_globs<'a>(
 ) -> Option<&'a str> {
     let mut excluded = false;
     let mut included = false;
-
     for pattern in glob_excludes {
         if pattern.matches(path) {
             excluded = true;
@@ -866,13 +984,13 @@ where
     Ok(())
 }
 
-pub async fn sync_local_to_remote<T>(
+async fn sync_local_to_remote<T>(
     s3: &T,
     bucket: &str,
     key: &str,
     directory: &str,
-    includes: &Option<Vec<String>>,
-    excludes: &Option<Vec<String>>,
+    glob_includes: &[Pattern],
+    glob_excludes: &[Pattern],
 ) -> Result<()>
 where
     T: S3 + Send,
@@ -880,10 +998,6 @@ where
     if !key.ends_with(FORWARD_SLASH) {
         return Err(EsthriError::DirlikePrefixRequired.into());
     }
-
-    let glob_includes: Vec<Pattern> = create_globs(&includes, true)?;
-    let glob_excludes: Vec<Pattern> = create_globs(&excludes, false)?;
-
     for entry in WalkDir::new(directory) {
         let entry = entry?;
         let stat = entry.metadata()?;
@@ -893,7 +1007,7 @@ where
         // TODO: abort if symlink?
         let path = format!("{}", entry.path().display());
         debug!("local path={}", path);
-        let path = process_globs(&path, &glob_includes, &glob_excludes);
+        let path = process_globs(&path, glob_includes, glob_excludes);
         if let Some(path) = path {
             let remote_path = Path::new(key);
             let stripped_path = entry.path().strip_prefix(&directory);
@@ -933,84 +1047,14 @@ where
     Ok(())
 }
 
-pub async fn sync_remote_to_local<T>(
-    s3: &T,
-    bucket: &str,
-    key: &str,
-    directory: &str,
-    includes: &Option<Vec<String>>,
-    excludes: &Option<Vec<String>>,
-) -> Result<()>
-where
-    T: S3 + Send,
-{
-    if !key.ends_with(FORWARD_SLASH) {
-        return Err(EsthriError::DirlikePrefixRequired.into());
-    }
-
-    let glob_includes: Vec<Pattern> = create_globs(&includes, true)?;
-    let glob_excludes: Vec<Pattern> = create_globs(&excludes, false)?;
-
-    let dir_path = Path::new(directory);
-
-    let mut stream = list_objects_stream(s3, bucket, key);
-
-    while let Some(entries) = stream.try_next().await? {
-        for entry in entries {
-            let entry = entry.unwrap_object();
-            debug!("key={}", entry.key);
-
-            let path = format!(
-                "{}",
-                Path::new(&entry.key)
-                    .strip_prefix(key)
-                    .with_context(|| format!("entry.key: {}, prefix: {}", &entry.key, &key))?
-                    .display()
-            );
-            let path = process_globs(&path, &glob_includes, &glob_excludes);
-
-            if let Some(path) = path {
-                let local_path: String = format!("{}", dir_path.join(&path).display());
-                debug!("checking {}", local_path);
-                let local_etag = s3_compute_etag(&local_path);
-                match local_etag {
-                    Ok(local_etag) => {
-                        if local_etag != entry.e_tag {
-                            debug!(
-                                "etag mismatch: {}, local etag={}, remote etag={}",
-                                local_path, local_etag, entry.e_tag
-                            );
-                            download_with_dir(s3, bucket, &key, &path, &directory).await?;
-                        }
-                    }
-                    Err(err) => {
-                        let not_present: Option<&EsthriError> = err.downcast_ref();
-                        match not_present {
-                            Some(EsthriError::ETagNotPresent) => {
-                                debug!("file did not exist locally: {}", local_path);
-                                download_with_dir(s3, bucket, &key, &path, &directory).await?;
-                            }
-                            Some(_) | None => {
-                                warn!("s3 etag error: {}", err);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
-pub async fn sync<T>(
+pub async fn sync_across<T>(
     s3: &T,
     source_bucket: &str,
     source_prefix: &str,
     dest_bucket: &str,
-    dest_prefix: Option<&str>,
-    includes: &Option<Vec<String>>,
-    excludes: &Option<Vec<String>>,
+    destination_key: &str,
+    glob_includes: &[Pattern],
+    glob_excludes: &[Pattern],
 ) -> Result<()>
 where
     T: S3 + Send,
@@ -1018,13 +1062,6 @@ where
     if !source_prefix.ends_with(FORWARD_SLASH) {
         return Err(EsthriError::DirlikePrefixRequired.into());
     }
-    let mut destination_key = source_prefix;
-    if let Some(key) = dest_prefix {
-        destination_key = key
-    }
-
-    let glob_includes: Vec<Pattern> = create_globs(&includes, true)?;
-    let glob_excludes: Vec<Pattern> = create_globs(&excludes, false)?;
 
     let mut stream = list_objects_stream(s3, source_bucket, source_prefix);
 
@@ -1063,6 +1100,36 @@ where
     Ok(())
 }
 
+#[logfn(err = "ERROR")]
+async fn copy_object_request<T>(
+    s3: &T,
+    source_bucket: &str,
+    source_key: &str,
+    file_name: &str,
+    dest_bucket: &str,
+    dest_key: &str,
+) -> Result<CopyObjectOutput>
+where
+    T: S3 + Send,
+{
+    let res = handle_dispatch_error(|| async {
+        let cor = CopyObjectRequest {
+            bucket: dest_bucket.to_string(),
+            copy_source: format!("{}/{}", source_bucket.to_string(), &file_name),
+            key: file_name.replace(source_key, dest_key),
+            ..Default::default()
+        };
+
+        s3.copy_object(cor).await
+    })
+    .await;
+
+    match res {
+        Ok(coo) => Ok(coo),
+        Err(e) => Err(anyhow!("copy_object failed: {:?}", e)),
+    }
+}
+
 pub fn create_globs(
     string_vector: &Option<Vec<String>>,
     includes_flag: bool,
@@ -1085,6 +1152,73 @@ pub fn create_globs(
     }
 
     Ok(globs)
+}
+
+async fn sync_remote_to_local<T>(
+    s3: &T,
+    bucket: &str,
+    key: &str,
+    directory: &str,
+    glob_includes: &[Pattern],
+    glob_excludes: &[Pattern],
+) -> Result<()>
+where
+    T: S3 + Send,
+{
+    if !key.ends_with(FORWARD_SLASH) {
+        return Err(EsthriError::DirlikePrefixRequired.into());
+    }
+
+    let dir_path = Path::new(directory);
+
+    let mut stream = list_objects_stream(s3, bucket, key);
+
+    while let Some(entries) = stream.try_next().await? {
+        for entry in entries {
+            let entry = entry.unwrap_object();
+            debug!("key={}", entry.key);
+
+            let path = format!(
+                "{}",
+                Path::new(&entry.key)
+                    .strip_prefix(key)
+                    .with_context(|| format!("entry.key: {}, prefix: {}", &entry.key, &key))?
+                    .display()
+            );
+            let path = process_globs(&path, glob_includes, glob_excludes);
+
+            if let Some(path) = path {
+                let local_path: String = format!("{}", dir_path.join(&path).display());
+                debug!("checking {}", local_path);
+                let local_etag = s3_compute_etag(&local_path);
+                match local_etag {
+                    Ok(local_etag) => {
+                        if local_etag != entry.e_tag {
+                            debug!(
+                                "etag mismatch: {}, local etag={}, remote etag={}",
+                                local_path, local_etag, entry.e_tag
+                            );
+                            download_with_dir(s3, bucket, &key, &path, &directory).await?;
+                        }
+                    }
+                    Err(err) => {
+                        let not_present: Option<&EsthriError> = err.downcast_ref();
+                        match not_present {
+                            Some(EsthriError::ETagNotPresent) => {
+                                debug!("file did not exist locally: {}", local_path);
+                                download_with_dir(s3, bucket, &key, &path, &directory).await?;
+                            }
+                            Some(_) | None => {
+                                warn!("s3 etag error: {}", err);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

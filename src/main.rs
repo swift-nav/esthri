@@ -81,54 +81,13 @@ enum Command {
     },
     /// Compute and print the S3 ETag of the file
     S3Etag { file: String },
-    /// Sync a remote directory with S3
-    #[structopt(name = "sync-up")]
-    SyncUp {
-        #[structopt(long)]
-        bucket: String,
-        #[structopt(long)]
-        key: String,
-        /// The directory to use for up sync
-        #[structopt(long)]
-        directory: String,
-        /// Optional include glob pattern (see man 3 glob)
-        #[structopt(long)]
-        include: Option<Vec<String>>,
-        /// Optional exclude glob pattern (see man 3 glob)
-        #[structopt(long)]
-        exclude: Option<Vec<String>>,
-    },
-    /// Sync S3 with a remote directory
-    #[structopt(name = "sync-down")]
-    SyncDown {
-        #[structopt(long)]
-        bucket: String,
-        #[structopt(long)]
-        key: String,
-        /// The directory to use for down sync
-        #[structopt(long)]
-        directory: String,
-        /// Optional include glob pattern (see man 3 glob)
-        #[structopt(long)]
-        include: Option<Vec<String>>,
-        /// Optional exclude glob pattern (see man 3 glob)
-        #[structopt(long)]
-        exclude: Option<Vec<String>>,
-    },
-    /// Sync across S3 buckets
+    /// Sync a directory with S3
+    #[structopt(name = "sync")]
     SyncCmd {
-        /// The source bucket
-        #[structopt(long)]
-        src_bucket: String,
-        /// The directory to use for source bucket
-        #[structopt(long)]
-        src_key: String,
-        /// The destination bucket
-        #[structopt(long)]
-        dest_bucket: String,
-        /// Optional destination key.  Will use src key if omitted
-        #[structopt(long)]
-        dest_key: String,
+        /// Source SyncParam, either path, or bucket and path
+        source: SyncParam,
+        /// Destination SyncParam, either path, or bucket and path
+        destination: SyncParam,
         /// Optional include glob pattern (see man 3 glob)
         #[structopt(long)]
         include: Option<Vec<String>>,
@@ -227,43 +186,12 @@ async fn main() -> Result<()> {
         }
 
         SyncCmd {
-            src_bucket,
-            src_key,
-            dest_bucket,
-            dest_key,
+            source,
+            destination,
             include,
             exclude,
         } => {
-            sync(
-                &s3,
-                &src_bucket,
-                &src_key,
-                &dest_bucket,
-                Some(&dest_key),
-                &include,
-                &exclude,
-            )
-            .await?;
-        }
-
-        SyncDown {
-            bucket,
-            key,
-            directory,
-            include,
-            exclude,
-        } => {
-            sync_remote_to_local(&s3, &bucket, &key, &directory, &include, &exclude).await?;
-        }
-
-        SyncUp {
-            bucket,
-            key,
-            directory,
-            include,
-            exclude,
-        } => {
-            sync_local_to_remote(&s3, &bucket, &key, &directory, &include, &exclude).await?;
+            sync(&s3, source, destination, &include, &exclude).await?;
         }
 
         HeadObject { bucket, key } => {
