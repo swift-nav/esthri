@@ -85,9 +85,9 @@ enum Command {
     #[structopt(name = "sync")]
     SyncCmd {
         #[structopt(long)]
-        source: String,
+        source: SyncParam,
         #[structopt(long)]
-        destination: String,
+        destination: SyncParam,
         #[structopt(long)]
         include: Option<Vec<String>>,
         /// Optional exclude glob pattern (see man 3 glob)
@@ -190,10 +190,7 @@ async fn main() -> Result<()> {
             include,
             exclude,
         } => {
-            let dest: SyncParam = destination.parse().unwrap();
-            let src: SyncParam = source.parse().unwrap();
-
-            sync(&s3, src, dest, &include, &exclude).await?;
+            sync(&s3, source, destination, &include, &exclude).await?;
         }
 
         HeadObject { bucket, key } => {

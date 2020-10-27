@@ -399,11 +399,20 @@ pub enum SyncParam {
     Bucket { bucket: String, path: String },
 }
 
+impl SyncParam {
+    pub fn new_local(path: String) -> SyncParam {
+        SyncParam::Local { path }
+    }
+    pub fn new_bucket(bucket: String, path: String) -> SyncParam {
+        SyncParam::Bucket { path, bucket }
+    }
+}
+
 impl std::str::FromStr for SyncParam {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let s3_format = Regex::new(r"^s3://+?(?P<bucket>[a-zA-Z0-9._-]+)/(?P<prefix>.*)$").unwrap();
+        let s3_format = Regex::new(r"^s3://+?(?P<bucket>[^/]+)/(?P<prefix>.*)$").unwrap();
 
         if let Some(captures) = s3_format.captures(s) {
             let bucket = captures.name("bucket").unwrap().as_str();
