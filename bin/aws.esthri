@@ -26,20 +26,21 @@ def exec_real():
 
 
 def handle_s3_cp(src, src_is_s3, dst, dst_is_s3):
-    assert (src_is_s3 is not None and dst_is_s3 is None) or (src_is_s3 is None and dst_is_s3 is not None)
+    assert (src_is_s3 is not None and dst_is_s3 is None) or \
+        (src_is_s3 is None and dst_is_s3 is not None)
     if src_is_s3 is not None:
         bucket = src_is_s3.group('bucket')
         prefix = src_is_s3.group('prefix')
         if os.path.isdir(dst):
             _, fname = os.path.split(prefix)
             dst = os.path.join(dst, fname)
-        os.execvp('esthri', ['esthri', 'get', '--bucket', bucket, '--key', prefix, dst])
+        os.execvp('esthri', ['esthri', 'get', '--bucket', bucket, '--key', prefix, dst]);
     elif dst_is_s3 is not None:
         bucket = dst_is_s3.group('bucket')
         prefix = dst_is_s3.group('prefix')
         if os.path.isdir(src):
             exec_real()
-        os.execvp('esthri', ['esthri', 'put', '--bucket', bucket, '--key', prefix, src])
+        os.execvp('esthri', ['esthri', 'put', '--bucket', bucket, '--key', prefix, src]);
     else:
         assert False
 
@@ -83,7 +84,6 @@ def main():
     ns = {}
     try:
         ns = parser.parse_args(sys.argv[1:])
-        print(ns)
     except ArgParserError as exc:
         exec_real()
     if ns.subcommand == 's3' and ns.subsubcommand == 'cp':
