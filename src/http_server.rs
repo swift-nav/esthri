@@ -180,7 +180,7 @@ type SenderT = oneshot::Sender<bool>;
 type MaybeSenderT = Option<SenderT>;
 type SharedSenderT = Mutex<Cell<MaybeSenderT>>;
 
-pub static SHUTDOWN_TX: OnceCell<SharedSenderT> = OnceCell::new();
+static SHUTDOWN_TX: OnceCell<SharedSenderT> = OnceCell::new();
 
 fn setup_termination_handler() {
     ctrlc::set_handler(move || {
