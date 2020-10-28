@@ -571,7 +571,10 @@ where
     ))
 }
 
-pub fn setup_cancel_handler() {
+/// Since large uploads require us to create a multi-part upload request
+/// we need to tell AWS that we're aborting the upload, otherwise the
+/// unfinished could stick around indefinitely.
+pub fn setup_upload_termination_handler() {
     ctrlc::set_handler(move || {
         let global_data = GLOBAL_DATA.lock().expect(EXPECT_GLOBAL_DATA);
         if global_data.bucket.is_none()

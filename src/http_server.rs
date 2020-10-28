@@ -1,5 +1,6 @@
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
+use std::cell::Cell;
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::sync::{
@@ -19,6 +20,8 @@ use warp::http::Response;
 use warp::hyper::Body;
 use warp::Filter;
 
+use once_cell::sync::OnceCell;
+
 use mime_guess::mime::{APPLICATION_OCTET_STREAM, TEXT_HTML_UTF_8};
 
 use rusoto_s3::{S3Client, S3};
@@ -28,6 +31,8 @@ use tokio_util::compat::*;
 
 use tokio_util::codec::BytesCodec;
 use tokio_util::codec::FramedRead;
+
+use tokio::sync::oneshot;
 
 use async_tar::{Builder, Header};
 
@@ -57,7 +62,7 @@ const ARCHIVE_ENTRY_MODE: u32 = 0o0644;
 const LAST_MODIFIED_TIME_FMT: &str = "%a, %d %b %Y %H:%M:%S GMT";
 
 #[derive(Deserialize)]
-struct Params {
+struct DownloadParams {
     archive: Option<bool>,
     archive_name: Option<String>,
     prefixes: Option<S3PrefixList>,
@@ -171,6 +176,37 @@ struct ErrorMessage {
     message: String,
 }
 
+type SenderT = oneshot::Sender<bool>;
+type MaybeSenderT = Option<SenderT>;
+type SharedSenderT = Mutex<Cell<MaybeSenderT>>;
+
+pub static SHUTDOWN_TX: OnceCell<SharedSenderT> = OnceCell::new();
+
+fn setup_termination_handler() {
+    ctrlc::set_handler(move || {
+        let _: Result<_, _> = (|| {
+            SHUTDOWN_TX
+                .get()
+                .ok_or_else(|| {
+                    error!("shutdown signaler not initialized");
+                })?
+                .lock()
+                .map_err(|_| {
+                    error!("failed to lock shutdown signaler");
+                })?
+                .take()
+                .ok_or_else(|| {
+                    error!("termination handler already triggered");
+                })
+                .map(|tx| tx.send(true))
+                .map_err(|_| {
+                    error!("error triggering termination handler");
+                })
+        })();
+    })
+    .expect("error setting SIGINT/SIGTERM handler");
+}
+
 fn with_bucket(bucket: String) -> impl Filter<Extract = (String,), Error = Infallible> + Clone {
     warp::any().map(move || bucket.clone())
 }
@@ -188,7 +224,7 @@ pub fn esthri_filter(
     warp::path::full()
         .and(with_s3_client(s3_client))
         .and(with_bucket(bucket.to_owned()))
-        .and(warp::query::<Params>())
+        .and(warp::query::<DownloadParams>())
         .and(warp::header::optional::<String>("if-none-match"))
         .and_then(download)
 }
@@ -198,8 +234,25 @@ pub async fn run(
     bucket: &str,
     address: &SocketAddr,
 ) -> Result<(), Infallible> {
+    setup_termination_handler();
+
+    let (tx, rx) = oneshot::channel();
+    SHUTDOWN_TX
+        .set(Mutex::new(Cell::new(Some(tx))))
+        .ok()
+        .expect("failed to set termination signaler");
+
     let routes = esthri_filter(s3_client, bucket).recover(handle_rejection);
-    warp::serve(routes).run(*address).await;
+
+    let (addr, server) = warp::serve(routes).bind_with_graceful_shutdown(*address, async {
+        rx.await.ok();
+        debug!("got shutdown signal, waiting for all open connections to complete...");
+    });
+
+    info!("listening on: {}...", addr);
+    let _ = tokio::task::spawn(server).await;
+
+    info!("shutting down...");
 
     Ok(())
 }
@@ -534,7 +587,7 @@ async fn download(
     path: warp::path::FullPath,
     s3: S3Client,
     bucket: String,
-    params: Params,
+    params: DownloadParams,
     if_none_match: Option<String>,
 ) -> Result<http::Response<Body>, warp::Rejection> {
     let path = path

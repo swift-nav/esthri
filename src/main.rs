@@ -158,12 +158,11 @@ async fn main() -> Result<()> {
     let credentials_provider = DefaultCredentialsProvider::new().unwrap();
     let s3 = S3Client::new_with(http_client, credentials_provider, Region::default());
 
-    setup_cancel_handler();
-
     use Command::*;
 
     match cli.cmd {
         Put { bucket, key, file } => {
+            setup_upload_termination_handler();
             upload(&s3, &bucket, &key, &file).await?;
         }
 
@@ -200,6 +199,7 @@ async fn main() -> Result<()> {
             include,
             exclude,
         } => {
+            setup_upload_termination_handler();
             sync(
                 &s3, direction, &bucket, &key, &directory, &include, &exclude,
             )
