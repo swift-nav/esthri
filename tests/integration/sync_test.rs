@@ -162,8 +162,7 @@ async fn test_sync_across() {
     let excludes: Option<Vec<String>> = None;
 
     let source = SyncParam::new_bucket(&crate::TEST_BUCKET, &source_prefix);
-    let destination =
-        SyncParam::new_bucket(&crate::TEST_BUCKET, &dest_prefix);
+    let destination = SyncParam::new_bucket(&crate::TEST_BUCKET, &dest_prefix);
 
     let res = sync(s3client.as_ref(), source, destination, &includes, &excludes).await;
     assert!(res.is_ok(), format!("s3_sync result: {:?}", res));
