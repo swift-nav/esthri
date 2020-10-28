@@ -162,7 +162,7 @@ async fn main() -> Result<()> {
 
     match cli.cmd {
         Put { bucket, key, file } => {
-            setup_upload_ctrlc_handler();
+            setup_upload_termination_handler();
             upload(&s3, &bucket, &key, &file).await?;
         }
 
@@ -199,7 +199,7 @@ async fn main() -> Result<()> {
             include,
             exclude,
         } => {
-            setup_upload_ctrlc_handler();
+            setup_upload_termination_handler();
             sync(
                 &s3, direction, &bucket, &key, &directory, &include, &exclude,
             )
