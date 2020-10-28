@@ -21,11 +21,11 @@ walkdir = "2"
 glob = "0.3"
 thiserror = "1.0"
 log = "0.4"
-env_logger = "0.7"
+env_logger = "0.8"
 hyper = "0.13.8"
 hyper-tls = "0.4.3"
 log-derive = "0.4.1"
-futures = "0.3.6"
+futures = "0.3.7"
 eyre = "0.6.1"
 stable-eyre = "0.2.1"
 chrono = "0.4"
@@ -45,7 +45,7 @@ path = "src/lib.rs"
 [features]
 default = [ "http_server",]
 aggressive_lint = []
-http_server = [ "async-tar", "async-compression", "async-stream", "bytes", "futures-util", "mime_guess", "sluice", "sanitize-filename", "serde", "serde_derive", "tokio-util", "warp",]
+http_server = [ "async-tar", "async-compression", "async-stream", "bytes", "futures-util", "mime_guess", "sluice", "sanitize-filename", "serde", "serde_derive", "tokio-util", "warp", "ctrlc"]
 
 [dependencies.tokio]
 version = "0.2"
@@ -102,9 +102,10 @@ version = "2.0"
 optional = true
 
 [dependencies.sanitize-filename]
-version = "0.2"
+version = "0.3"
 optional = true
 
 [dependencies.ctrlc]
 version = "3.1"
 features = [ "termination",]
+optional = true
