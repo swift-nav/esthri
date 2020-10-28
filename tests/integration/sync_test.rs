@@ -14,8 +14,8 @@ fn test_sync_down() {
     let includes: Option<Vec<String>> = Some(vec!["*.txt".to_string()]);
     let excludes: Option<Vec<String>> = Some(vec!["*".to_string()]);
 
-    let source = SyncParam::new_bucket(&crate::TEST_BUCKET.to_owned(), &s3_key.to_owned());
-    let destination = SyncParam::new_local(&local_directory.to_owned());
+    let source = SyncParam::new_bucket(&crate::TEST_BUCKET, &s3_key);
+    let destination = SyncParam::new_local(&local_directory);
 
     let res = blocking::sync(s3client.as_ref(), source, destination, &includes, &excludes);
     assert!(res.is_ok(), format!("s3_sync result: {:?}", res));
@@ -29,8 +29,8 @@ async fn test_sync_down_async() {
     let includes: Option<Vec<String>> = Some(vec!["*.txt".to_string()]);
     let excludes: Option<Vec<String>> = Some(vec!["*".to_string()]);
 
-    let source = SyncParam::new_bucket(&crate::TEST_BUCKET.to_owned(), &s3_key.to_owned());
-    let destination = SyncParam::new_local(&local_directory.to_owned());
+    let source = SyncParam::new_bucket(&crate::TEST_BUCKET, &s3_key);
+    let destination = SyncParam::new_local(&local_directory);
 
     let res = sync(s3client.as_ref(), source, destination, &includes, &excludes).await;
     assert!(res.is_ok(), format!("s3_sync result: {:?}", res));
@@ -42,8 +42,8 @@ fn test_sync_down_fail() {
     let local_directory = "tests/data/";
     let s3_key = "test_folder";
 
-    let source = SyncParam::new_bucket(&crate::TEST_BUCKET.to_owned(), &s3_key.to_owned());
-    let destination = SyncParam::new_local(&local_directory.to_owned());
+    let source = SyncParam::new_bucket(&crate::TEST_BUCKET, &s3_key);
+    let destination = SyncParam::new_local(&local_directory);
 
     let res = blocking::sync(s3client.as_ref(), source, destination, &None, &None);
     assert!(res.is_err());
@@ -55,8 +55,8 @@ fn test_sync_up_fail() {
     let local_directory = "tests/data/";
     let s3_key = "test_folder";
 
-    let source = SyncParam::new_local(&local_directory.to_owned());
-    let destination = SyncParam::new_bucket(&crate::TEST_BUCKET.to_owned(), &s3_key.to_owned());
+    let source = SyncParam::new_local(&local_directory);
+    let destination = SyncParam::new_bucket(&crate::TEST_BUCKET, &s3_key);
 
     let res = blocking::sync(s3client.as_ref(), source, destination, &None, &None);
     assert!(res.is_err());
@@ -70,8 +70,8 @@ fn test_sync_up() {
     let includes: Option<Vec<String>> = Some(vec!["*.txt".to_string()]);
     let excludes: Option<Vec<String>> = Some(vec!["*".to_string()]);
 
-    let source = SyncParam::new_local(&local_directory.to_owned());
-    let destination = SyncParam::new_bucket(&crate::TEST_BUCKET.to_owned(), &s3_key.to_owned());
+    let source = SyncParam::new_local(&local_directory);
+    let destination = SyncParam::new_bucket(&crate::TEST_BUCKET, &s3_key);
 
     let res = blocking::sync(s3client.as_ref(), source, destination, &includes, &excludes);
     assert!(res.is_ok());
@@ -85,8 +85,8 @@ async fn test_sync_up_async() {
     let includes: Option<Vec<String>> = Some(vec!["*.txt".to_string()]);
     let excludes: Option<Vec<String>> = Some(vec!["*".to_string()]);
 
-    let source = SyncParam::new_local(&local_directory.to_owned());
-    let destination = SyncParam::new_bucket(&crate::TEST_BUCKET.to_owned(), &s3_key.to_owned());
+    let source = SyncParam::new_local(&local_directory);
+    let destination = SyncParam::new_bucket(&crate::TEST_BUCKET, &s3_key);
 
     let res = sync(s3client.as_ref(), source, destination, &includes, &excludes).await;
     assert!(res.is_ok());
@@ -98,8 +98,8 @@ fn test_sync_up_default() {
     let local_directory = "tests/data/sync_up";
     let s3_key = "test_sync_up_default/";
 
-    let source = SyncParam::new_local(&local_directory.to_owned());
-    let destination = SyncParam::new_bucket(&crate::TEST_BUCKET.to_owned(), &s3_key.to_owned());
+    let source = SyncParam::new_local(&local_directory);
+    let destination = SyncParam::new_bucket(&crate::TEST_BUCKET, &s3_key);
 
     let res = blocking::sync(s3client.as_ref(), source, destination, &None, &None);
     assert!(res.is_ok());
@@ -137,8 +137,8 @@ fn test_sync_down_default() {
     //
     let s3_key = "test_sync_down_default/";
 
-    let source = SyncParam::new_bucket(&crate::TEST_BUCKET.to_owned(), &s3_key.to_owned());
-    let destination = SyncParam::new_local(&local_directory.to_owned());
+    let source = SyncParam::new_bucket(&crate::TEST_BUCKET, &s3_key);
+    let destination = SyncParam::new_local(&local_directory);
 
     let res = blocking::sync(s3client.as_ref(), source, destination, &None, &None);
     assert!(res.is_ok());
@@ -161,9 +161,9 @@ async fn test_sync_across() {
     let includes: Option<Vec<String>> = Some(vec!["*.txt".to_string()]);
     let excludes: Option<Vec<String>> = None;
 
-    let source = SyncParam::new_bucket(&crate::TEST_BUCKET.to_owned(), &source_prefix.to_owned());
+    let source = SyncParam::new_bucket(&crate::TEST_BUCKET, &source_prefix);
     let destination =
-        SyncParam::new_bucket(&crate::TEST_BUCKET.to_owned(), &dest_prefix.to_owned());
+        SyncParam::new_bucket(&crate::TEST_BUCKET, &dest_prefix);
 
     let res = sync(s3client.as_ref(), source, destination, &includes, &excludes).await;
     assert!(res.is_ok(), format!("s3_sync result: {:?}", res));
