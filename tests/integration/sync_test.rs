@@ -88,7 +88,7 @@ async fn test_sync_up_async() {
     let source = SyncParam::new_local(local_directory.to_owned());
     let destination = SyncParam::new_bucket(crate::TEST_BUCKET.to_owned(), s3_key.to_owned());
 
-    let res = blocking::sync(s3client.as_ref(), source, destination, &includes, &excludes);
+    let res = sync(s3client.as_ref(), source, destination, &includes, &excludes).await;
     assert!(res.is_ok());
 }
 

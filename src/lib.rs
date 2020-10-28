@@ -412,7 +412,7 @@ impl std::str::FromStr for SyncParam {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let s3_format = Regex::new(r"^s3://+?(?P<bucket>[^/]+)/(?P<prefix>.*)$").unwrap();
+        let s3_format = Regex::new(r"^s3://(?P<bucket>[^/]+)/(?P<prefix>.*)$").unwrap();
 
         if let Some(captures) = s3_format.captures(s) {
             let bucket = captures.name("bucket").unwrap().as_str();
