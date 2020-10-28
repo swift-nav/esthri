@@ -4,7 +4,7 @@ path = "src/main.rs"
 
 [package]
 name = "esthri"
-version = "4.0.0"
+version = "4.1.0"
 authors = [ "Jason Mobarak <jason@swift-nav.com>",]
 edition = "2018"
 
@@ -44,7 +44,7 @@ path = "src/lib.rs"
 [features]
 default = [ "http_server",]
 aggressive_lint = []
-http_server = [ "async-tar", "async-compression", "async-stream", "bytes", "futures-util", "mime_guess", "sluice", "sanitize-filename", "serde", "serde_derive", "tokio-util", "warp", "ctrlc"]
+http_server = [ "async-tar", "async-compression", "async-stream", "bytes", "futures-util", "mime_guess", "sluice", "sanitize-filename", "serde", "serde_derive", "tokio-util", "warp", "ctrlc",]
 
 [dependencies.tokio]
 version = "0.2"
