@@ -12,6 +12,7 @@
 
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 #![recursion_limit = "256"]
+extern crate regex;
 
 use std::fs;
 use std::fs::File;
@@ -31,6 +32,7 @@ use glob::Pattern;
 use log::*;
 use log_derive::logfn;
 use once_cell::sync::Lazy;
+use regex::Regex;
 use tokio::{io::AsyncReadExt, time};
 use walkdir::WalkDir;
 
@@ -43,13 +45,13 @@ pub mod types;
 
 use crate::errors::EsthriError;
 use crate::retry::handle_dispatch_error;
-use crate::types::{ObjectInfo, SyncDirection};
+use crate::types::ObjectInfo;
 
 use rusoto_s3::{
     AbortMultipartUploadRequest, CompleteMultipartUploadRequest, CompletedMultipartUpload,
-    CompletedPart, CreateMultipartUploadRequest, GetObjectError, GetObjectOutput, GetObjectRequest,
-    HeadObjectOutput, HeadObjectRequest, ListObjectsV2Request, PutObjectRequest, S3Client,
-    StreamingBody, UploadPartRequest, S3,
+    CompletedPart, CopyObjectOutput, CopyObjectRequest, CreateMultipartUploadRequest,
+    GetObjectError, GetObjectOutput, GetObjectRequest, HeadObjectOutput, HeadObjectRequest,
+    ListObjectsV2Request, PutObjectRequest, S3Client, StreamingBody, UploadPartRequest, S3,
 };
 
 use rusoto_core::{ByteStream, Region, RusotoError};
@@ -391,24 +393,58 @@ fn bytes_range(offset: u64) -> String {
     format!("bytes={}-", offset)
 }
 
+#[derive(Debug)]
+pub enum SyncParam {
+    Local { path: String },
+    Bucket { bucket: String, path: String },
+}
+
+impl SyncParam {
+    pub fn new_local(path: &str) -> SyncParam {
+        SyncParam::Local {
+            path: path.to_owned(),
+        }
+    }
+    pub fn new_bucket(bucket: &str, path: &str) -> SyncParam {
+        SyncParam::Bucket {
+            path: path.to_owned(),
+            bucket: bucket.to_owned(),
+        }
+    }
+}
+
+impl std::str::FromStr for SyncParam {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s3_format = Regex::new(r"^s3://(?P<bucket>[^/]+)/(?P<prefix>.*)$").unwrap();
+
+        if let Some(captures) = s3_format.captures(s) {
+            let bucket = captures.name("bucket").unwrap().as_str();
+            let path = captures.name("prefix").unwrap().as_str();
+            Ok(SyncParam::Bucket {
+                path: path.to_string(),
+                bucket: bucket.to_string(),
+            })
+        } else {
+            Ok(SyncParam::Local {
+                path: s.to_string(),
+            })
+        }
+    }
+}
+
 #[logfn(err = "ERROR")]
 pub async fn sync<T>(
     s3: &T,
-    direction: SyncDirection,
-    bucket: &str,
-    key: &str,
-    directory: &str,
+    source: SyncParam,
+    destination: SyncParam,
     includes: &Option<Vec<String>>,
     excludes: &Option<Vec<String>>,
 ) -> Result<()>
 where
     T: S3 + Send,
 {
-    info!(
-        "sync: direction={}, bucket={}, key={}, directory={}, include={:?}, exclude={:?}",
-        direction, bucket, key, directory, includes, excludes
-    );
-
     let mut glob_excludes: Vec<Pattern> = vec![];
     let mut glob_includes: Vec<Pattern> = vec![];
 
@@ -440,14 +476,79 @@ where
         glob_includes.push(Pattern::new("*")?);
     }
 
-    match direction {
-        SyncDirection::up => {
-            sync_local_to_remote(s3, bucket, key, directory, &glob_includes, &glob_excludes)
-                .await?;
+    match (source, destination) {
+        (
+            SyncParam::Local { path },
+            SyncParam::Bucket {
+                bucket,
+                path: bucket_path,
+            },
+        ) => {
+            info!(
+                "sync-up, local directory: {}, bucket: {}, key: {}",
+                path, bucket, bucket_path
+            );
+
+            sync_local_to_remote(
+                s3,
+                &bucket,
+                &bucket_path,
+                &path,
+                &glob_includes,
+                &glob_excludes,
+            )
+            .await?;
         }
-        SyncDirection::down => {
-            sync_remote_to_local(s3, bucket, key, directory, &glob_includes, &glob_excludes)
-                .await?;
+        (
+            SyncParam::Bucket {
+                bucket,
+                path: bucket_path,
+            },
+            SyncParam::Local { path },
+        ) => {
+            info!(
+                "sync-down, local directory: {}, bucket: {}, key: {}",
+                path, bucket, bucket_path
+            );
+
+            sync_remote_to_local(
+                s3,
+                &bucket,
+                &bucket_path,
+                &path,
+                &glob_includes,
+                &glob_excludes,
+            )
+            .await?;
+        }
+        (
+            SyncParam::Bucket {
+                bucket: source_bucket,
+                path: source_key,
+            },
+            SyncParam::Bucket {
+                bucket: destination_bucket,
+                path: destination_key,
+            },
+        ) => {
+            info!(
+                "sync-across, bucket: {}, source_key: {}, bucket: {}, destination_key: {}",
+                source_bucket, source_key, destination_bucket, destination_key
+            );
+
+            sync_across(
+                s3,
+                &source_bucket,
+                &source_key,
+                &destination_bucket,
+                &destination_key,
+                &glob_includes,
+                &glob_excludes,
+            )
+            .await?;
+        }
+        _ => {
+            warn!("Local to Local copy not implemented");
         }
     }
 
@@ -962,6 +1063,117 @@ where
     }
 
     Ok(())
+}
+
+pub async fn sync_across<T>(
+    s3: &T,
+    source_bucket: &str,
+    source_prefix: &str,
+    dest_bucket: &str,
+    destination_key: &str,
+    glob_includes: &[Pattern],
+    glob_excludes: &[Pattern],
+) -> Result<()>
+where
+    T: S3 + Send,
+{
+    if !source_prefix.ends_with(FORWARD_SLASH) {
+        return Err(EsthriError::DirlikePrefixRequired.into());
+    }
+
+    if !destination_key.ends_with(FORWARD_SLASH) {
+        return Err(EsthriError::DirlikePrefixRequired.into());
+    }
+
+    let mut stream = list_objects_stream(s3, source_bucket, source_prefix);
+
+    while let Some(from_entries) = stream.try_next().await? {
+        for entry in from_entries {
+            if let S3ListingItem::S3Object(src_object) = entry {
+                let path = process_globs(&src_object.key, &glob_includes, &glob_excludes);
+
+                if let Some(_accept) = path {
+                    let mut should_copy_file: bool = true;
+                    let new_file = src_object.key.replace(source_prefix, destination_key);
+                    let dest_object_info = head_object_request(s3, dest_bucket, &new_file).await?;
+
+                    if let Some(dest_object) = dest_object_info {
+                        if dest_object.e_tag == src_object.e_tag {
+                            should_copy_file = false;
+                        }
+                    }
+
+                    if should_copy_file {
+                        copy_object_request(
+                            s3,
+                            source_bucket,
+                            source_prefix,
+                            &src_object.key,
+                            dest_bucket,
+                            destination_key,
+                        )
+                        .await?;
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+#[logfn(err = "ERROR")]
+async fn copy_object_request<T>(
+    s3: &T,
+    source_bucket: &str,
+    source_key: &str,
+    file_name: &str,
+    dest_bucket: &str,
+    dest_key: &str,
+) -> Result<CopyObjectOutput>
+where
+    T: S3 + Send,
+{
+    let res = handle_dispatch_error(|| async {
+        let cor = CopyObjectRequest {
+            bucket: dest_bucket.to_string(),
+            copy_source: format!("{}/{}", source_bucket.to_string(), &file_name),
+            key: file_name.replace(source_key, dest_key),
+            ..Default::default()
+        };
+
+        s3.copy_object(cor).await
+    })
+    .await;
+
+    match res {
+        Ok(coo) => Ok(coo),
+        Err(e) => Err(anyhow!("copy_object failed: {:?}", e)),
+    }
+}
+
+pub fn create_globs(
+    string_vector: &Option<Vec<String>>,
+    includes_flag: bool,
+) -> Result<Vec<Pattern>> {
+    let mut globs: Vec<Pattern> = vec![];
+
+    if let Some(filters) = string_vector {
+        for filter in filters {
+            match Pattern::new(filter) {
+                Err(e) => {
+                    return Err(anyhow!("glob pattern error for {}: {}", filter, e));
+                }
+                Ok(p) => {
+                    globs.push(p);
+                }
+            }
+        }
+    } else if includes_flag {
+        globs.push(Pattern::new("*")?);
+    }
+
+    Ok(globs)
 }
 
 async fn sync_remote_to_local<T>(

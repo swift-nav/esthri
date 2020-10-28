@@ -16,7 +16,6 @@ use std::time::Duration;
 
 use log::*;
 
-use esthri_lib::types::*;
 use esthri_lib::*;
 
 use rusoto_core::{HttpClient, Region};
@@ -85,17 +84,10 @@ enum Command {
     /// Sync a directory with S3
     #[structopt(name = "sync")]
     SyncCmd {
-        /// The direction of the sync: 'up' for local to remote, 'down' for remote to local
-        #[structopt(long, default_value = "up")]
-        direction: SyncDirection,
         #[structopt(long)]
-        bucket: String,
+        source: SyncParam,
         #[structopt(long)]
-        key: String,
-        /// The directory to use for up/down sync
-        #[structopt(long)]
-        directory: String,
-        /// Optional include glob pattern (see man 3 glob)
+        destination: SyncParam,
         #[structopt(long)]
         include: Option<Vec<String>>,
         /// Optional exclude glob pattern (see man 3 glob)
@@ -192,18 +184,13 @@ async fn main() -> Result<()> {
         }
 
         SyncCmd {
-            direction,
-            bucket,
-            key,
-            directory,
+            source,
+            destination,
             include,
             exclude,
         } => {
             setup_upload_termination_handler();
-            sync(
-                &s3, direction, &bucket, &key, &directory, &include, &exclude,
-            )
-            .await?;
+            sync(&s3, source, destination, &include, &exclude).await?;
         }
 
         HeadObject { bucket, key } => {
