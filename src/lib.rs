@@ -400,11 +400,16 @@ pub enum SyncParam {
 }
 
 impl SyncParam {
-    pub fn new_local(path: String) -> SyncParam {
-        SyncParam::Local { path }
+    pub fn new_local(path: &str) -> SyncParam {
+        SyncParam::Local {
+            path: path.to_owned(),
+        }
     }
-    pub fn new_bucket(bucket: String, path: String) -> SyncParam {
-        SyncParam::Bucket { path, bucket }
+    pub fn new_bucket(bucket: &str, path: &str) -> SyncParam {
+        SyncParam::Bucket {
+            path: path.to_owned(),
+            bucket: bucket.to_owned(),
+        }
     }
 }
 
