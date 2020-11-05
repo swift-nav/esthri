@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use backoff::{future::FutureOperation as _, ExponentialBackoff};
 use futures::Future;
+use log::debug;
 use rusoto_core::{RusotoError, RusotoResult};
 
 pub async fn handle_dispatch_error<'a, T, E, F>(func: impl Fn() -> F + 'a) -> RusotoResult<T, E>
@@ -15,9 +16,18 @@ where
 }
 
 fn from_rusoto_err<E>(err: RusotoError<E>) -> backoff::Error<RusotoError<E>> {
+    use backoff::Error;
+
     match err {
-        RusotoError::HttpDispatch(_) => backoff::Error::Transient(err),
-        _ => backoff::Error::Permanent(err),
+        RusotoError::HttpDispatch(_) => {
+            debug!("Retrying S3 dispatch error");
+            Error::Transient(err)
+        }
+        RusotoError::Unknown(ref res) if res.status.is_server_error() => {
+            debug!("Retrying S3 server error: {}", res.body_as_str());
+            Error::Transient(err)
+        }
+        _ => Error::Permanent(err),
     }
 }
 
