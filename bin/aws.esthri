@@ -46,8 +46,12 @@ def handle_s3_cp(src, src_is_s3, dst, dst_is_s3):
 
 
 def handle_s3_sync(src, dst):
+    if not src.endswith('/'):
+        src = src + '/'
+    if not dst.endswith('/'):
+        dst = dst + '/'
     os.execvp('esthri', ['esthri', 'sync', '--source', src, '--destination', dst])
-    
+
 
 def classify_s3_cp(ns):
     if 's3_cp_src' not in ns or 's3_cp_dst' not in ns:
