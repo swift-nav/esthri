@@ -505,6 +505,7 @@ async fn item_pre_response<'a, T: S3 + Send>(
         }
     };
     let not_modified = if_none_match
+        .map(|etag| etag.strip_prefix("W/").map(String::from).unwrap_or(etag))
         .map(|etag| etag == obj_info.e_tag)
         .unwrap_or(false);
     if not_modified {
