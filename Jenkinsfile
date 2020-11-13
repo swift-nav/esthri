@@ -42,16 +42,18 @@ pipeline {
           }
           steps {
             gitPrep()
-            script {
-              sh("""/bin/bash -ex
-                  |
-                  | git lfs install
-                  | git lfs pull
-                  |
-                  | RUST_LOG=debug RUST_BACKTRACE=1 \\
-                  |   cargo test --features http_server -- --nocapture
-                  |
-                 """.stripMargin())
+            lock(resource: "esthri-integration-tests") {
+              script {
+                sh("""/bin/bash -ex
+                    |
+                    | git lfs install
+                    | git lfs pull
+                    |
+                    | RUST_LOG=debug RUST_BACKTRACE=1 \\
+                    |   cargo test --features http_server -- --nocapture
+                    |
+                   """.stripMargin())
+              }
             }
           }
         }
