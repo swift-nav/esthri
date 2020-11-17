@@ -17,6 +17,16 @@ TARGET = "--target=x86_64-unknown-linux-musl"
 BUILD_FLAVOR = "--release"
 TLS_PROVIDER = "nativetls"
 
+[tasks.check]
+command = "cargo"
+args = [
+	"check",
+	"--features=${TLS_PROVIDER},http_server,cli",
+	"@@remove-empty(BUILD_FLAVOR)",
+	"@@remove-empty(TARGET)"
+	]
+cwd = "src/esthri"
+
 [tasks.build]
 command = "cargo"
 args = [
