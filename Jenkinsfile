@@ -27,13 +27,13 @@ pipeline {
   stages {
     stage('Build checks') {
       parallel {
-        stage('Build (release+rustls)') {
+        stage('Build (rustls)') {
           agent { dockerfile { reuseNode true } }
           steps {
             sh("cargo make --profile release build")
           }
         }
-        stage('Build (release+nativetls)') {
+        stage('Build (nativetls)') {
           agent { dockerfile { reuseNode true } }
           steps {
             sh("cargo make --profile release+nativetls build")
