@@ -49,8 +49,8 @@ pub use crate::errors::{EsthriError, EyreError, EyreReport};
 use crate::retry::handle_dispatch_error;
 use crate::rusoto::*;
 
-pub use crate::types::{ObjectInfo, S3ListingItem, S3Object, SyncParam};
 use crate::types::{GlobalData, S3Listing};
+pub use crate::types::{ObjectInfo, S3ListingItem, S3Object, SyncParam};
 
 const EXPECT_GLOBAL_DATA: &str = "failed to lock global data";
 
