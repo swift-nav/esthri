@@ -10,7 +10,9 @@
 * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
 */
 
-pub use std::error::Error;
+pub use std::error::Error as StdError;
+
+pub use eyre::Error;
 
 #[derive(thiserror::Error, Debug)]
 pub enum EsthriError {
