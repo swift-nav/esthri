@@ -112,6 +112,7 @@ pipeline {
       }
     }
     stage('Publish release') {
+      agent { dockerfile { reuseNode true } }
       when {
         expression {
           context.isTagPush()
