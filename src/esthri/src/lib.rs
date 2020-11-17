@@ -43,18 +43,12 @@ pub mod http_server;
 pub mod retry;
 pub mod types;
 
+pub mod rusoto;
+
 use crate::errors::EsthriError;
 use crate::retry::handle_dispatch_error;
+use crate::rusoto::*;
 use crate::types::ObjectInfo;
-
-use rusoto_s3::{
-    AbortMultipartUploadRequest, CompleteMultipartUploadRequest, CompletedMultipartUpload,
-    CompletedPart, CopyObjectOutput, CopyObjectRequest, CreateMultipartUploadRequest,
-    GetObjectError, GetObjectOutput, GetObjectRequest, HeadObjectOutput, HeadObjectRequest,
-    ListObjectsV2Request, PutObjectRequest, S3Client, StreamingBody, UploadPartRequest, S3,
-};
-
-use rusoto_core::{ByteStream, Region, RusotoError};
 
 struct GlobalData {
     bucket: Option<String>,

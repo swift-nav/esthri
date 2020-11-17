@@ -2,7 +2,7 @@
 
 use std::fs;
 
-use esthri_lib::{blocking, sync, SyncParam};
+use esthri::{blocking, sync, SyncParam};
 
 use crate::{validate_key_hash_pairs, KeyHashPair};
 

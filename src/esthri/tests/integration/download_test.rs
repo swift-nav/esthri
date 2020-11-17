@@ -1,6 +1,6 @@
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
-use esthri_lib::{blocking, download};
+use esthri::{blocking, download};
 
 #[test]
 fn test_download() {

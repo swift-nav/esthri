@@ -14,7 +14,7 @@ RUN    echo "deb http://deb.debian.org/debian stretch-backports main non-free" >
 
 RUN \
       apt-get update \
-   && apt-get install -y libssl-dev pkg-config curl openssh-client git-lfs binutils \
+   && apt-get install -y libssl-dev pkg-config curl openssh-client git-lfs binutils musl-dev musl-tools \
    && rm -rf /var/lib/apt/lists/* \
    && curl -sSL -o /tmp/sccache.tgz $SCCACHE_URL \
    && mkdir /tmp/sccache \
@@ -22,6 +22,7 @@ RUN \
    && mv /tmp/sccache/sccache /usr/local/bin \
    && chmod +x /usr/local/bin/sccache \
    && rm -rf /tmp/sccache /tmp/sccache.tgz \
+   && rustup target add x86_64-unknown-linux-musl \
    && rustup component add rustfmt \
    && rustup component add clippy
 

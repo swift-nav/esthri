@@ -1,3 +1,43 @@
+[config]
+default_to_workspace = false
+
+[env]
+BUILD_FLAVOR = ""
+TLS_PROVIDER = "rustls"
+TARGET = ""
+
+[env.release]
+BUILD_FLAVOR = "--release"
+
+[env.'release+static']
+BUILD_FLAVOR = "--release"
+TARGET = "--target=x86_64-unknown-linux-musl"
+
+[env.'release+nativetls']
+BUILD_FLAVOR = "--release"
+TLS_PROVIDER = "nativetls"
+
+[tasks.build]
+command = "cargo"
+args = [
+	"build",
+	"--features=${TLS_PROVIDER},http_server,cli",
+	"@@remove-empty(BUILD_FLAVOR)",
+	"@@remove-empty(TARGET)"
+	]
+cwd = "src/esthri"
+
+[tasks.test]
+env = { "RUST_LOG" = "esthri=debug", "RUST_BACKTRACE" = "1" }
+cwd = "src/esthri"
+command = "cargo"
+args = ["test", "--features=${TLS_PROVIDER},http_server,cli", "@@remove-empty(BUILD_FLAVOR)", "--", "--nocapture"]
+
+[tasks.lint]
+command = "cargo"
+cwd = "src/esthri"
+args = ["clippy", "--features=${TLS_PROVIDER},http_server,cli,aggressive_lint"]
+
 [tasks.install-toml]
 command = "pip3"
 args = ["install", "toml"]

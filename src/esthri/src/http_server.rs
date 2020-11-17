@@ -24,7 +24,7 @@ use once_cell::sync::OnceCell;
 
 use mime_guess::mime::{APPLICATION_OCTET_STREAM, TEXT_HTML_UTF_8};
 
-use rusoto_s3::{S3Client, S3};
+use crate::rusoto::*;
 
 // Import all extensions that allow converting between futures-rs and tokio types
 use tokio_util::compat::*;

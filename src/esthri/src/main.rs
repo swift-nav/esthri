@@ -16,16 +16,12 @@ use std::time::Duration;
 
 use log::*;
 
-use esthri_lib::*;
-
-use rusoto_core::{HttpClient, Region};
-use rusoto_credential::DefaultCredentialsProvider;
-use rusoto_s3::S3Client;
+use esthri::rusoto::*;
+use esthri::*;
 
 use structopt::StructOpt;
 
 use hyper::Client;
-use hyper_tls::HttpsConnector;
 
 use stable_eyre::eyre::Result;
 

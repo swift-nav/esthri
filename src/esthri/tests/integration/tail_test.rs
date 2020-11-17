@@ -2,7 +2,7 @@ use std::io::Cursor;
 
 use tokio::time::{delay_for, timeout, Duration};
 
-use esthri_lib::{tail, upload_from_reader};
+use esthri::{tail, upload_from_reader};
 
 #[tokio::test]
 async fn test_tail() {
