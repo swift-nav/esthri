@@ -19,7 +19,7 @@ ARG CARGO_MAKE_URL=${CARGO_MAKE_URL_BASE}/${CARGO_MAKE_VER}/${CARGO_MAKE_FILE}
 
 RUN \
       apt-get update \
-   && apt-get install -y libssl-dev pkg-config curl openssh-client git-lfs binutils musl-dev musl-tools \
+   && apt-get install -y libssl-dev pkg-config curl openssh-client git-lfs binutils musl-dev musl-tools unzip \
    && rm -rf /var/lib/apt/lists/* \
    && curl -sSL -o /tmp/sccache.tgz $SCCACHE_URL \
    && mkdir /tmp/sccache \
