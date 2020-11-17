@@ -44,7 +44,8 @@ pub mod types;
 
 pub mod rusoto;
 
-use crate::errors::EsthriError;
+pub use crate::errors::{EsthriError, EyreError};
+
 use crate::retry::handle_dispatch_error;
 use crate::rusoto::*;
 

@@ -12,7 +12,7 @@
 
 pub use std::error::Error as StdError;
 
-pub use eyre::Error;
+pub use eyre::Error as EyreError;
 
 #[derive(thiserror::Error, Debug)]
 pub enum EsthriError {
