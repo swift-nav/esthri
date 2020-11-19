@@ -1,0 +1,16 @@
+[package]
+name = "rusoto_nativetls"
+version = "0.1.0"
+authors = ["Jason Mobarak <jason@swiftnav.com>"]
+edition = "2018"
+
+[dependencies]
+rusoto_credential = { version = ">= 0.43, < 1", optional = true }
+rusoto_core = { version = ">= 0.43, < 1", optional = true }
+rusoto_signature = { version = ">= 0.43, < 1", optional = true }
+rusoto_s3 = { version = ">= 0.43, < 1", optional = true }
+hyper-tls = { version = "0.4.3", optional = true }
+
+[features]
+default = []
+nativetls = ["rusoto_credential", "rusoto_core", "rusoto_signature", "rusoto_s3", "hyper-tls"]

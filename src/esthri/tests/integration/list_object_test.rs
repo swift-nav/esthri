@@ -1,12 +1,12 @@
 use futures::TryStreamExt;
 
-use esthri_lib::blocking;
-use esthri_lib::head_object;
-use esthri_lib::list_directory;
-use esthri_lib::list_objects;
-use esthri_lib::list_objects_stream;
-use esthri_lib::types::ObjectInfo;
-use esthri_lib::upload;
+use esthri::blocking;
+use esthri::head_object;
+use esthri::list_directory;
+use esthri::list_objects;
+use esthri::list_objects_stream;
+use esthri::types::ObjectInfo;
+use esthri::upload;
 
 use crate::DateTime;
 

@@ -3,7 +3,8 @@ use std::time::Duration;
 use backoff::{future::FutureOperation as _, ExponentialBackoff};
 use futures::Future;
 use log::debug;
-use rusoto_core::{RusotoError, RusotoResult};
+
+use crate::rusoto::*;
 
 pub async fn handle_dispatch_error<'a, T, E, F>(func: impl Fn() -> F + 'a) -> RusotoResult<T, E>
 where

@@ -27,13 +27,19 @@ pipeline {
   stages {
     stage('Build checks') {
       parallel {
-        stage('Build (release)') {
+        stage('Build (rustls)') {
           agent { dockerfile { reuseNode true } }
           steps {
-            sh("cargo build --features http_server --release")
+            sh("cargo make --profile release build")
           }
         }
-        stage('Test') {
+        stage('Build (nativetls)') {
+          agent { dockerfile { reuseNode true } }
+          steps {
+            sh("cargo make --profile release+nativetls build")
+          }
+        }
+        stage('Test (rustls)') {
           agent { dockerfile { reuseNode true; args dockerRunArgs } }
           environment {
             AWS_REGION = "us-west-2"
@@ -49,19 +55,49 @@ pipeline {
                     | git lfs install
                     | git lfs pull
                     |
-                    | RUST_LOG=debug RUST_BACKTRACE=1 \\
-                    |   cargo test --features http_server -- --nocapture
+                    | cargo make --profile release test
                     |
                    """.stripMargin())
               }
             }
           }
         }
-        stage('Lint') {
+        stage('Test (nativetls)') {
+          agent { dockerfile { reuseNode true; args dockerRunArgs } }
+          environment {
+            AWS_REGION = "us-west-2"
+            AWS_DEFAULT_REGION = "us-west-2"
+            USER = "jenkins"
+          }
+          steps {
+            gitPrep()
+            lock(resource: "esthri-integration-tests") {
+              script {
+                sh("""/bin/bash -ex
+                    |
+                    | git lfs install
+                    | git lfs pull
+                    |
+                    | cargo make --profile release+nativetls test
+                    |
+                   """.stripMargin())
+              }
+            }
+          }
+        }
+        stage('Lint (rustls)') {
           agent { dockerfile { reuseNode true } }
           steps {
             script {
-              sh("cargo clippy --all-targets --features aggressive_lint,http_server")
+              sh("cargo make --profile release lint")
+            }
+          }
+        }
+        stage('Lint (nativetls)') {
+          agent { dockerfile { reuseNode true } }
+          steps {
+            script {
+              sh("cargo make --profile release+nativetls lint")
             }
           }
         }
@@ -76,6 +112,7 @@ pipeline {
       }
     }
     stage('Publish release') {
+      agent { dockerfile { reuseNode true } }
       when {
         expression {
           context.isTagPush()
@@ -102,7 +139,9 @@ pipeline {
                 |
                 | mkdir \$dir_name
                 |
+                | cargo make --profile release+static build
                 | strip target/release/esthri
+                |
                 | cp target/release/esthri \$dir_name
                 | cp bin/aws.esthri \$dir_name
                 |

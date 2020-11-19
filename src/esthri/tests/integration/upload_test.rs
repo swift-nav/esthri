@@ -2,8 +2,8 @@
 
 use std::io::Cursor;
 
-use esthri_lib::blocking;
-use esthri_lib::upload;
+use esthri::blocking;
+use esthri::upload;
 
 #[test]
 fn test_upload() {

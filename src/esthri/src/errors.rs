@@ -10,11 +10,16 @@
 * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
 */
 
-use chrono::{DateTime, Utc};
+pub use std::error::Error as StdError;
 
-#[derive(Debug)]
-pub struct ObjectInfo {
-    pub e_tag: String,
-    pub size: i64,
-    pub last_modified: DateTime<Utc>,
+pub use eyre::Error as EyreError;
+pub use eyre::Report as EyreReport;
+
+#[derive(thiserror::Error, Debug)]
+pub enum EsthriError {
+    #[error("did not exist locally")]
+    ETagNotPresent,
+
+    #[error("s3 sync prefixes must end in a slash")]
+    DirlikePrefixRequired,
 }

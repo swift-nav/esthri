@@ -21,7 +21,6 @@ use std::io::ErrorKind;
 use std::io::{BufReader, BufWriter};
 use std::marker::Unpin;
 use std::path::Path;
-use std::process;
 use std::sync::Mutex;
 
 use crypto::digest::Digest;
@@ -32,7 +31,6 @@ use glob::Pattern;
 use log::*;
 use log_derive::logfn;
 use once_cell::sync::Lazy;
-use regex::Regex;
 use tokio::{io::AsyncReadExt, time};
 use walkdir::WalkDir;
 
@@ -43,24 +41,15 @@ pub mod http_server;
 pub mod retry;
 pub mod types;
 
-use crate::errors::EsthriError;
+pub mod rusoto;
+
+pub use crate::errors::{EsthriError, EyreError, EyreReport};
+
 use crate::retry::handle_dispatch_error;
-use crate::types::ObjectInfo;
+use crate::rusoto::*;
 
-use rusoto_s3::{
-    AbortMultipartUploadRequest, CompleteMultipartUploadRequest, CompletedMultipartUpload,
-    CompletedPart, CopyObjectOutput, CopyObjectRequest, CreateMultipartUploadRequest,
-    GetObjectError, GetObjectOutput, GetObjectRequest, HeadObjectOutput, HeadObjectRequest,
-    ListObjectsV2Request, PutObjectRequest, S3Client, StreamingBody, UploadPartRequest, S3,
-};
-
-use rusoto_core::{ByteStream, Region, RusotoError};
-
-struct GlobalData {
-    bucket: Option<String>,
-    key: Option<String>,
-    upload_id: Option<String>,
-}
+use crate::types::{GlobalData, S3Listing};
+pub use crate::types::{ObjectInfo, S3ListingItem, S3Object, SyncParam};
 
 const EXPECT_GLOBAL_DATA: &str = "failed to lock global data";
 
@@ -393,47 +382,6 @@ fn bytes_range(offset: u64) -> String {
     format!("bytes={}-", offset)
 }
 
-#[derive(Debug)]
-pub enum SyncParam {
-    Local { path: String },
-    Bucket { bucket: String, path: String },
-}
-
-impl SyncParam {
-    pub fn new_local(path: &str) -> SyncParam {
-        SyncParam::Local {
-            path: path.to_owned(),
-        }
-    }
-    pub fn new_bucket(bucket: &str, path: &str) -> SyncParam {
-        SyncParam::Bucket {
-            path: path.to_owned(),
-            bucket: bucket.to_owned(),
-        }
-    }
-}
-
-impl std::str::FromStr for SyncParam {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let s3_format = Regex::new(r"^s3://(?P<bucket>[^/]+)/(?P<prefix>.*)$").unwrap();
-
-        if let Some(captures) = s3_format.captures(s) {
-            let bucket = captures.name("bucket").unwrap().as_str();
-            let path = captures.name("prefix").unwrap().as_str();
-            Ok(SyncParam::Bucket {
-                path: path.to_string(),
-                bucket: bucket.to_string(),
-            })
-        } else {
-            Ok(SyncParam::Local {
-                path: s.to_string(),
-            })
-        }
-    }
-}
-
 #[logfn(err = "ERROR")]
 pub async fn sync<T>(
     s3: &T,
@@ -675,7 +623,9 @@ where
 /// Since large uploads require us to create a multi-part upload request
 /// we need to tell AWS that we're aborting the upload, otherwise the
 /// unfinished could stick around indefinitely.
+#[cfg(feature = "cli")]
 pub fn setup_upload_termination_handler() {
+    use std::process;
     ctrlc::set_handler(move || {
         let global_data = GLOBAL_DATA.lock().expect(EXPECT_GLOBAL_DATA);
         if global_data.bucket.is_none()
@@ -830,63 +780,6 @@ where
         }
         Err(e) => Err(anyhow!("head_object failed (2): {:?}", e)),
     }
-}
-
-#[derive(Default)]
-struct S3Listing {
-    continuation: Option<String>,
-    contents: Vec<S3Object>,
-    common_prefixes: Vec<String>,
-}
-
-#[derive(Debug, Clone)]
-pub enum S3ListingItem {
-    S3Object(S3Object),
-    S3CommonPrefix(String),
-}
-
-impl S3ListingItem {
-    fn object(o: crate::S3Object) -> S3ListingItem {
-        S3ListingItem::S3Object(o)
-    }
-    fn common_prefix(cp: String) -> S3ListingItem {
-        S3ListingItem::S3CommonPrefix(cp)
-    }
-    fn prefix(&self) -> String {
-        match self {
-            S3ListingItem::S3Object(o) => o.key.clone(),
-            S3ListingItem::S3CommonPrefix(cp) => cp.clone(),
-        }
-    }
-    fn unwrap_object(self) -> crate::S3Object {
-        match self {
-            S3ListingItem::S3Object(o) => o,
-            S3ListingItem::S3CommonPrefix(_cp) => panic!("invalid type"),
-        }
-    }
-}
-
-impl S3Listing {
-    fn combined(self) -> Vec<S3ListingItem> {
-        let common_prefixes = self
-            .common_prefixes
-            .into_iter()
-            .map(S3ListingItem::common_prefix);
-        let contents = self.contents.into_iter().map(S3ListingItem::object);
-        common_prefixes.chain(contents).collect()
-    }
-    fn count(&self) -> usize {
-        self.contents.len() + self.common_prefixes.len()
-    }
-    fn is_empty(&self) -> bool {
-        self.count() == 0
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct S3Object {
-    pub key: String,
-    pub e_tag: String,
 }
 
 async fn list_objects_request<T>(

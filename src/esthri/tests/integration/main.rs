@@ -13,13 +13,10 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use hyper::Client;
-use hyper_tls::HttpsConnector;
 
 use tempdir::TempDir;
 
-use rusoto_core::{HttpClient, Region};
-use rusoto_credential::DefaultCredentialsProvider;
-use rusoto_s3::S3Client;
+use esthri::rusoto::*;
 
 use once_cell::sync::Lazy;
 

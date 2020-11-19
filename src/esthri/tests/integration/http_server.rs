@@ -9,9 +9,9 @@ use tar::Archive;
 
 use tokio::runtime::Runtime;
 
-use esthri_lib::blocking;
-use esthri_lib::http_server::esthri_filter;
-use esthri_lib::upload;
+use esthri::blocking;
+use esthri::http_server::esthri_filter;
+use esthri::upload;
 
 use crate::{validate_key_hash_pairs, DateTime, KeyHashPair};
 

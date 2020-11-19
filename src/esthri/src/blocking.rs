@@ -12,7 +12,7 @@
 
 use std::io::prelude::*;
 
-use rusoto_s3::S3;
+use super::rusoto::*;
 
 use super::ObjectInfo;
 use super::Result;
