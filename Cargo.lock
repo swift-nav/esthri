@@ -652,7 +652,6 @@ dependencies = [
  "backtrace",
  "bytes",
  "chrono",
- "clap",
  "ctrlc",
  "env_logger",
  "eyre",

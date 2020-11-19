@@ -21,7 +21,6 @@ use std::io::ErrorKind;
 use std::io::{BufReader, BufWriter};
 use std::marker::Unpin;
 use std::path::Path;
-use std::process;
 use std::sync::Mutex;
 
 use crypto::digest::Digest;
@@ -624,7 +623,9 @@ where
 /// Since large uploads require us to create a multi-part upload request
 /// we need to tell AWS that we're aborting the upload, otherwise the
 /// unfinished could stick around indefinitely.
+#[cfg(feature = "cli")]
 pub fn setup_upload_termination_handler() {
+    use std::process;
     ctrlc::set_handler(move || {
         let global_data = GLOBAL_DATA.lock().expect(EXPECT_GLOBAL_DATA);
         if global_data.bucket.is_none()
