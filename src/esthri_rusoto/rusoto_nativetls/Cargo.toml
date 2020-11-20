@@ -1,7 +1,7 @@
 [package]
 name = "rusoto_nativetls"
 version = "0.1.0"
-authors = ["Jason Mobarak <jason@swiftnav.com>"]
+authors = [ "Swift Navigation <dev@swift-nav.com>",]
 edition = "2018"
 
 [dependencies]
