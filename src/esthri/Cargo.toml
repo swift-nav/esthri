@@ -1,11 +1,11 @@
 [[bin]]
 name = "esthri"
 path = "src/main.rs"
-required-features = ["cli"]
+required-features = [ "cli",]
 
 [package]
 name = "esthri"
-version = "4.1.3"
+version = "5.0.0"
 authors = [ "Swift Navigation <dev@swift-nav.com>",]
 edition = "2018"
 
@@ -41,9 +41,9 @@ path = "src/lib.rs"
 default = []
 aggressive_lint = []
 http_server = [ "async-tar", "async-compression", "async-stream", "bytes", "futures-util", "mime_guess", "sluice", "sanitize-filename", "serde", "serde_derive", "tokio-util", "warp", "ctrlc",]
-nativetls = ["rusoto_nativetls"]
-rustls = ["rusoto_rustls"]
-cli = ["ctrlc", "structopt"]
+nativetls = [ "rusoto_nativetls",]
+rustls = [ "rusoto_rustls",]
+cli = [ "ctrlc", "structopt",]
 
 [dependencies.structopt]
 version = "0.3"
@@ -52,12 +52,12 @@ optional = true
 [dependencies.rusoto_nativetls]
 path = "../esthri_rusoto/rusoto_nativetls"
 optional = true
-features = ["nativetls"]
+features = [ "nativetls",]
 
 [dependencies.rusoto_rustls]
 path = "../esthri_rusoto/rusoto_rustls"
 optional = true
-features = ["rustls"]
+features = [ "rustls",]
 
 [dependencies.tokio]
 version = "0.2"
