@@ -56,8 +56,12 @@ args = ["install", "toml"]
 script = [
 '''
 #!/bin/bash
-cargo build
-git add Cargo.toml Cargo.lock
+cargo make
+git add \
+	Cargo.lock \
+	src/esthri/Cargo.toml \
+	src/esthri_rusoto/rusoto_nativetls/Cargo.toml \
+	src/esthri_rusoto/rusoto_rustls/Cargo.toml
 relver=$(./scripts/package-version.py get-current)
 git commit -m "Release $relver"
 git tag -f $relver
