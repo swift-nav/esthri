@@ -60,7 +60,7 @@ optional = true
 features = [ "rustls",]
 
 [dependencies.tokio]
-version = "0.2"
+version = "1.0"
 features = [ "io-std",]
 
 [dependencies.backoff]
