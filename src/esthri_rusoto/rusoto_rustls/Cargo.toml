@@ -29,5 +29,5 @@ default_features = false
 optional = true
 
 [dependencies.hyper-rustls]
-version = "0.21.0"
+version = "0.22.1"
 optional = true
