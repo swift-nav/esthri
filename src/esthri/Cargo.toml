@@ -97,7 +97,7 @@ version = "0.5"
 optional = true
 
 [dependencies.tokio-util]
-version = "0.3.1"
+version = "0.6.3"
 features = [ "compat", "codec",]
 optional = true
 
