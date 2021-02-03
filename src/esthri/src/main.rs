@@ -21,7 +21,7 @@ use esthri::*;
 
 use structopt::StructOpt;
 
-use hyper::Client;
+use hyper::{Client, client::connect::HttpConnector};
 
 use stable_eyre::eyre::Result;
 
@@ -122,6 +122,16 @@ enum Command {
     },
 }
 
+#[cfg(feature = "rustls")]
+fn new_https_connector() -> HttpsConnector<HttpConnector> {
+    HttpsConnector::with_webpki_roots()
+}
+
+#[cfg(feature = "nativetls")]
+fn new_https_connector() -> HttpsConnector<HttpConnector> {
+    HttpsConnector::new()
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     stable_eyre::install()?;
@@ -140,7 +150,7 @@ async fn main() -> Result<()> {
     let mut hyper_builder = Client::builder();
     hyper_builder.pool_idle_timeout(Duration::from_secs(20));
 
-    let https_connector = HttpsConnector::new();
+    let https_connector = new_https_connector();
     let http_client = HttpClient::from_builder(hyper_builder, https_connector);
 
     let credentials_provider = DefaultCredentialsProvider::new().unwrap();

@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use backoff::{future::FutureOperation as _, ExponentialBackoff};
+use backoff::ExponentialBackoff;
 use futures::Future;
 use log::debug;
 
@@ -11,9 +11,9 @@ where
     F: Future<Output = RusotoResult<T, E>>,
     E: std::error::Error + Send + Sync + 'static,
 {
-    (|| async { func().await.map_err(from_rusoto_err::<E>) })
-        .retry(default_backoff())
-        .await
+    backoff::future::retry(default_backoff(), || async {
+        func().await.map_err(from_rusoto_err::<E>) }
+    ).await
 }
 
 fn from_rusoto_err<E>(err: RusotoError<E>) -> backoff::Error<RusotoError<E>> {
