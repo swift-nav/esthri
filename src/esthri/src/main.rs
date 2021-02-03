@@ -21,7 +21,7 @@ use esthri::*;
 
 use structopt::StructOpt;
 
-use hyper::{Client, client::connect::HttpConnector};
+use hyper::{client::connect::HttpConnector, Client};
 
 use stable_eyre::eyre::Result;
 

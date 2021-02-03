@@ -246,7 +246,9 @@ pub async fn run(
     let still_alive = || "still alive";
     let health_check = warp::path(".esthri_health_check").map(still_alive);
 
-    let routes = health_check.or(esthri_filter(s3_client, bucket)).recover(handle_rejection);
+    let routes = health_check
+        .or(esthri_filter(s3_client, bucket))
+        .recover(handle_rejection);
 
     let (addr, server) = warp::serve(routes).bind_with_graceful_shutdown(*address, async {
         rx.await.ok();

@@ -12,8 +12,9 @@ where
     E: std::error::Error + Send + Sync + 'static,
 {
     backoff::future::retry(default_backoff(), || async {
-        func().await.map_err(from_rusoto_err::<E>) }
-    ).await
+        func().await.map_err(from_rusoto_err::<E>)
+    })
+    .await
 }
 
 fn from_rusoto_err<E>(err: RusotoError<E>) -> backoff::Error<RusotoError<E>> {
