@@ -61,7 +61,7 @@ features = [ "rustls",]
 
 [dependencies.tokio]
 version = "1.1"
-features = [ "io-std", "net", "rt"]
+features = [ "io-std", "net", "rt", "time"]
 
 [dependencies.backoff]
 version = "0.3"
