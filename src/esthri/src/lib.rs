@@ -28,6 +28,7 @@ use crypto::md5::Md5;
 use eyre::{anyhow, ensure, Context, Result};
 use futures::{stream, TryStream, TryStreamExt};
 use glob::Pattern;
+use hyper::client::connect::HttpConnector;
 use log::*;
 use log_derive::logfn;
 use once_cell::sync::Lazy;
@@ -1134,6 +1135,16 @@ where
     }
 
     Ok(())
+}
+
+#[cfg(feature = "rustls")]
+pub fn new_https_connector() -> HttpsConnector<HttpConnector> {
+    HttpsConnector::with_webpki_roots()
+}
+
+#[cfg(feature = "nativetls")]
+pub fn new_https_connector() -> HttpsConnector<HttpConnector> {
+    HttpsConnector::new()
 }
 
 #[cfg(test)]

@@ -25,9 +25,6 @@ use hyper::Client;
 
 use stable_eyre::eyre::Result;
 
-#[cfg(feature)]
-use esthri_lib::s3serve;
-
 #[derive(Debug, StructOpt)]
 #[structopt(name = "esthri", about = "Simple S3 file transfer utility.")]
 struct Cli {
@@ -140,7 +137,7 @@ async fn main() -> Result<()> {
     let mut hyper_builder = Client::builder();
     hyper_builder.pool_idle_timeout(Duration::from_secs(20));
 
-    let https_connector = HttpsConnector::new();
+    let https_connector = new_https_connector();
     let http_client = HttpClient::from_builder(hyper_builder, https_connector);
 
     let credentials_provider = DefaultCredentialsProvider::new().unwrap();

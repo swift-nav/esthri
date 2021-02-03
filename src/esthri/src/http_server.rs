@@ -237,12 +237,18 @@ pub async fn run(
     setup_termination_handler();
 
     let (tx, rx) = oneshot::channel();
+
     SHUTDOWN_TX
         .set(Mutex::new(Cell::new(Some(tx))))
         .ok()
         .expect("failed to set termination signaler");
 
-    let routes = esthri_filter(s3_client, bucket).recover(handle_rejection);
+    let still_alive = || "still alive";
+    let health_check = warp::path(".esthri_health_check").map(still_alive);
+
+    let routes = health_check
+        .or(esthri_filter(s3_client, bucket))
+        .recover(handle_rejection);
 
     let (addr, server) = warp::serve(routes).bind_with_graceful_shutdown(*address, async {
         rx.await.ok();
