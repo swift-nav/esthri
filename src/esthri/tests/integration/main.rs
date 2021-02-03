@@ -17,6 +17,7 @@ use hyper::Client;
 use tempdir::TempDir;
 
 use esthri::rusoto::*;
+use esthri::*;
 
 use once_cell::sync::Lazy;
 
@@ -44,7 +45,7 @@ fn init_s3client() {
             hyper_builder.pool_idle_timeout(None);
             hyper_builder.pool_max_idle_per_host(0);
 
-            let https_connector = HttpsConnector::new();
+            let https_connector = new_https_connector();
             let http_client = HttpClient::from_builder(hyper_builder, https_connector);
 
             let credentials_provider = DefaultCredentialsProvider::new().unwrap();

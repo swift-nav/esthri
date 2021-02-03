@@ -21,12 +21,9 @@ use esthri::*;
 
 use structopt::StructOpt;
 
-use hyper::{client::connect::HttpConnector, Client};
+use hyper::Client;
 
 use stable_eyre::eyre::Result;
-
-#[cfg(feature)]
-use esthri_lib::s3serve;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "esthri", about = "Simple S3 file transfer utility.")]
@@ -120,16 +117,6 @@ enum Command {
         #[structopt(long, default_value = "127.0.0.1:3030")]
         address: std::net::SocketAddr,
     },
-}
-
-#[cfg(feature = "rustls")]
-fn new_https_connector() -> HttpsConnector<HttpConnector> {
-    HttpsConnector::with_webpki_roots()
-}
-
-#[cfg(feature = "nativetls")]
-fn new_https_connector() -> HttpsConnector<HttpConnector> {
-    HttpsConnector::new()
 }
 
 #[tokio::main]

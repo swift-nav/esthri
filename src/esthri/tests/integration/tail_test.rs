@@ -1,6 +1,6 @@
 use std::io::Cursor;
 
-use tokio::time::{delay_for, timeout, Duration};
+use tokio::time::{sleep, timeout, Duration};
 
 use esthri::{tail, upload_from_reader};
 
@@ -14,13 +14,13 @@ async fn test_tail() {
 
     let upload = async {
         upload_str("line 1", key).await;
-        delay_for(Duration::from_secs(3)).await;
+        sleep(Duration::from_secs(3)).await;
 
         upload_str("line 1\nline 2", key).await;
-        delay_for(Duration::from_secs(3)).await;
+        sleep(Duration::from_secs(3)).await;
 
         upload_str("line 1\nline 2\nline 3", key).await;
-        delay_for(Duration::from_secs(3)).await;
+        sleep(Duration::from_secs(3)).await;
     };
 
     upload_str("", key).await;

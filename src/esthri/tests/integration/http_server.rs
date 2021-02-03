@@ -132,7 +132,7 @@ fn test_fetch_archive_helper(
     }));
 
     std::thread::spawn(move || {
-        let mut runtime = Runtime::new().unwrap();
+        let runtime = Runtime::new().unwrap();
         runtime.block_on(fetch_archive_and_validate(
             &request_path,
             thread_success,
