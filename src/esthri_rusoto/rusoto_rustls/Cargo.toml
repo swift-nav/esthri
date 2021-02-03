@@ -1,6 +1,6 @@
 [package]
 name = "rusoto_rustls"
-version = "5.0.0"
+version = "5.1.0"
 authors = [ "Swift Navigation <dev@swift-nav.com>",]
 edition = "2018"
 
