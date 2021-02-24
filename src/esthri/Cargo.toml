@@ -5,7 +5,7 @@ required-features = [ "cli",]
 
 [package]
 name = "esthri"
-version = "5.1.0"
+version = "5.1.1"
 authors = [ "Swift Navigation <dev@swift-nav.com>",]
 edition = "2018"
 
