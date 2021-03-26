@@ -612,7 +612,7 @@ dependencies = [
 
 [[package]]
 name = "esthri"
-version = "5.1.1"
+version = "5.1.2"
 dependencies = [
  "async-compression",
  "async-stream",
@@ -1822,7 +1822,7 @@ dependencies = [
 
 [[package]]
 name = "rusoto_nativetls"
-version = "5.1.1"
+version = "5.1.2"
 dependencies = [
  "hyper-tls",
  "rusoto_core",
@@ -1833,7 +1833,7 @@ dependencies = [
 
 [[package]]
 name = "rusoto_rustls"
-version = "5.1.1"
+version = "5.1.2"
 dependencies = [
  "hyper-rustls",
  "rusoto_core",
