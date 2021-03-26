@@ -6,7 +6,7 @@ Extremely simple (memory stable) S3 client that supports get, put, head, list,
 and sync.
 
 ```
-esthri 0.1.0
+esthri 5.1.2
 Simple S3 file transfer utility.
 
 USAGE:
@@ -24,7 +24,9 @@ SUBCOMMANDS:
     list-objects    List remote objects in S3
     put             Upload an object to S3
     s3-etag         Compute and print the S3 ETag of the file
+    serve           Launch an HTTP server attached to the specified bucket
     sync            Sync a directory with S3
+    tail            Tail an object from S3
 ```
 
 ## Copyright
