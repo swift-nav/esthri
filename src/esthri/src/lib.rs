@@ -23,9 +23,9 @@ use std::marker::Unpin;
 use std::path::Path;
 use std::sync::Mutex;
 
+use anyhow::{anyhow, ensure, Context};
 use crypto::digest::Digest;
 use crypto::md5::Md5;
-use anyhow::{anyhow, ensure, Context};
 use futures::{stream, TryStream, TryStreamExt};
 use glob::Pattern;
 use hyper::client::connect::HttpConnector;
