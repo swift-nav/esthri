@@ -32,9 +32,10 @@ use hyper::client::connect::HttpConnector;
 use log::*;
 use log_derive::logfn;
 use once_cell::sync::Lazy;
-use tokio::{io::AsyncReadExt, time};
+use tokio::io::AsyncReadExt;
 use walkdir::WalkDir;
 
+#[cfg(feature = "blocking")]
 pub mod blocking;
 pub mod errors;
 #[cfg(feature = "http_server")]
@@ -69,28 +70,31 @@ const CHUNK_SIZE: u64 = 8 * 1024 * 1024;
 
 const READ_SIZE: usize = 4096;
 
+pub const INCLUDE_EMPTY: Option<&[&str]> = None;
+pub const EXCLUDE_EMPTY: Option<&[&str]> = None;
+
 #[logfn(err = "ERROR")]
-pub async fn head_object<T>(s3: &T, bucket: &str, key: &str) -> Result<Option<ObjectInfo>>
+pub async fn head_object<T, SR0, SR1>(s3: &T, bucket: SR0, key: SR1) -> Result<Option<ObjectInfo>>
 where
     T: S3 + Send,
+    SR0: AsRef<str>,
+    SR1: AsRef<str>,
 {
+    let (bucket, key) = (bucket.as_ref(), key.as_ref());
     info!("head-object: bucket={}, key={}", bucket, key);
     head_object_request(s3, bucket, key).await
 }
 
 #[logfn(err = "ERROR")]
-pub fn log_etag(path: &str) -> Result<String> {
-    info!("s3etag: path={}", path);
-    let etag = s3_compute_etag(path)?;
-    debug!("s3etag: file={}, etag={}", path, etag);
-    Ok(etag)
-}
-
-#[logfn(err = "ERROR")]
-pub async fn abort_upload<T>(s3: &T, bucket: &str, key: &str, upload_id: &str) -> Result<()>
+pub async fn abort_upload<T, SR0, SR1, SR2>(s3: &T, bucket: SR0, key: SR1, upload_id: SR2) -> Result<()>
 where
     T: S3 + Send,
+    SR0: AsRef<str>,
+    SR1: AsRef<str>,
+    SR2: AsRef<str>,
 {
+    let (bucket, key, upload_id) = (bucket.as_ref(), key.as_ref(), upload_id.as_ref());
+
     info!(
         "abort: bucket={}, key={}, upload_id={}",
         bucket, key, upload_id
@@ -112,15 +116,19 @@ where
     Ok(())
 }
 
-pub async fn upload<T>(s3: &T, bucket: &str, key: &str, file: &str) -> Result<()>
+pub async fn upload<T, P, SR0, SR1>(s3: &T, bucket: SR0, key: SR1, file: P) -> Result<()>
 where
     T: S3 + Send,
+    P: AsRef<Path>,
+    SR0: AsRef<str>,
+    SR1: AsRef<str>,
 {
-    info!("put: bucket={}, key={}, file={}", bucket, key, file);
+    let (bucket, key, file) = (bucket.as_ref(), key.as_ref(), file.as_ref());
+    info!("put: bucket={}, key={}, file={}", bucket, key, file.display());
 
     ensure!(
-        Path::new(&file).exists(),
-        anyhow!("source file does not exist: {}", file)
+        file.exists(),
+        anyhow!("source file does not exist: {}", file.display())
     );
 
     let stat = fs::metadata(&file)?;
@@ -135,16 +143,20 @@ where
 }
 
 #[logfn(err = "ERROR")]
-pub async fn upload_from_reader<T>(
+pub async fn upload_from_reader<T, SR0, SR1>(
     s3: &T,
-    bucket: &str,
-    key: &str,
+    bucket: SR0,
+    key: SR1,
     reader: &mut dyn Read,
     file_size: u64,
 ) -> Result<()>
 where
     T: S3 + Send,
+    SR0: AsRef<str>,
+    SR1: AsRef<str>,
 {
+    let (bucket, key) = (bucket.as_ref(), key.as_ref());
+
     info!(
         "put: bucket={}, key={}, file_size={}",
         bucket, key, file_size
@@ -283,10 +295,14 @@ where
 }
 
 #[logfn(err = "ERROR")]
-pub async fn download_streaming<T>(s3: &T, bucket: &str, key: &str) -> Result<ByteStream>
+pub async fn download_streaming<T, SR0, SR1>(s3: &T, bucket: SR0, key: SR1) -> Result<ByteStream>
 where
     T: S3 + Send,
+    SR0: AsRef<str>,
+    SR1: AsRef<str>,
 {
+    let (bucket, key) = (bucket.as_ref(), key.as_ref());
+
     info!("get: bucket={}, key={}", bucket, key);
 
     let goo = get_object_request(
@@ -304,11 +320,16 @@ where
 }
 
 #[logfn(err = "ERROR")]
-pub async fn download<T>(s3: &T, bucket: &str, key: &str, file: &str) -> Result<()>
+pub async fn download<T, P, SR0, SR1>(s3: &T, bucket: SR0, key: SR1, file: P) -> Result<()>
 where
     T: S3 + Send,
+    P: AsRef<Path>,
+    SR0: AsRef<str>,
+    SR1: AsRef<str>,
 {
-    info!("get: bucket={}, key={}, file={}", bucket, key, file);
+    let (bucket, key, file) = (bucket.as_ref(), key.as_ref(), file.as_ref());
+
+    info!("get: bucket={}, key={}, file={}", bucket, key, file.display());
 
     let f = File::create(file)?;
     let mut writer = BufWriter::new(f);
@@ -337,68 +358,24 @@ where
 }
 
 #[logfn(err = "ERROR")]
-pub async fn tail<T, W>(
-    s3: &T,
-    writer: &mut W,
-    interval_seconds: u64,
-    bucket: &str,
-    key: &str,
-) -> Result<()>
-where
-    T: S3 + Send,
-    W: tokio::io::AsyncWrite + Unpin,
-{
-    info!("tail: bucket={}, key={}", bucket, key);
-
-    let mut bytes_copied = 0;
-    let mut get_obj_params = GetObjectRequest {
-        bucket: bucket.into(),
-        key: key.into(),
-        ..Default::default()
-    };
-    let mut interval = time::interval(time::Duration::from_secs(interval_seconds));
-
-    loop {
-        interval.tick().await;
-
-        let goo = match get_object_request(s3, &get_obj_params).await {
-            Ok(goo) => goo,
-            Err(RusotoError::Unknown(e)) if e.status == 304 => continue,
-            Err(e) => return Err(e.into()),
-        };
-
-        let mut reader = goo
-            .body
-            .ok_or_else(|| anyhow!("did not expect body field of GetObjectOutput to be none"))?
-            .into_async_read();
-
-        bytes_copied += tokio::io::copy(&mut reader, writer).await?;
-
-        get_obj_params.if_none_match = goo.e_tag;
-        get_obj_params.range = Some(bytes_range(bytes_copied));
-    }
-}
-
-fn bytes_range(offset: u64) -> String {
-    format!("bytes={}-", offset)
-}
-
-#[logfn(err = "ERROR")]
-pub async fn sync<T>(
+pub async fn sync<T, SR0, SR1>(
     s3: &T,
     source: SyncParam,
     destination: SyncParam,
-    includes: &Option<Vec<String>>,
-    excludes: &Option<Vec<String>>,
+    includes: Option<&[SR0]>,
+    excludes: Option<&[SR1]>,
 ) -> Result<()>
 where
     T: S3 + Send,
+    SR0: AsRef<str>,
+    SR1: AsRef<str>,
 {
     let mut glob_excludes: Vec<Pattern> = vec![];
     let mut glob_includes: Vec<Pattern> = vec![];
 
     if let Some(excludes) = excludes {
         for exclude in excludes {
+            let exclude = exclude.as_ref();
             match Pattern::new(exclude) {
                 Err(e) => {
                     return Err(anyhow!("exclude glob pattern error for {}: {}", exclude, e));
@@ -412,6 +389,7 @@ where
 
     if let Some(includes) = includes {
         for include in includes {
+            let include = include.as_ref();
             match Pattern::new(include) {
                 Err(e) => {
                     return Err(anyhow!("include glob pattern error for {}: {}", include, e));
@@ -430,18 +408,18 @@ where
             SyncParam::Local { path },
             SyncParam::Bucket {
                 bucket,
-                path: bucket_path,
+                key,
             },
         ) => {
             info!(
                 "sync-up, local directory: {}, bucket: {}, key: {}",
-                path, bucket, bucket_path
+                path.display(), bucket, key 
             );
 
             sync_local_to_remote(
                 s3,
                 &bucket,
-                &bucket_path,
+                &key,
                 &path,
                 &glob_includes,
                 &glob_excludes,
@@ -451,19 +429,19 @@ where
         (
             SyncParam::Bucket {
                 bucket,
-                path: bucket_path,
+                key,
             },
             SyncParam::Local { path },
         ) => {
             info!(
                 "sync-down, local directory: {}, bucket: {}, key: {}",
-                path, bucket, bucket_path
+                path.display(), bucket, key 
             );
 
             sync_remote_to_local(
                 s3,
                 &bucket,
-                &bucket_path,
+                &key,
                 &path,
                 &glob_includes,
                 &glob_excludes,
@@ -473,11 +451,11 @@ where
         (
             SyncParam::Bucket {
                 bucket: source_bucket,
-                path: source_key,
+                key: source_key,
             },
             SyncParam::Bucket {
                 bucket: destination_bucket,
-                path: destination_key,
+                key: destination_key,
             },
         ) => {
             info!(
@@ -505,30 +483,40 @@ where
 }
 
 #[logfn(err = "ERROR")]
-pub async fn list_objects<T>(s3: &T, bucket: &str, key: &str) -> Result<Vec<String>>
+pub async fn list_objects<T, SR0, SR1>(s3: &T, bucket: SR0, key: SR1) -> Result<Vec<String>>
 where
     T: S3 + Send,
+    SR0: AsRef<str>,
+    SR1: AsRef<str>,
 {
-    list_objects_with_delim(s3, bucket, key, None).await
+    let none: Option<&str> = None;
+    list_objects_with_delim(s3, bucket, key, none).await
 }
 
 #[logfn(err = "ERROR")]
-pub async fn list_directory<T>(s3: &T, bucket: &str, dir_path: &str) -> Result<Vec<String>>
+pub async fn list_directory<T, SR0, SR1>(s3: &T, bucket: SR0, dir_path: SR1) -> Result<Vec<String>>
 where
     T: S3 + Send,
+    SR0: AsRef<str>,
+    SR1: AsRef<str>,
 {
     list_objects_with_delim(s3, bucket, dir_path, Some("/")).await
 }
 
-async fn list_objects_with_delim<T>(
+async fn list_objects_with_delim<T, S0, S1, S2>(
     s3: &T,
-    bucket: &str,
-    key: &str,
-    delim: Option<&str>,
+    bucket: S0,
+    key: S1,
+    delim: Option<S2>,
 ) -> Result<Vec<String>>
 where
     T: S3 + Send,
+    S0: AsRef<str>,
+    S1: AsRef<str>,
+    S2: AsRef<str>,
 {
+    let (bucket, key, delim) = (bucket.as_ref(), key.as_ref(), delim.as_ref());
+
     let batches: Vec<_> = list_objects_stream_with_delim(s3, bucket, key, delim)
         .try_collect()
         .await?;
@@ -549,15 +537,17 @@ where
     Ok(keys)
 }
 
-pub fn list_objects_stream<'a, T>(
+pub fn list_objects_stream<'a, T, SR0, SR1>(
     s3: &'a T,
-    bucket: &'a str,
-    key: &'a str,
+    bucket: SR0,
+    key: SR1,
 ) -> impl TryStream<Ok = Vec<S3ListingItem>, Error = eyre::Error> + Unpin + 'a
 where
     T: S3 + Send,
+    SR0: AsRef<str> + 'a,
+    SR1: AsRef<str> + 'a,
 {
-    list_objects_stream_with_delim(s3, bucket, key, None)
+    list_objects_stream_with_delim(s3, bucket, key, None as Option<&str>)
 }
 
 pub fn list_directory_stream<'a, T>(
@@ -571,19 +561,24 @@ where
     list_objects_stream_with_delim(s3, bucket, key, Some("/"))
 }
 
-fn list_objects_stream_with_delim<'a, T>(
+fn list_objects_stream_with_delim<'a, T, SR0, SR1, SR2>(
     s3: &'a T,
-    bucket: &'a str,
-    key: &'a str,
-    delimiter: Option<&'a str>,
+    bucket: SR0,
+    key: SR1,
+    delimiter: Option<SR2>,
 ) -> impl TryStream<Ok = Vec<S3ListingItem>, Error = eyre::Error> + Unpin + 'a
 where
     T: S3 + Send,
+    SR0: AsRef<str> + 'a,
+    SR1: AsRef<str> + 'a,
+    SR2: AsRef<str> + 'a,
 {
+    let (bucket, key) = (bucket.as_ref().to_owned(), key.as_ref().to_owned());
+
     info!("stream-objects: bucket={}, key={}", bucket, key);
 
     let continuation: Option<String> = None;
-    let delimiter = delimiter.map(|s| s.to_owned());
+    let delimiter = delimiter.map(|s| s.as_ref().to_owned());
 
     let state = (s3, bucket, key, continuation, delimiter, false);
 
@@ -652,8 +647,12 @@ pub fn setup_upload_termination_handler() {
     .expect("Error setting Ctrl-C handler");
 }
 
-fn s3_compute_etag(path: &str) -> Result<String> {
-    if !Path::new(path).exists() {
+pub fn s3_compute_etag<P>(path: P) -> Result<String>
+where
+    P: AsRef<Path>
+{
+    let path = path.as_ref();
+    if !path.exists() {
         return Err(anyhow!(EsthriError::ETagNotPresent));
     }
 
@@ -869,17 +868,18 @@ fn process_globs<'a>(
     }
 }
 
-async fn download_with_dir<T>(
+async fn download_with_dir<T, P: AsRef<Path>>(
     s3: &T,
     bucket: &str,
     s3_prefix: &str,
     s3_suffix: &str,
-    local_dir: &str,
+    local_dir: P,
 ) -> Result<()>
 where
     T: S3 + Send,
 {
-    let dest_path = Path::new(local_dir).join(s3_suffix);
+    let local_dir = local_dir.as_ref();
+    let dest_path = local_dir.join(s3_suffix);
 
     let parent_dir = dest_path
         .parent()
@@ -896,17 +896,18 @@ where
     Ok(())
 }
 
-async fn sync_local_to_remote<T>(
+async fn sync_local_to_remote<T, P: AsRef<Path>>(
     s3: &T,
     bucket: &str,
     key: &str,
-    directory: &str,
+    directory: P,
     glob_includes: &[Pattern],
     glob_excludes: &[Pattern],
 ) -> Result<()>
 where
     T: S3 + Send,
 {
+    let directory = directory.as_ref();
     if !key.ends_with(FORWARD_SLASH) {
         return Err(EsthriError::DirlikePrefixRequired.into());
     }
@@ -1070,22 +1071,21 @@ pub fn create_globs(
     Ok(globs)
 }
 
-async fn sync_remote_to_local<T>(
+async fn sync_remote_to_local<T, P: AsRef<Path>>(
     s3: &T,
     bucket: &str,
     key: &str,
-    directory: &str,
+    directory: P,
     glob_includes: &[Pattern],
     glob_excludes: &[Pattern],
 ) -> Result<()>
 where
     T: S3 + Send,
 {
+    let directory = directory.as_ref();
     if !key.ends_with(FORWARD_SLASH) {
         return Err(EsthriError::DirlikePrefixRequired.into());
     }
-
-    let dir_path = Path::new(directory);
 
     let mut stream = list_objects_stream(s3, bucket, key);
 
@@ -1104,7 +1104,7 @@ where
             let path = process_globs(&path, glob_includes, glob_excludes);
 
             if let Some(path) = path {
-                let local_path: String = format!("{}", dir_path.join(&path).display());
+                let local_path: String = format!("{}", directory.join(&path).display());
                 debug!("checking {}", local_path);
                 let local_etag = s3_compute_etag(&local_path);
                 match local_etag {

@@ -4,7 +4,6 @@ mod download_test;
 mod http_server;
 mod list_object_test;
 mod sync_test;
-mod tail_test;
 mod upload_test;
 
 use std::fs;

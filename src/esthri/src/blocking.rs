@@ -11,6 +11,7 @@
 */
 
 use std::io::prelude::*;
+use std::path::Path;
 
 use super::rusoto::*;
 
@@ -19,69 +20,86 @@ use super::Result;
 use super::SyncParam;
 
 #[tokio::main]
-pub async fn head_object<T>(s3: &T, bucket: &str, key: &str) -> Result<Option<ObjectInfo>>
+pub async fn head_object<T, SR0, SR1>(s3: &T, bucket: SR0, key: SR1) -> Result<Option<ObjectInfo>>
 where
     T: S3 + Send,
+    SR0: AsRef<str>,
+    SR1: AsRef<str>,
 {
     super::head_object(s3, bucket, key).await
 }
 
 #[tokio::main]
-pub async fn abort_upload<T>(s3: &T, bucket: &str, key: &str, upload_id: &str) -> Result<()>
+pub async fn abort_upload<T, SR0, SR1, SR2>(s3: &T, bucket: SR0, key: SR1, upload_id: SR2) -> Result<()>
 where
     T: S3 + Send,
+    SR0: AsRef<str>,
+    SR1: AsRef<str>,
+    SR2: AsRef<str>,
 {
     super::abort_upload(s3, bucket, key, upload_id).await
 }
 
 #[tokio::main]
-pub async fn upload<T>(s3: &T, bucket: &str, key: &str, file: &str) -> Result<()>
+pub async fn upload<T, P, SR0, SR1>(s3: &T, bucket: SR0, key: SR1, file: P) -> Result<()>
 where
     T: S3 + Send,
+    P: AsRef<Path>,
+    SR0: AsRef<str>,
+    SR1: AsRef<str>,
 {
     super::upload(s3, bucket, key, file).await
 }
 
 #[tokio::main]
-pub async fn upload_from_reader<T>(
+pub async fn upload_from_reader<T, SR0, SR1>(
     s3: &T,
-    bucket: &str,
-    key: &str,
+    bucket: SR0,
+    key: SR1,
     reader: &mut dyn Read,
     file_size: u64,
 ) -> Result<()>
 where
     T: S3 + Send,
+    SR0: AsRef<str>,
+    SR1: AsRef<str>,
 {
     super::upload_from_reader(s3, bucket, key, reader, file_size).await
 }
 
 #[tokio::main]
-pub async fn download<T>(s3: &T, bucket: &str, key: &str, file: &str) -> Result<()>
+pub async fn download<T, P, SR0, SR1>(s3: &T, bucket: SR0, key: SR1, file: P) -> Result<()>
 where
     T: S3 + Send,
+    P: AsRef<Path>,
+    SR0: AsRef<str>,
+    SR1: AsRef<str>,
 {
     super::download(s3, bucket, key, file).await
 }
 
 #[tokio::main]
-pub async fn sync<T>(
+pub async fn sync<T, SR0, SR1>(
     s3: &T,
     source: SyncParam,
     destination: SyncParam,
-    includes: &Option<Vec<String>>,
-    excludes: &Option<Vec<String>>,
+    includes: Option<&[SR0]>,
+    excludes: Option<&[SR1]>,
 ) -> Result<()>
 where
     T: S3 + Send,
+    SR0: AsRef<str>,
+    SR1: AsRef<str>,
 {
     super::sync(s3, source, destination, includes, excludes).await
 }
 
 #[tokio::main]
-pub async fn list_objects<T>(s3: &T, bucket: &str, key: &str) -> Result<Vec<String>>
+pub async fn list_objects<T, SR0, SR1>(s3: &T, bucket: SR0, key: SR1) -> Result<Vec<String>>
 where
     T: S3 + Send,
+    SR0: AsRef<str>,
+    SR1: AsRef<str>,
 {
     super::list_objects(s3, bucket, key).await
 }

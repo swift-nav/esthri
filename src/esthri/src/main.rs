@@ -15,6 +15,7 @@
 use std::time::Duration;
 
 use log::*;
+use log_derive::logfn;
 
 use esthri::rusoto::*;
 use esthri::*;
@@ -24,6 +25,14 @@ use structopt::StructOpt;
 use hyper::Client;
 
 use stable_eyre::eyre::Result;
+
+#[logfn(err = "ERROR")]
+fn log_etag(path: &str) -> Result<String> {
+    info!("s3etag: path={}", path);
+    let etag = s3_compute_etag(path)?;
+    debug!("s3etag: file={}, etag={}", path, etag);
+    Ok(etag)
+}
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "esthri", about = "Simple S3 file transfer utility.")]
@@ -51,15 +60,6 @@ enum Command {
         key: String,
         /// The path of the local file to write
         file: String,
-    },
-    /// Tail an object from S3
-    Tail {
-        #[structopt(long)]
-        bucket: String,
-        #[structopt(long)]
-        key: String,
-        #[structopt(long, default_value = "10")]
-        interval: u64,
     },
     /// Manually abort a multipart upload
     Abort {
@@ -155,15 +155,6 @@ async fn main() -> Result<()> {
             download(&s3, &bucket, &key, &file).await?;
         }
 
-        Tail {
-            bucket,
-            key,
-            interval,
-        } => {
-            let mut writer = tokio::io::stdout();
-            tail(&s3, &mut writer, interval, &bucket, &key).await?;
-        }
-
         Abort {
             bucket,
             key,
@@ -183,7 +174,7 @@ async fn main() -> Result<()> {
             exclude,
         } => {
             setup_upload_termination_handler();
-            sync(&s3, source, destination, &include, &exclude).await?;
+            sync(&s3, source, destination, include.as_deref(), exclude.as_deref()).await?;
         }
 
         HeadObject { bucket, key } => {

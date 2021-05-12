@@ -10,6 +10,8 @@
 * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
 */
 
+use std::path::{Path, PathBuf};
+
 use chrono::{DateTime, Utc};
 use regex::Regex;
 
@@ -28,20 +30,20 @@ pub struct ObjectInfo {
 
 #[derive(Debug)]
 pub enum SyncParam {
-    Local { path: String },
-    Bucket { bucket: String, path: String },
+    Local { path: PathBuf },
+    Bucket { bucket: String, key: String },
 }
 
 impl SyncParam {
-    pub fn new_local(path: &str) -> SyncParam {
+    pub fn new_local<P: AsRef<Path>>(path: P) -> SyncParam {
         SyncParam::Local {
-            path: path.to_owned(),
+            path: path.as_ref().into(),
         }
     }
-    pub fn new_bucket(bucket: &str, path: &str) -> SyncParam {
+    pub fn new_bucket<S1: AsRef<str>, S2: AsRef<str>>(bucket: S1, key: S2) -> SyncParam {
         SyncParam::Bucket {
-            path: path.to_owned(),
-            bucket: bucket.to_owned(),
+            bucket: bucket.as_ref().into(),
+            key: key.as_ref().into(),
         }
     }
 }
@@ -50,19 +52,14 @@ impl std::str::FromStr for SyncParam {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let s3_format = Regex::new(r"^s3://(?P<bucket>[^/]+)/(?P<prefix>.*)$").unwrap();
+        let s3_format = Regex::new(r"^s3://(?P<bucket>[^/]+)/(?P<key>.*)$").unwrap();
 
         if let Some(captures) = s3_format.captures(s) {
             let bucket = captures.name("bucket").unwrap().as_str();
-            let path = captures.name("prefix").unwrap().as_str();
-            Ok(SyncParam::Bucket {
-                path: path.to_string(),
-                bucket: bucket.to_string(),
-            })
+            let key = captures.name("key").unwrap().as_str();
+            Ok(SyncParam::new_bucket(bucket, key))
         } else {
-            Ok(SyncParam::Local {
-                path: s.to_string(),
-            })
+            Ok(SyncParam::new_local(s))
         }
     }
 }
@@ -74,19 +71,19 @@ pub enum S3ListingItem {
 }
 
 impl S3ListingItem {
-    pub fn object(o: S3Object) -> S3ListingItem {
+    pub(crate) fn object(o: S3Object) -> S3ListingItem {
         S3ListingItem::S3Object(o)
     }
-    pub fn common_prefix(cp: String) -> S3ListingItem {
-        S3ListingItem::S3CommonPrefix(cp)
+    pub(crate) fn common_prefix<S: AsRef<str>>(cp: S) -> S3ListingItem {
+        S3ListingItem::S3CommonPrefix(cp.as_ref().into())
     }
-    pub fn prefix(&self) -> String {
+    pub(crate) fn prefix(&self) -> String {
         match self {
             S3ListingItem::S3Object(o) => o.key.clone(),
             S3ListingItem::S3CommonPrefix(cp) => cp.clone(),
         }
     }
-    pub fn unwrap_object(self) -> S3Object {
+    pub(crate) fn unwrap_object(self) -> S3Object {
         match self {
             S3ListingItem::S3Object(o) => o,
             S3ListingItem::S3CommonPrefix(_cp) => panic!("invalid type"),
