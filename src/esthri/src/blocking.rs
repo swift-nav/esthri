@@ -30,7 +30,12 @@ where
 }
 
 #[tokio::main]
-pub async fn abort_upload<T, SR0, SR1, SR2>(s3: &T, bucket: SR0, key: SR1, upload_id: SR2) -> Result<()>
+pub async fn abort_upload<T, SR0, SR1, SR2>(
+    s3: &T,
+    bucket: SR0,
+    key: SR1,
+    upload_id: SR2,
+) -> Result<()>
 where
     T: S3 + Send,
     SR0: AsRef<str>,

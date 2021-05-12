@@ -86,7 +86,12 @@ where
 }
 
 #[logfn(err = "ERROR")]
-pub async fn abort_upload<T, SR0, SR1, SR2>(s3: &T, bucket: SR0, key: SR1, upload_id: SR2) -> Result<()>
+pub async fn abort_upload<T, SR0, SR1, SR2>(
+    s3: &T,
+    bucket: SR0,
+    key: SR1,
+    upload_id: SR2,
+) -> Result<()>
 where
     T: S3 + Send,
     SR0: AsRef<str>,
@@ -124,7 +129,12 @@ where
     SR1: AsRef<str>,
 {
     let (bucket, key, file) = (bucket.as_ref(), key.as_ref(), file.as_ref());
-    info!("put: bucket={}, key={}, file={}", bucket, key, file.display());
+    info!(
+        "put: bucket={}, key={}, file={}",
+        bucket,
+        key,
+        file.display()
+    );
 
     ensure!(
         file.exists(),
@@ -329,7 +339,12 @@ where
 {
     let (bucket, key, file) = (bucket.as_ref(), key.as_ref(), file.as_ref());
 
-    info!("get: bucket={}, key={}, file={}", bucket, key, file.display());
+    info!(
+        "get: bucket={}, key={}, file={}",
+        bucket,
+        key,
+        file.display()
+    );
 
     let f = File::create(file)?;
     let mut writer = BufWriter::new(f);
@@ -404,49 +419,25 @@ where
     }
 
     match (source, destination) {
-        (
-            SyncParam::Local { path },
-            SyncParam::Bucket {
-                bucket,
-                key,
-            },
-        ) => {
+        (SyncParam::Local { path }, SyncParam::Bucket { bucket, key }) => {
             info!(
                 "sync-up, local directory: {}, bucket: {}, key: {}",
-                path.display(), bucket, key 
+                path.display(),
+                bucket,
+                key
             );
 
-            sync_local_to_remote(
-                s3,
-                &bucket,
-                &key,
-                &path,
-                &glob_includes,
-                &glob_excludes,
-            )
-            .await?;
+            sync_local_to_remote(s3, &bucket, &key, &path, &glob_includes, &glob_excludes).await?;
         }
-        (
-            SyncParam::Bucket {
-                bucket,
-                key,
-            },
-            SyncParam::Local { path },
-        ) => {
+        (SyncParam::Bucket { bucket, key }, SyncParam::Local { path }) => {
             info!(
                 "sync-down, local directory: {}, bucket: {}, key: {}",
-                path.display(), bucket, key 
+                path.display(),
+                bucket,
+                key
             );
 
-            sync_remote_to_local(
-                s3,
-                &bucket,
-                &key,
-                &path,
-                &glob_includes,
-                &glob_excludes,
-            )
-            .await?;
+            sync_remote_to_local(s3, &bucket, &key, &path, &glob_includes, &glob_excludes).await?;
         }
         (
             SyncParam::Bucket {
@@ -649,7 +640,7 @@ pub fn setup_upload_termination_handler() {
 
 pub fn s3_compute_etag<P>(path: P) -> Result<String>
 where
-    P: AsRef<Path>
+    P: AsRef<Path>,
 {
     let path = path.as_ref();
     if !path.exists() {

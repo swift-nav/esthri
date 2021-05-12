@@ -174,7 +174,14 @@ async fn main() -> Result<()> {
             exclude,
         } => {
             setup_upload_termination_handler();
-            sync(&s3, source, destination, include.as_deref(), exclude.as_deref()).await?;
+            sync(
+                &s3,
+                source,
+                destination,
+                include.as_deref(),
+                exclude.as_deref(),
+            )
+            .await?;
         }
 
         HeadObject { bucket, key } => {
