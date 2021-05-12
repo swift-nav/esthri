@@ -44,7 +44,7 @@ blocking = []
 http_server = [ "async-tar", "async-compression", "async-stream", "bytes", "futures-util", "mime_guess", "sluice", "sanitize-filename", "serde", "serde_derive", "tokio-util", "warp", "ctrlc",]
 nativetls = [ "rusoto_nativetls",]
 rustls = [ "rusoto_rustls",]
-cli = [ "ctrlc", "structopt",]
+cli = [ "ctrlc", "structopt", "blocking" ]
 
 [dependencies.structopt]
 version = "0.3"
