@@ -34,9 +34,7 @@ pub use rustls::rusoto_credential::DefaultCredentialsProvider;
 pub use rustls::hyper_rustls::HttpsConnector;
 
 #[cfg(feature = "nativetls")]
-pub use nativetls::rusoto_core::{
-    ByteStream, HttpClient, Region, RusotoError, RusotoResult,
-};
+pub use nativetls::rusoto_core::{ByteStream, HttpClient, Region, RusotoError, RusotoResult};
 
 #[cfg(feature = "nativetls")]
 pub use nativetls::rusoto_s3::{
