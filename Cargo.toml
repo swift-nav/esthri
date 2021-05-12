@@ -1,8 +1,6 @@
 [workspace]
 members = [
     "src/esthri",
-    "src/esthri_rusoto/rusoto_rustls",
-    "src/esthri_rusoto/rusoto_nativetls",
 ]
 
 [profile.dev]

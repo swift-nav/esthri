@@ -630,14 +630,18 @@ dependencies = [
  "glob",
  "hex",
  "hyper",
+ "hyper-rustls",
+ "hyper-tls",
  "log",
  "log-derive",
  "md5",
  "mime_guess",
  "once_cell",
  "regex",
- "rusoto_nativetls",
- "rusoto_rustls",
+ "rusoto_core",
+ "rusoto_credential",
+ "rusoto_s3",
+ "rusoto_signature",
  "rust-crypto",
  "sanitize-filename",
  "serde",
@@ -1820,28 +1824,6 @@ dependencies = [
  "shlex",
  "tokio",
  "zeroize",
-]
-
-[[package]]
-name = "rusoto_nativetls"
-version = "5.1.2"
-dependencies = [
- "hyper-tls",
- "rusoto_core",
- "rusoto_credential",
- "rusoto_s3",
- "rusoto_signature",
-]
-
-[[package]]
-name = "rusoto_rustls"
-version = "5.1.2"
-dependencies = [
- "hyper-rustls",
- "rusoto_core",
- "rusoto_credential",
- "rusoto_s3",
- "rusoto_signature",
 ]
 
 [[package]]
