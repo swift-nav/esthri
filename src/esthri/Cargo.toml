@@ -21,8 +21,7 @@ log-derive = "0.4"
 hyper = "0.14"
 futures = "0.3"
 thiserror = "1.0"
-eyre = "0.6.5"
-stable-eyre = "0.2.1"
+anyhow = { version = "1", features = ["backtrace"] }
 chrono = "0.4"
 regex = "1"
 

@@ -48,7 +48,7 @@ use async_stream::stream;
 
 use futures::stream::StreamExt;
 
-use eyre::{eyre, Report};
+use anyhow::anyhow;
 
 use crate::download_streaming;
 use crate::head_object;
@@ -101,7 +101,7 @@ impl<'de> serde::Deserialize<'de> for S3PrefixList {
 
 struct ErrorTracker {
     has_error: AtomicBool,
-    the_error: Mutex<Option<Box<eyre::Report>>>,
+    the_error: Mutex<Option<Box<anyhow::Error>>>,
 }
 
 impl ErrorTracker {
@@ -111,7 +111,7 @@ impl ErrorTracker {
             the_error: Mutex::new(None),
         }
     }
-    fn record_error(error_tracker: ErrorTrackerArc, err: eyre::Report) {
+    fn record_error(error_tracker: ErrorTrackerArc, err: anyhow::Error) {
         error_tracker.0.has_error.store(true, Ordering::Release);
         let mut the_error = error_tracker
             .0
@@ -266,12 +266,12 @@ pub async fn run(
 async fn abort_with_error(
     archive: Option<&mut Builder<PipeWriter>>,
     error_tracker: ErrorTrackerArc,
-    err: Report,
+    err: anyhow::Error,
 ) {
     let err = {
         if let Some(archive) = archive {
             if let Err(err) = archive.finish().await {
-                Report::new(err).wrap_err("closing the archive")
+                anyhow!(err).context("while closing the archive")
             } else {
                 err
             }
@@ -297,7 +297,7 @@ async fn stream_object_to_archive<T: S3 + Send>(
                 abort_with_error(
                     Some(archive),
                     error_tracker.clone(),
-                    eyre!("object not found: {}", path),
+                    anyhow!("object not found: {}", path),
                 )
                 .await;
                 return !error_tracker.has_error();
@@ -307,7 +307,7 @@ async fn stream_object_to_archive<T: S3 + Send>(
             abort_with_error(
                 Some(archive),
                 error_tracker.clone(),
-                err.wrap_err("s3 head operation failed"),
+                anyhow!(err).context("s3 head operation failed"),
             )
             .await;
             return !error_tracker.has_error();
@@ -319,7 +319,7 @@ async fn stream_object_to_archive<T: S3 + Send>(
             abort_with_error(
                 Some(archive),
                 error_tracker.clone(),
-                err.wrap_err("s3 download failed"),
+                anyhow!(err).context("s3 download failed"),
             )
             .await;
             return !error_tracker.has_error();
@@ -337,7 +337,7 @@ async fn stream_object_to_archive<T: S3 + Send>(
         abort_with_error(
             Some(archive),
             error_tracker.clone(),
-            Report::new(err).wrap_err("tar append failed"),
+            anyhow!(err).context("tar append failed"),
         )
         .await;
     }
@@ -408,7 +408,7 @@ async fn create_archive_stream(
                         }
                     }
                     Err(err) => {
-                        let err = err.wrap_err("listing objects");
+                        let err = err.context("listing objects");
                         abort_with_error(Some(&mut archive), error_tracker.clone(), err).await;
                         break;
                     }
@@ -421,7 +421,7 @@ async fn create_archive_stream(
     create_error_monitor_stream(error_tracker_reader, framed_reader).await
 }
 
-fn into_io_error(err: &eyre::Report) -> io::Error {
+fn into_io_error(err: &anyhow::Error) -> io::Error {
     io::Error::new(ErrorKind::Other, format!("{}", err))
 }
 

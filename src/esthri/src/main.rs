@@ -24,8 +24,6 @@ use structopt::StructOpt;
 
 use hyper::Client;
 
-use stable_eyre::eyre::Result;
-
 #[logfn(err = "ERROR")]
 fn log_etag(path: &str) -> Result<String> {
     info!("s3etag: path={}", path);
@@ -121,8 +119,6 @@ enum Command {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    stable_eyre::install()?;
-
     if std::env::var("RUST_LOG").is_err() {
         std::env::set_var("RUST_LOG", "esthri=debug,esthri_lib=debug");
     }

@@ -25,7 +25,7 @@ use std::sync::Mutex;
 
 use crypto::digest::Digest;
 use crypto::md5::Md5;
-use eyre::{anyhow, ensure, Context, Result};
+use anyhow::{anyhow, ensure, Context};
 use futures::{stream, TryStream, TryStreamExt};
 use glob::Pattern;
 use hyper::client::connect::HttpConnector;
@@ -34,6 +34,8 @@ use log_derive::logfn;
 use once_cell::sync::Lazy;
 use tokio::io::AsyncReadExt;
 use walkdir::WalkDir;
+
+pub use anyhow::Result;
 
 #[cfg(feature = "blocking")]
 pub mod blocking;
@@ -45,7 +47,7 @@ pub mod types;
 
 pub mod rusoto;
 
-pub use crate::errors::{EsthriError, EyreError, EyreReport};
+pub use crate::errors::EsthriError;
 
 use crate::retry::handle_dispatch_error;
 use crate::rusoto::*;
@@ -532,7 +534,7 @@ pub fn list_objects_stream<'a, T, SR0, SR1>(
     s3: &'a T,
     bucket: SR0,
     key: SR1,
-) -> impl TryStream<Ok = Vec<S3ListingItem>, Error = eyre::Error> + Unpin + 'a
+) -> impl TryStream<Ok = Vec<S3ListingItem>, Error = anyhow::Error> + Unpin + 'a
 where
     T: S3 + Send,
     SR0: AsRef<str> + 'a,
@@ -545,7 +547,7 @@ pub fn list_directory_stream<'a, T>(
     s3: &'a T,
     bucket: &'a str,
     key: &'a str,
-) -> impl TryStream<Ok = Vec<S3ListingItem>, Error = eyre::Error> + Unpin + 'a
+) -> impl TryStream<Ok = Vec<S3ListingItem>, Error = anyhow::Error> + Unpin + 'a
 where
     T: S3 + Send,
 {
@@ -557,7 +559,7 @@ fn list_objects_stream_with_delim<'a, T, SR0, SR1, SR2>(
     bucket: SR0,
     key: SR1,
     delimiter: Option<SR2>,
-) -> impl TryStream<Ok = Vec<S3ListingItem>, Error = eyre::Error> + Unpin + 'a
+) -> impl TryStream<Ok = Vec<S3ListingItem>, Error = anyhow::Error> + Unpin + 'a
 where
     T: S3 + Send,
     SR0: AsRef<str> + 'a,
