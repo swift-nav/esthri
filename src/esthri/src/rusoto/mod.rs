@@ -10,9 +10,6 @@
  * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-#[cfg(feature = "nativetls")]
-mod nativetls;
-
 #[cfg(feature = "rustls")]
 mod rustls;
 
@@ -32,6 +29,9 @@ pub use rustls::rusoto_credential::DefaultCredentialsProvider;
 
 #[cfg(feature = "rustls")]
 pub use rustls::hyper_rustls::HttpsConnector;
+
+#[cfg(feature = "nativetls")]
+mod nativetls;
 
 #[cfg(feature = "nativetls")]
 pub use nativetls::rusoto_core::{ByteStream, HttpClient, Region, RusotoError, RusotoResult};

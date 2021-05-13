@@ -408,7 +408,7 @@ async fn create_archive_stream(
                         }
                     }
                     Err(err) => {
-                        let err = err.context("listing objects");
+                        let err = anyhow!(err).context("listing objects");
                         abort_with_error(Some(&mut archive), error_tracker.clone(), err).await;
                         break;
                     }
@@ -421,7 +421,7 @@ async fn create_archive_stream(
     create_error_monitor_stream(error_tracker_reader, framed_reader).await
 }
 
-fn into_io_error(err: &anyhow::Error) -> io::Error {
+fn into_io_error(err: anyhow::Error) -> io::Error {
     io::Error::new(ErrorKind::Other, format!("{}", err))
 }
 
@@ -459,7 +459,7 @@ async fn create_index_stream(
                     }
                 }
                 Err(err) => {
-                    yield Err(into_io_error(&err));
+                    yield Err(into_io_error(anyhow!(err)));
                 }
             }
         }
@@ -476,7 +476,7 @@ async fn create_item_stream(
     let mut stream = match download_streaming(&s3, &bucket, &path).await {
         Ok(byte_stream) => byte_stream,
         Err(err) => {
-            yield Err(into_io_error(&err));
+            yield Err(into_io_error(anyhow!(err)));
             return;
         }
     };

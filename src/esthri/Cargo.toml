@@ -21,7 +21,6 @@ log-derive = "0.4"
 hyper = "0.14"
 futures = "0.3"
 thiserror = "1.0"
-anyhow = { version = "1", features = ["backtrace"] }
 chrono = "0.4"
 regex = "1"
 
@@ -40,10 +39,15 @@ path = "src/lib.rs"
 default = [ "rustls", "cli", "http_server", "blocking", ]
 aggressive_lint = []
 blocking = []
-http_server = [ "async-tar", "async-compression", "async-stream", "bytes", "futures-util", "mime_guess", "sluice", "sanitize-filename", "serde", "serde_derive", "tokio-util", "warp", "ctrlc",]
+http_server = [ "async-tar", "async-compression", "async-stream", "bytes", "futures-util", "mime_guess", "sluice", "sanitize-filename", "serde", "serde_derive", "tokio-util", "warp", "ctrlc", "anyhow"]
 nativetls = [ "rusoto_credential", "rusoto_core/native-tls", "rusoto_signature", "rusoto_s3/native-tls", "hyper-tls",]
 rustls = [ "rusoto_credential", "rusoto_core/rustls", "rusoto_signature", "rusoto_s3/rustls", "hyper-rustls",]
 cli = [ "ctrlc", "structopt", "blocking" ]
+
+[dependencies.anyhow]
+version = "1"
+features = ["backtrace"]
+optional = true
 
 [dependencies.rusoto_credential]
 version = ">= 0.46, < 1"
