@@ -34,7 +34,7 @@ use once_cell::sync::Lazy;
 use tokio::io::AsyncReadExt;
 use walkdir::WalkDir;
 
-pub use crate::errors::{Result, Error};
+pub use crate::errors::{Error, Result};
 
 #[cfg(feature = "blocking")]
 pub mod blocking;
@@ -183,9 +183,7 @@ where
         .await
         .map_err(Error::CreateMultipartUploadFailed)?;
 
-        let upload_id = cmuo
-            .upload_id
-            .ok_or(Error::UploadIdNone)?;
+        let upload_id = cmuo.upload_id.ok_or(Error::UploadIdNone)?;
 
         debug!("upload_id: {}", upload_id);
 
@@ -319,8 +317,7 @@ where
     )
     .await?;
 
-    goo.body
-        .ok_or(Error::GetObjectOutputBodyNone)
+    goo.body.ok_or(Error::GetObjectOutputBodyNone)
 }
 
 #[logfn(err = "ERROR")]
@@ -704,7 +701,10 @@ fn process_head_obj_resp(hoo: HeadObjectOutput) -> Result<Option<ObjectInfo>> {
     let e_tag = if let Some(e_tag) = hoo.e_tag {
         e_tag
     } else {
-        return Err(Error::HeadObjectUnexpected(format!("no e_tag found: {:?}", hoo)));
+        return Err(Error::HeadObjectUnexpected(format!(
+            "no e_tag found: {:?}",
+            hoo
+        )));
     };
 
     let last_modified: String = if let Some(last_modified) = hoo.last_modified {
@@ -724,7 +724,9 @@ fn process_head_obj_resp(hoo: HeadObjectOutput) -> Result<Option<ObjectInfo>> {
     let size = if let Some(content_length) = hoo.content_length {
         content_length
     } else {
-        return Err(Error::HeadObjectUnexpected("no content_length found".into()));
+        return Err(Error::HeadObjectUnexpected(
+            "no content_length found".into(),
+        ));
     };
 
     Ok(Some(ObjectInfo {
@@ -739,16 +741,18 @@ async fn head_object_request<T>(s3: &T, bucket: &str, key: &str) -> Result<Optio
 where
     T: S3 + Send,
 {
-    let mut res = Some(handle_dispatch_error(|| async {
-        let hor = HeadObjectRequest {
-            bucket: bucket.into(),
-            key: key.into(),
-            ..Default::default()
-        };
+    let mut res = Some(
+        handle_dispatch_error(|| async {
+            let hor = HeadObjectRequest {
+                bucket: bucket.into(),
+                key: key.into(),
+                ..Default::default()
+            };
 
-        s3.head_object(hor).await
-    })
-    .await);
+            s3.head_object(hor).await
+        })
+        .await,
+    );
 
     match res.as_mut() {
         Some(Ok(_)) => {
@@ -871,9 +875,7 @@ where
     let local_dir = local_dir.as_ref();
     let dest_path = local_dir.join(s3_suffix);
 
-    let parent_dir = dest_path
-        .parent()
-        .ok_or(Error::ParentDirNone)?;
+    let parent_dir = dest_path.parent().ok_or(Error::ParentDirNone)?;
     let parent_dir = format!("{}", parent_dir.display());
 
     fs::create_dir_all(parent_dir)?;
@@ -1081,12 +1083,7 @@ where
             let entry = entry.unwrap_object();
             debug!("key={}", entry.key);
 
-            let path = format!(
-                "{}",
-                Path::new(&entry.key)
-                    .strip_prefix(key)?
-                    .display()
-            );
+            let path = format!("{}", Path::new(&entry.key).strip_prefix(key)?.display());
             let path = process_globs(&path, glob_includes, glob_excludes);
 
             if let Some(path) = path {
@@ -1103,17 +1100,15 @@ where
                             download_with_dir(s3, bucket, &key, &path, &directory).await?;
                         }
                     }
-                    Err(err) => {
-                        match err {
-                            Error::ETagNotPresent => {
-                                debug!("file did not exist locally: {}", local_path);
-                                download_with_dir(s3, bucket, &key, &path, &directory).await?;
-                            }
-                            _ => {
-                                warn!("s3 etag error: {}", err);
-                            }
+                    Err(err) => match err {
+                        Error::ETagNotPresent => {
+                            debug!("file did not exist locally: {}", local_path);
+                            download_with_dir(s3, bucket, &key, &path, &directory).await?;
                         }
-                    }
+                        _ => {
+                            warn!("s3 etag error: {}", err);
+                        }
+                    },
                 }
             }
         }

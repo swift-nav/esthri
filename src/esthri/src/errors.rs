@@ -16,7 +16,11 @@ use std::path::StripPrefixError;
 use chrono::ParseError;
 use glob::PatternError;
 use rusoto_core::RusotoError;
-use rusoto_s3::{AbortMultipartUploadError, CompleteMultipartUploadError, CopyObjectError, CreateMultipartUploadError, GetObjectError, HeadObjectError, ListObjectsV2Error, PutObjectError, UploadPartError};
+use rusoto_s3::{
+    AbortMultipartUploadError, CompleteMultipartUploadError, CopyObjectError,
+    CreateMultipartUploadError, GetObjectError, HeadObjectError, ListObjectsV2Error,
+    PutObjectError, UploadPartError,
+};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
