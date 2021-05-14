@@ -25,16 +25,18 @@ use std::sync::Mutex;
 
 use crypto::digest::Digest;
 use crypto::md5::Md5;
-use eyre::{anyhow, ensure, Context, Result};
 use futures::{stream, TryStream, TryStreamExt};
 use glob::Pattern;
 use hyper::client::connect::HttpConnector;
 use log::*;
 use log_derive::logfn;
 use once_cell::sync::Lazy;
-use tokio::{io::AsyncReadExt, time};
+use tokio::io::AsyncReadExt;
 use walkdir::WalkDir;
 
+pub use crate::errors::{Error, Result};
+
+#[cfg(feature = "blocking")]
 pub mod blocking;
 pub mod errors;
 #[cfg(feature = "http_server")]
@@ -43,8 +45,6 @@ pub mod retry;
 pub mod types;
 
 pub mod rusoto;
-
-pub use crate::errors::{EsthriError, EyreError, EyreReport};
 
 use crate::retry::handle_dispatch_error;
 use crate::rusoto::*;
@@ -69,28 +69,36 @@ const CHUNK_SIZE: u64 = 8 * 1024 * 1024;
 
 const READ_SIZE: usize = 4096;
 
+pub const INCLUDE_EMPTY: Option<&[&str]> = None;
+pub const EXCLUDE_EMPTY: Option<&[&str]> = None;
+
 #[logfn(err = "ERROR")]
-pub async fn head_object<T>(s3: &T, bucket: &str, key: &str) -> Result<Option<ObjectInfo>>
+pub async fn head_object<T, SR0, SR1>(s3: &T, bucket: SR0, key: SR1) -> Result<Option<ObjectInfo>>
 where
     T: S3 + Send,
+    SR0: AsRef<str>,
+    SR1: AsRef<str>,
 {
+    let (bucket, key) = (bucket.as_ref(), key.as_ref());
     info!("head-object: bucket={}, key={}", bucket, key);
     head_object_request(s3, bucket, key).await
 }
 
 #[logfn(err = "ERROR")]
-pub fn log_etag(path: &str) -> Result<String> {
-    info!("s3etag: path={}", path);
-    let etag = s3_compute_etag(path)?;
-    debug!("s3etag: file={}, etag={}", path, etag);
-    Ok(etag)
-}
-
-#[logfn(err = "ERROR")]
-pub async fn abort_upload<T>(s3: &T, bucket: &str, key: &str, upload_id: &str) -> Result<()>
+pub async fn abort_upload<T, SR0, SR1, SR2>(
+    s3: &T,
+    bucket: SR0,
+    key: SR1,
+    upload_id: SR2,
+) -> Result<()>
 where
     T: S3 + Send,
+    SR0: AsRef<str>,
+    SR1: AsRef<str>,
+    SR2: AsRef<str>,
 {
+    let (bucket, key, upload_id) = (bucket.as_ref(), key.as_ref(), upload_id.as_ref());
+
     info!(
         "abort: bucket={}, key={}, upload_id={}",
         bucket, key, upload_id
@@ -106,45 +114,56 @@ where
 
         s3.abort_multipart_upload(amur).await
     })
-    .await
-    .context("abort_multipart_upload failed")?;
+    .await?;
 
     Ok(())
 }
 
-pub async fn upload<T>(s3: &T, bucket: &str, key: &str, file: &str) -> Result<()>
+pub async fn upload<T, P, SR0, SR1>(s3: &T, bucket: SR0, key: SR1, file: P) -> Result<()>
 where
     T: S3 + Send,
+    P: AsRef<Path>,
+    SR0: AsRef<str>,
+    SR1: AsRef<str>,
 {
-    info!("put: bucket={}, key={}, file={}", bucket, key, file);
-
-    ensure!(
-        Path::new(&file).exists(),
-        anyhow!("source file does not exist: {}", file)
+    let (bucket, key, file) = (bucket.as_ref(), key.as_ref(), file.as_ref());
+    info!(
+        "put: bucket={}, key={}, file={}",
+        bucket,
+        key,
+        file.display()
     );
 
-    let stat = fs::metadata(&file)?;
-    let file_size = stat.len();
+    if file.exists() {
+        let stat = fs::metadata(&file)?;
+        let file_size = stat.len();
 
-    debug!("file_size: {}", file_size);
+        debug!("file_size: {}", file_size);
 
-    let f = File::open(file)?;
-    let mut reader = BufReader::new(f);
+        let f = File::open(file)?;
+        let mut reader = BufReader::new(f);
 
-    upload_from_reader(s3, bucket, key, &mut reader, file_size).await
+        upload_from_reader(s3, bucket, key, &mut reader, file_size).await
+    } else {
+        Err(Error::InvalidSourceFile(file.into()))
+    }
 }
 
 #[logfn(err = "ERROR")]
-pub async fn upload_from_reader<T>(
+pub async fn upload_from_reader<T, SR0, SR1>(
     s3: &T,
-    bucket: &str,
-    key: &str,
+    bucket: SR0,
+    key: SR1,
     reader: &mut dyn Read,
     file_size: u64,
 ) -> Result<()>
 where
     T: S3 + Send,
+    SR0: AsRef<str>,
+    SR1: AsRef<str>,
 {
+    let (bucket, key) = (bucket.as_ref(), key.as_ref());
+
     info!(
         "put: bucket={}, key={}, file_size={}",
         bucket, key, file_size
@@ -162,11 +181,9 @@ where
             s3.create_multipart_upload(cmur).await
         })
         .await
-        .context("create_multipart_upload failed")?;
+        .map_err(Error::CreateMultipartUploadFailed)?;
 
-        let upload_id = cmuo
-            .upload_id
-            .ok_or_else(|| anyhow!("create_multipart_upload upload_id was none"))?;
+        let upload_id = cmuo.upload_id.ok_or(Error::UploadIdNone)?;
 
         debug!("upload_id: {}", upload_id);
 
@@ -190,11 +207,8 @@ where
             };
             let mut buf = vec![0u8; chunk_size as usize];
 
-            let res = reader.read(&mut buf);
-            let read_count = res.context("read call returned error")?;
-
-            if read_count == 0 {
-                return Err(anyhow!("read size zero"));
+            if reader.read(&mut buf)? == 0 {
+                return Err(Error::ReadZero);
             }
 
             let upo = handle_dispatch_error(|| async {
@@ -212,7 +226,7 @@ where
                 s3.upload_part(upr).await
             })
             .await
-            .context("upload_part failed")?;
+            .map_err(Error::UploadPartFailed)?;
 
             if upo.e_tag.is_none() {
                 warn!("upload_part e_tag was not present");
@@ -245,7 +259,7 @@ where
             s3.complete_multipart_upload(cmur).await
         })
         .await
-        .context("complete_multipart_upload failed")?;
+        .map_err(Error::CompletedMultipartUploadFailed)?;
 
         // Clear multi-part upload
         {
@@ -256,10 +270,10 @@ where
         }
     } else {
         let mut buf = vec![0u8; file_size as usize];
-        let read_size = reader.read(&mut buf).context("read returned failure")?;
+        let read_size = reader.read(&mut buf)?;
 
         if read_size == 0 && file_size != 0 {
-            return Err(anyhow!("read size zero"));
+            return Err(Error::ReadZero);
         }
 
         handle_dispatch_error(|| async {
@@ -276,17 +290,21 @@ where
             s3.put_object(por).await
         })
         .await
-        .context("put_object failed")?;
+        .map_err(Error::PutObjectFailed)?;
     }
 
     Ok(())
 }
 
 #[logfn(err = "ERROR")]
-pub async fn download_streaming<T>(s3: &T, bucket: &str, key: &str) -> Result<ByteStream>
+pub async fn download_streaming<T, SR0, SR1>(s3: &T, bucket: SR0, key: SR1) -> Result<ByteStream>
 where
     T: S3 + Send,
+    SR0: AsRef<str>,
+    SR1: AsRef<str>,
 {
+    let (bucket, key) = (bucket.as_ref(), key.as_ref());
+
     info!("get: bucket={}, key={}", bucket, key);
 
     let goo = get_object_request(
@@ -299,16 +317,25 @@ where
     )
     .await?;
 
-    goo.body
-        .ok_or_else(|| anyhow!("did not expect body field of GetObjectOutput to be none"))
+    goo.body.ok_or(Error::GetObjectOutputBodyNone)
 }
 
 #[logfn(err = "ERROR")]
-pub async fn download<T>(s3: &T, bucket: &str, key: &str, file: &str) -> Result<()>
+pub async fn download<T, P, SR0, SR1>(s3: &T, bucket: SR0, key: SR1, file: P) -> Result<()>
 where
     T: S3 + Send,
+    P: AsRef<Path>,
+    SR0: AsRef<str>,
+    SR1: AsRef<str>,
 {
-    info!("get: bucket={}, key={}, file={}", bucket, key, file);
+    let (bucket, key, file) = (bucket.as_ref(), key.as_ref(), file.as_ref());
+
+    info!(
+        "get: bucket={}, key={}, file={}",
+        bucket,
+        key,
+        file.display()
+    );
 
     let f = File::create(file)?;
     let mut writer = BufWriter::new(f);
@@ -337,71 +364,27 @@ where
 }
 
 #[logfn(err = "ERROR")]
-pub async fn tail<T, W>(
-    s3: &T,
-    writer: &mut W,
-    interval_seconds: u64,
-    bucket: &str,
-    key: &str,
-) -> Result<()>
-where
-    T: S3 + Send,
-    W: tokio::io::AsyncWrite + Unpin,
-{
-    info!("tail: bucket={}, key={}", bucket, key);
-
-    let mut bytes_copied = 0;
-    let mut get_obj_params = GetObjectRequest {
-        bucket: bucket.into(),
-        key: key.into(),
-        ..Default::default()
-    };
-    let mut interval = time::interval(time::Duration::from_secs(interval_seconds));
-
-    loop {
-        interval.tick().await;
-
-        let goo = match get_object_request(s3, &get_obj_params).await {
-            Ok(goo) => goo,
-            Err(RusotoError::Unknown(e)) if e.status == 304 => continue,
-            Err(e) => return Err(e.into()),
-        };
-
-        let mut reader = goo
-            .body
-            .ok_or_else(|| anyhow!("did not expect body field of GetObjectOutput to be none"))?
-            .into_async_read();
-
-        bytes_copied += tokio::io::copy(&mut reader, writer).await?;
-
-        get_obj_params.if_none_match = goo.e_tag;
-        get_obj_params.range = Some(bytes_range(bytes_copied));
-    }
-}
-
-fn bytes_range(offset: u64) -> String {
-    format!("bytes={}-", offset)
-}
-
-#[logfn(err = "ERROR")]
-pub async fn sync<T>(
+pub async fn sync<T, SR0, SR1>(
     s3: &T,
     source: SyncParam,
     destination: SyncParam,
-    includes: &Option<Vec<String>>,
-    excludes: &Option<Vec<String>>,
+    includes: Option<&[SR0]>,
+    excludes: Option<&[SR1]>,
 ) -> Result<()>
 where
     T: S3 + Send,
+    SR0: AsRef<str>,
+    SR1: AsRef<str>,
 {
     let mut glob_excludes: Vec<Pattern> = vec![];
     let mut glob_includes: Vec<Pattern> = vec![];
 
     if let Some(excludes) = excludes {
         for exclude in excludes {
+            let exclude = exclude.as_ref();
             match Pattern::new(exclude) {
                 Err(e) => {
-                    return Err(anyhow!("exclude glob pattern error for {}: {}", exclude, e));
+                    return Err(Error::GlobPatternError(e));
                 }
                 Ok(p) => {
                     glob_excludes.push(p);
@@ -412,9 +395,10 @@ where
 
     if let Some(includes) = includes {
         for include in includes {
+            let include = include.as_ref();
             match Pattern::new(include) {
                 Err(e) => {
-                    return Err(anyhow!("include glob pattern error for {}: {}", include, e));
+                    return Err(Error::GlobPatternError(e));
                 }
                 Ok(p) => {
                     glob_includes.push(p);
@@ -426,58 +410,34 @@ where
     }
 
     match (source, destination) {
-        (
-            SyncParam::Local { path },
-            SyncParam::Bucket {
-                bucket,
-                path: bucket_path,
-            },
-        ) => {
+        (SyncParam::Local { path }, SyncParam::Bucket { bucket, key }) => {
             info!(
                 "sync-up, local directory: {}, bucket: {}, key: {}",
-                path, bucket, bucket_path
+                path.display(),
+                bucket,
+                key
             );
 
-            sync_local_to_remote(
-                s3,
-                &bucket,
-                &bucket_path,
-                &path,
-                &glob_includes,
-                &glob_excludes,
-            )
-            .await?;
+            sync_local_to_remote(s3, &bucket, &key, &path, &glob_includes, &glob_excludes).await?;
         }
-        (
-            SyncParam::Bucket {
-                bucket,
-                path: bucket_path,
-            },
-            SyncParam::Local { path },
-        ) => {
+        (SyncParam::Bucket { bucket, key }, SyncParam::Local { path }) => {
             info!(
                 "sync-down, local directory: {}, bucket: {}, key: {}",
-                path, bucket, bucket_path
+                path.display(),
+                bucket,
+                key
             );
 
-            sync_remote_to_local(
-                s3,
-                &bucket,
-                &bucket_path,
-                &path,
-                &glob_includes,
-                &glob_excludes,
-            )
-            .await?;
+            sync_remote_to_local(s3, &bucket, &key, &path, &glob_includes, &glob_excludes).await?;
         }
         (
             SyncParam::Bucket {
                 bucket: source_bucket,
-                path: source_key,
+                key: source_key,
             },
             SyncParam::Bucket {
                 bucket: destination_bucket,
-                path: destination_key,
+                key: destination_key,
             },
         ) => {
             info!(
@@ -505,30 +465,40 @@ where
 }
 
 #[logfn(err = "ERROR")]
-pub async fn list_objects<T>(s3: &T, bucket: &str, key: &str) -> Result<Vec<String>>
+pub async fn list_objects<T, SR0, SR1>(s3: &T, bucket: SR0, key: SR1) -> Result<Vec<String>>
 where
     T: S3 + Send,
+    SR0: AsRef<str>,
+    SR1: AsRef<str>,
 {
-    list_objects_with_delim(s3, bucket, key, None).await
+    let none: Option<&str> = None;
+    list_objects_with_delim(s3, bucket, key, none).await
 }
 
 #[logfn(err = "ERROR")]
-pub async fn list_directory<T>(s3: &T, bucket: &str, dir_path: &str) -> Result<Vec<String>>
+pub async fn list_directory<T, SR0, SR1>(s3: &T, bucket: SR0, dir_path: SR1) -> Result<Vec<String>>
 where
     T: S3 + Send,
+    SR0: AsRef<str>,
+    SR1: AsRef<str>,
 {
     list_objects_with_delim(s3, bucket, dir_path, Some("/")).await
 }
 
-async fn list_objects_with_delim<T>(
+async fn list_objects_with_delim<T, S0, S1, S2>(
     s3: &T,
-    bucket: &str,
-    key: &str,
-    delim: Option<&str>,
+    bucket: S0,
+    key: S1,
+    delim: Option<S2>,
 ) -> Result<Vec<String>>
 where
     T: S3 + Send,
+    S0: AsRef<str>,
+    S1: AsRef<str>,
+    S2: AsRef<str>,
 {
+    let (bucket, key, delim) = (bucket.as_ref(), key.as_ref(), delim.as_ref());
+
     let batches: Vec<_> = list_objects_stream_with_delim(s3, bucket, key, delim)
         .try_collect()
         .await?;
@@ -549,41 +519,50 @@ where
     Ok(keys)
 }
 
-pub fn list_objects_stream<'a, T>(
+pub fn list_objects_stream<'a, T, SR0, SR1>(
     s3: &'a T,
-    bucket: &'a str,
-    key: &'a str,
-) -> impl TryStream<Ok = Vec<S3ListingItem>, Error = eyre::Error> + Unpin + 'a
+    bucket: SR0,
+    key: SR1,
+) -> impl TryStream<Ok = Vec<S3ListingItem>, Error = Error> + Unpin + 'a
 where
     T: S3 + Send,
+    SR0: AsRef<str> + 'a,
+    SR1: AsRef<str> + 'a,
 {
-    list_objects_stream_with_delim(s3, bucket, key, None)
+    let no_delim: Option<&str> = None;
+    list_objects_stream_with_delim(s3, bucket, key, no_delim)
 }
 
 pub fn list_directory_stream<'a, T>(
     s3: &'a T,
     bucket: &'a str,
     key: &'a str,
-) -> impl TryStream<Ok = Vec<S3ListingItem>, Error = eyre::Error> + Unpin + 'a
+) -> impl TryStream<Ok = Vec<S3ListingItem>, Error = Error> + Unpin + 'a
 where
     T: S3 + Send,
 {
-    list_objects_stream_with_delim(s3, bucket, key, Some("/"))
+    let slash_delim = Some("/");
+    list_objects_stream_with_delim(s3, bucket, key, slash_delim)
 }
 
-fn list_objects_stream_with_delim<'a, T>(
+fn list_objects_stream_with_delim<'a, T, SR0, SR1, SR2>(
     s3: &'a T,
-    bucket: &'a str,
-    key: &'a str,
-    delimiter: Option<&'a str>,
-) -> impl TryStream<Ok = Vec<S3ListingItem>, Error = eyre::Error> + Unpin + 'a
+    bucket: SR0,
+    key: SR1,
+    delimiter: Option<SR2>,
+) -> impl TryStream<Ok = Vec<S3ListingItem>, Error = Error> + Unpin + 'a
 where
     T: S3 + Send,
+    SR0: AsRef<str> + 'a,
+    SR1: AsRef<str> + 'a,
+    SR2: AsRef<str> + 'a,
 {
+    let (bucket, key) = (bucket.as_ref().to_owned(), key.as_ref().to_owned());
+
     info!("stream-objects: bucket={}, key={}", bucket, key);
 
     let continuation: Option<String> = None;
-    let delimiter = delimiter.map(|s| s.to_owned());
+    let delimiter = delimiter.map(|s| s.as_ref().to_owned());
 
     let state = (s3, bucket, key, continuation, delimiter, false);
 
@@ -652,9 +631,13 @@ pub fn setup_upload_termination_handler() {
     .expect("Error setting Ctrl-C handler");
 }
 
-fn s3_compute_etag(path: &str) -> Result<String> {
-    if !Path::new(path).exists() {
-        return Err(anyhow!(EsthriError::ETagNotPresent));
+pub fn s3_compute_etag<P>(path: P) -> Result<String>
+where
+    P: AsRef<Path>,
+{
+    let path = path.as_ref();
+    if !path.exists() {
+        return Err(Error::ETagNotPresent);
     }
 
     let f = File::open(path)?;
@@ -705,7 +688,7 @@ fn s3_compute_etag(path: &str) -> Result<String> {
 async fn get_object_request<T>(
     s3: &T,
     gor: &GetObjectRequest,
-) -> Result<GetObjectOutput, RusotoError<GetObjectError>>
+) -> std::result::Result<GetObjectOutput, RusotoError<GetObjectError>>
 where
     T: S3 + Send,
 {
@@ -720,31 +703,32 @@ fn process_head_obj_resp(hoo: HeadObjectOutput) -> Result<Option<ObjectInfo>> {
     let e_tag = if let Some(e_tag) = hoo.e_tag {
         e_tag
     } else {
-        return Err(anyhow!("head_object failed (3): No e_tag found: {:?}", hoo));
+        return Err(Error::HeadObjectUnexpected(format!(
+            "no e_tag found: {:?}",
+            hoo
+        )));
     };
 
     let last_modified: String = if let Some(last_modified) = hoo.last_modified {
         last_modified
     } else {
-        return Err(anyhow!("head_object failed (3): No last_modified found"));
+        return Err(Error::HeadObjectUnexpected("no last_modified found".into()));
     };
 
     let last_modified: chrono::DateTime<chrono::Utc> =
         match chrono::DateTime::parse_from_rfc2822(&last_modified) {
             Ok(last_modified) => last_modified.into(),
             Err(err) => {
-                return Err(anyhow!(
-                    "head_object failed (3): Failed to parse last_modified field: {} ({})",
-                    last_modified,
-                    err
-                ));
+                return Err(Error::HeadObjectFailedParseError(err));
             }
         };
 
     let size = if let Some(content_length) = hoo.content_length {
         content_length
     } else {
-        return Err(anyhow!("head_object failed (3): No content_length found"));
+        return Err(Error::HeadObjectUnexpected(
+            "no content_length found".into(),
+        ));
     };
 
     Ok(Some(ObjectInfo {
@@ -759,27 +743,39 @@ async fn head_object_request<T>(s3: &T, bucket: &str, key: &str) -> Result<Optio
 where
     T: S3 + Send,
 {
-    let res = handle_dispatch_error(|| async {
-        let hor = HeadObjectRequest {
-            bucket: bucket.into(),
-            key: key.into(),
-            ..Default::default()
-        };
+    let mut res = Some(
+        handle_dispatch_error(|| async {
+            let hor = HeadObjectRequest {
+                bucket: bucket.into(),
+                key: key.into(),
+                ..Default::default()
+            };
 
-        s3.head_object(hor).await
-    })
-    .await;
+            s3.head_object(hor).await
+        })
+        .await,
+    );
 
-    match res {
-        Ok(hoo) => process_head_obj_resp(hoo),
-        Err(RusotoError::Unknown(e)) => {
+    match res.as_mut() {
+        Some(Ok(_)) => {
+            let hoo = res.unwrap().unwrap();
+            process_head_obj_resp(hoo)
+        }
+        Some(Err(RusotoError::Unknown(e))) => {
             if e.status == 404 {
                 Ok(None)
             } else {
-                Err(anyhow!("head_object failed (1): {:?}", e))
+                let err = res.unwrap().err().unwrap();
+                Err(Error::HeadObjectFailure(err))
             }
         }
-        Err(e) => Err(anyhow!("head_object failed (2): {:?}", e)),
+        Some(Err(_)) => {
+            let err = res.unwrap().err().unwrap();
+            Err(Error::HeadObjectFailure(err))
+        }
+        _ => {
+            panic!("impossible?");
+        }
     }
 }
 
@@ -804,8 +800,7 @@ where
 
         s3.list_objects_v2(lov2r).await
     })
-    .await
-    .context("listing objects failed")?;
+    .await?;
 
     let mut listing = S3Listing {
         continuation: lov2o.next_continuation_token,
@@ -869,21 +864,20 @@ fn process_globs<'a>(
     }
 }
 
-async fn download_with_dir<T>(
+async fn download_with_dir<T, P: AsRef<Path>>(
     s3: &T,
     bucket: &str,
     s3_prefix: &str,
     s3_suffix: &str,
-    local_dir: &str,
+    local_dir: P,
 ) -> Result<()>
 where
     T: S3 + Send,
 {
-    let dest_path = Path::new(local_dir).join(s3_suffix);
+    let local_dir = local_dir.as_ref();
+    let dest_path = local_dir.join(s3_suffix);
 
-    let parent_dir = dest_path
-        .parent()
-        .ok_or_else(|| anyhow!("unexpected: parent dir was null"))?;
+    let parent_dir = dest_path.parent().ok_or(Error::ParentDirNone)?;
     let parent_dir = format!("{}", parent_dir.display());
 
     fs::create_dir_all(parent_dir)?;
@@ -896,19 +890,20 @@ where
     Ok(())
 }
 
-async fn sync_local_to_remote<T>(
+async fn sync_local_to_remote<T, P: AsRef<Path>>(
     s3: &T,
     bucket: &str,
     key: &str,
-    directory: &str,
+    directory: P,
     glob_includes: &[Pattern],
     glob_excludes: &[Pattern],
 ) -> Result<()>
 where
     T: S3 + Send,
 {
+    let directory = directory.as_ref();
     if !key.ends_with(FORWARD_SLASH) {
-        return Err(EsthriError::DirlikePrefixRequired.into());
+        return Err(Error::DirlikePrefixRequired);
     }
     for entry in WalkDir::new(directory) {
         let entry = entry?;
@@ -972,11 +967,11 @@ where
     T: S3 + Send,
 {
     if !source_prefix.ends_with(FORWARD_SLASH) {
-        return Err(EsthriError::DirlikePrefixRequired.into());
+        return Err(Error::DirlikePrefixRequired);
     }
 
     if !destination_key.ends_with(FORWARD_SLASH) {
-        return Err(EsthriError::DirlikePrefixRequired.into());
+        return Err(Error::DirlikePrefixRequired);
     }
 
     let mut stream = list_objects_stream(s3, source_bucket, source_prefix);
@@ -1040,10 +1035,7 @@ where
     })
     .await;
 
-    match res {
-        Ok(coo) => Ok(coo),
-        Err(e) => Err(anyhow!("copy_object failed: {:?}", e)),
-    }
+    Ok(res?)
 }
 
 pub fn create_globs(
@@ -1056,7 +1048,7 @@ pub fn create_globs(
         for filter in filters {
             match Pattern::new(filter) {
                 Err(e) => {
-                    return Err(anyhow!("glob pattern error for {}: {}", filter, e));
+                    return Err(Error::GlobPatternError(e));
                 }
                 Ok(p) => {
                     globs.push(p);
@@ -1070,22 +1062,21 @@ pub fn create_globs(
     Ok(globs)
 }
 
-async fn sync_remote_to_local<T>(
+async fn sync_remote_to_local<T, P: AsRef<Path>>(
     s3: &T,
     bucket: &str,
     key: &str,
-    directory: &str,
+    directory: P,
     glob_includes: &[Pattern],
     glob_excludes: &[Pattern],
 ) -> Result<()>
 where
     T: S3 + Send,
 {
+    let directory = directory.as_ref();
     if !key.ends_with(FORWARD_SLASH) {
-        return Err(EsthriError::DirlikePrefixRequired.into());
+        return Err(Error::DirlikePrefixRequired);
     }
-
-    let dir_path = Path::new(directory);
 
     let mut stream = list_objects_stream(s3, bucket, key);
 
@@ -1094,17 +1085,11 @@ where
             let entry = entry.unwrap_object();
             debug!("key={}", entry.key);
 
-            let path = format!(
-                "{}",
-                Path::new(&entry.key)
-                    .strip_prefix(key)
-                    .with_context(|| format!("entry.key: {}, prefix: {}", &entry.key, &key))?
-                    .display()
-            );
+            let path = format!("{}", Path::new(&entry.key).strip_prefix(key)?.display());
             let path = process_globs(&path, glob_includes, glob_excludes);
 
             if let Some(path) = path {
-                let local_path: String = format!("{}", dir_path.join(&path).display());
+                let local_path: String = format!("{}", directory.join(&path).display());
                 debug!("checking {}", local_path);
                 let local_etag = s3_compute_etag(&local_path);
                 match local_etag {
@@ -1117,18 +1102,15 @@ where
                             download_with_dir(s3, bucket, &key, &path, &directory).await?;
                         }
                     }
-                    Err(err) => {
-                        let not_present: Option<&EsthriError> = err.downcast_ref();
-                        match not_present {
-                            Some(EsthriError::ETagNotPresent) => {
-                                debug!("file did not exist locally: {}", local_path);
-                                download_with_dir(s3, bucket, &key, &path, &directory).await?;
-                            }
-                            Some(_) | None => {
-                                warn!("s3 etag error: {}", err);
-                            }
+                    Err(err) => match err {
+                        Error::ETagNotPresent => {
+                            debug!("file did not exist locally: {}", local_path);
+                            download_with_dir(s3, bucket, &key, &path, &directory).await?;
                         }
-                    }
+                        _ => {
+                            warn!("s3 etag error: {}", err);
+                        }
+                    },
                 }
             }
         }

@@ -2,7 +2,7 @@
 
 use std::fs;
 
-use esthri::{blocking, sync, SyncParam};
+use esthri::{blocking, sync, SyncParam, EXCLUDE_EMPTY, INCLUDE_EMPTY};
 
 use crate::{validate_key_hash_pairs, KeyHashPair};
 
@@ -17,7 +17,13 @@ fn test_sync_down() {
     let source = SyncParam::new_bucket(crate::TEST_BUCKET, s3_key);
     let destination = SyncParam::new_local(local_directory);
 
-    let res = blocking::sync(s3client.as_ref(), source, destination, &includes, &excludes);
+    let res = blocking::sync(
+        s3client.as_ref(),
+        source,
+        destination,
+        includes.as_deref(),
+        excludes.as_deref(),
+    );
     assert!(res.is_ok(), format!("s3_sync result: {:?}", res));
 }
 
@@ -32,7 +38,14 @@ async fn test_sync_down_async() {
     let source = SyncParam::new_bucket(crate::TEST_BUCKET, s3_key);
     let destination = SyncParam::new_local(local_directory);
 
-    let res = sync(s3client.as_ref(), source, destination, &includes, &excludes).await;
+    let res = sync(
+        s3client.as_ref(),
+        source,
+        destination,
+        includes.as_deref(),
+        excludes.as_deref(),
+    )
+    .await;
     assert!(res.is_ok(), format!("s3_sync result: {:?}", res));
 }
 
@@ -45,7 +58,13 @@ fn test_sync_down_fail() {
     let source = SyncParam::new_bucket(crate::TEST_BUCKET, s3_key);
     let destination = SyncParam::new_local(local_directory);
 
-    let res = blocking::sync(s3client.as_ref(), source, destination, &None, &None);
+    let res = blocking::sync(
+        s3client.as_ref(),
+        source,
+        destination,
+        INCLUDE_EMPTY,
+        EXCLUDE_EMPTY,
+    );
     assert!(res.is_err());
 }
 
@@ -58,7 +77,13 @@ fn test_sync_up_fail() {
     let source = SyncParam::new_local(local_directory);
     let destination = SyncParam::new_bucket(crate::TEST_BUCKET, s3_key);
 
-    let res = blocking::sync(s3client.as_ref(), source, destination, &None, &None);
+    let res = blocking::sync(
+        s3client.as_ref(),
+        source,
+        destination,
+        INCLUDE_EMPTY,
+        EXCLUDE_EMPTY,
+    );
     assert!(res.is_err());
 }
 
@@ -73,7 +98,13 @@ fn test_sync_up() {
     let source = SyncParam::new_local(local_directory);
     let destination = SyncParam::new_bucket(crate::TEST_BUCKET, s3_key);
 
-    let res = blocking::sync(s3client.as_ref(), source, destination, &includes, &excludes);
+    let res = blocking::sync(
+        s3client.as_ref(),
+        source,
+        destination,
+        includes.as_deref(),
+        excludes.as_deref(),
+    );
     assert!(res.is_ok());
 }
 
@@ -88,7 +119,14 @@ async fn test_sync_up_async() {
     let source = SyncParam::new_local(local_directory);
     let destination = SyncParam::new_bucket(crate::TEST_BUCKET, s3_key);
 
-    let res = sync(s3client.as_ref(), source, destination, &includes, &excludes).await;
+    let res = sync(
+        s3client.as_ref(),
+        source,
+        destination,
+        includes.as_deref(),
+        excludes.as_deref(),
+    )
+    .await;
     assert!(res.is_ok());
 }
 
@@ -101,7 +139,13 @@ fn test_sync_up_default() {
     let source = SyncParam::new_local(local_directory);
     let destination = SyncParam::new_bucket(crate::TEST_BUCKET, s3_key);
 
-    let res = blocking::sync(s3client.as_ref(), source, destination, &None, &None);
+    let res = blocking::sync(
+        s3client.as_ref(),
+        source,
+        destination,
+        INCLUDE_EMPTY,
+        EXCLUDE_EMPTY,
+    );
     assert!(res.is_ok());
 
     let key_hash_pairs = [
@@ -140,7 +184,13 @@ fn test_sync_down_default() {
     let source = SyncParam::new_bucket(crate::TEST_BUCKET, s3_key);
     let destination = SyncParam::new_local(local_directory);
 
-    let res = blocking::sync(s3client.as_ref(), source, destination, &None, &None);
+    let res = blocking::sync(
+        s3client.as_ref(),
+        source,
+        destination,
+        INCLUDE_EMPTY,
+        EXCLUDE_EMPTY,
+    );
     assert!(res.is_ok());
 
     let key_hash_pairs = [
@@ -164,6 +214,13 @@ async fn test_sync_across() {
     let source = SyncParam::new_bucket(crate::TEST_BUCKET, source_prefix);
     let destination = SyncParam::new_bucket(crate::TEST_BUCKET, dest_prefix);
 
-    let res = sync(s3client.as_ref(), source, destination, &includes, &excludes).await;
+    let res = sync(
+        s3client.as_ref(),
+        source,
+        destination,
+        includes.as_deref(),
+        excludes.as_deref(),
+    )
+    .await;
     assert!(res.is_ok(), format!("s3_sync result: {:?}", res));
 }

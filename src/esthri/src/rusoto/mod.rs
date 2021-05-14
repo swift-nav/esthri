@@ -11,10 +11,13 @@
  */
 
 #[cfg(feature = "rustls")]
-pub use rusoto_rustls::rusoto_core::{ByteStream, HttpClient, Region, RusotoError, RusotoResult};
+mod rustls;
 
 #[cfg(feature = "rustls")]
-pub use rusoto_rustls::rusoto_s3::{
+pub use rustls::rusoto_core::{ByteStream, HttpClient, Region, RusotoError, RusotoResult};
+
+#[cfg(feature = "rustls")]
+pub use rustls::rusoto_s3::{
     AbortMultipartUploadRequest, CompleteMultipartUploadRequest, CompletedMultipartUpload,
     CompletedPart, CopyObjectOutput, CopyObjectRequest, CreateMultipartUploadRequest,
     GetObjectError, GetObjectOutput, GetObjectRequest, HeadObjectOutput, HeadObjectRequest,
@@ -22,18 +25,19 @@ pub use rusoto_rustls::rusoto_s3::{
 };
 
 #[cfg(feature = "rustls")]
-pub use rusoto_rustls::rusoto_credential::DefaultCredentialsProvider;
+pub use rustls::rusoto_credential::DefaultCredentialsProvider;
 
 #[cfg(feature = "rustls")]
-pub use rusoto_rustls::hyper_rustls::HttpsConnector;
+pub use rustls::hyper_rustls::HttpsConnector;
 
 #[cfg(feature = "nativetls")]
-pub use rusoto_nativetls::rusoto_core::{
-    ByteStream, HttpClient, Region, RusotoError, RusotoResult,
-};
+mod nativetls;
 
 #[cfg(feature = "nativetls")]
-pub use rusoto_nativetls::rusoto_s3::{
+pub use nativetls::rusoto_core::{ByteStream, HttpClient, Region, RusotoError, RusotoResult};
+
+#[cfg(feature = "nativetls")]
+pub use nativetls::rusoto_s3::{
     AbortMultipartUploadRequest, CompleteMultipartUploadRequest, CompletedMultipartUpload,
     CompletedPart, CopyObjectOutput, CopyObjectRequest, CreateMultipartUploadRequest,
     GetObjectError, GetObjectOutput, GetObjectRequest, HeadObjectOutput, HeadObjectRequest,
@@ -41,7 +45,7 @@ pub use rusoto_nativetls::rusoto_s3::{
 };
 
 #[cfg(feature = "nativetls")]
-pub use rusoto_nativetls::rusoto_credential::DefaultCredentialsProvider;
+pub use nativetls::rusoto_credential::DefaultCredentialsProvider;
 
 #[cfg(feature = "nativetls")]
-pub use rusoto_nativetls::hyper_tls::HttpsConnector;
+pub use nativetls::hyper_tls::HttpsConnector;

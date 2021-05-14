@@ -20,98 +20,38 @@ TLS_PROVIDER = "nativetls"
 [tasks.check]
 command = "cargo"
 args = [
-	"check",
-	"--features=${TLS_PROVIDER},http_server,cli",
-	"@@remove-empty(BUILD_FLAVOR)",
-	"@@remove-empty(TARGET)"
-	]
+        "check",
+        "--features=${TLS_PROVIDER},http_server,cli",
+        "@@remove-empty(BUILD_FLAVOR)",
+        "@@remove-empty(TARGET)"
+        ]
 cwd = "src/esthri"
 
 [tasks.build]
 command = "cargo"
 args = [
-	"build",
-	"--features=${TLS_PROVIDER},http_server,cli",
-	"@@remove-empty(BUILD_FLAVOR)",
-	"@@remove-empty(TARGET)"
-	]
+        "build",
+        "--features=${TLS_PROVIDER},http_server,cli",
+        "--no-default-features",
+        "@@remove-empty(BUILD_FLAVOR)",
+        "@@remove-empty(TARGET)"
+        ]
 cwd = "src/esthri"
 
 [tasks.test]
 env = { "RUST_LOG" = "esthri=debug", "RUST_BACKTRACE" = "1" }
 cwd = "src/esthri"
 command = "cargo"
-args = ["test", "--features=${TLS_PROVIDER},http_server,cli", "@@remove-empty(BUILD_FLAVOR)", "--", "--nocapture"]
+args = [
+        "test",
+        "--features=${TLS_PROVIDER},http_server,cli",
+        "--no-default-features",
+        "@@remove-empty(BUILD_FLAVOR)",
+        "--",
+        "--nocapture"
+        ]
 
 [tasks.lint]
 command = "cargo"
 cwd = "src/esthri"
-args = ["clippy", "--features=${TLS_PROVIDER},http_server,cli,aggressive_lint"]
-
-[tasks.install-toml]
-command = "pip3"
-args = ["install", "toml"]
-
-[tasks.release]
-script = [
-'''
-#!/bin/bash
-cargo make
-git add \
-	Cargo.lock \
-	src/esthri/Cargo.toml \
-	src/esthri_rusoto/rusoto_nativetls/Cargo.toml \
-	src/esthri_rusoto/rusoto_rustls/Cargo.toml
-relver=$(./scripts/package-version.py get-current)
-git commit -m "Release $relver"
-git tag -f $relver
-'''
-]
-
-[tasks.bump-version-bugfix]
-dependencies = ["install-toml"]
-script = [
-'''
-#!/bin/bash
-./scripts/package-version.py bump-bugfix
-'''
-]
-
-[tasks.bump-version-minor]
-dependencies = ["install-toml"]
-script = [
-'''
-#!/bin/bash
-./scripts/package-version.py bump-minor
-'''
-]
-
-[tasks.bump-version-major]
-dependencies = ["install-toml"]
-script = [
-'''
-#!/bin/bash
-./scripts/package-version.py bump-major
-'''
-]
-
-[tasks.release-bugfix]
-dependencies = ["bump-version-bugfix"]
-run_task = "release"
-
-[tasks.release-minor]
-dependencies = ["bump-version-minor"]
-run_task = "release"
-
-[tasks.release-major]
-dependencies = ["bump-version-major"]
-run_task = "release"
-
-[tasks.publish-release]
-script = [
-'''
-#!/bin/bash
-relver=$(./scripts/package-version.py get-current)
-git push origin master ${relver}
-'''
-]
+args = ["clippy", "--no-default-features", "--features=${TLS_PROVIDER},blocking,http_server,cli,aggressive_lint"]

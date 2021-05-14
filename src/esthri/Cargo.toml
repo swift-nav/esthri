@@ -21,8 +21,6 @@ log-derive = "0.4"
 hyper = "0.14"
 futures = "0.3"
 thiserror = "1.0"
-eyre = "0.6.5"
-stable-eyre = "0.2.1"
 chrono = "0.4"
 regex = "1"
 
@@ -38,26 +36,51 @@ name = "esthri"
 path = "src/lib.rs"
 
 [features]
-default = []
+default = [ "rustls", "cli", "http_server", "blocking", ]
 aggressive_lint = []
-http_server = [ "async-tar", "async-compression", "async-stream", "bytes", "futures-util", "mime_guess", "sluice", "sanitize-filename", "serde", "serde_derive", "tokio-util", "warp", "ctrlc",]
-nativetls = [ "rusoto_nativetls",]
-rustls = [ "rusoto_rustls",]
-cli = [ "ctrlc", "structopt",]
+blocking = []
+http_server = [ "async-tar", "async-compression", "async-stream", "bytes", "futures-util", "mime_guess", "sluice", "sanitize-filename", "serde", "serde_derive", "tokio-util", "warp", "ctrlc", "anyhow"]
+nativetls = [ "rusoto_credential", "rusoto_core/native-tls", "rusoto_signature", "rusoto_s3/native-tls", "hyper-tls",]
+rustls = [ "rusoto_credential", "rusoto_core/rustls", "rusoto_signature", "rusoto_s3/rustls", "hyper-rustls",]
+cli = [ "ctrlc", "structopt", "blocking" ]
+
+[dependencies.anyhow]
+version = "1"
+features = ["backtrace"]
+optional = true
+
+[dependencies.rusoto_credential]
+version = ">= 0.46, < 1"
+optional = true
+default-features = false
+
+[dependencies.rusoto_core]
+version = ">= 0.46, < 1"
+optional = true
+default-features = false
+
+[dependencies.rusoto_signature]
+version = ">= 0.46, < 1"
+optional = true
+default-features = false
+
+[dependencies.rusoto_s3]
+version = ">= 0.46, < 1"
+optional = true
+default-features = false
+
+[dependencies.hyper-tls]
+version = "0.5"
+optional = true
+
+[dependencies.hyper-rustls]
+version = "0.22"
+features = [ "webpki-roots",]
+optional = true
 
 [dependencies.structopt]
 version = "0.3"
 optional = true
-
-[dependencies.rusoto_nativetls]
-path = "../esthri_rusoto/rusoto_nativetls"
-optional = true
-features = [ "nativetls",]
-
-[dependencies.rusoto_rustls]
-path = "../esthri_rusoto/rusoto_rustls"
-optional = true
-features = [ "rustls",]
 
 [dependencies.tokio]
 version = "1.5"

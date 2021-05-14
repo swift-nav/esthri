@@ -39,7 +39,7 @@ async fn test_fetch_object() {
     assert_eq!(body, "this file has contents\n");
 }
 
-fn upload_test_data() -> Result<(), eyre::Report> {
+fn upload_test_data() -> anyhow::Result<()> {
     let s3client = crate::get_s3client();
     let local_directory = "tests/data/sync_up";
     let s3_key = "test_fetch_archive";
