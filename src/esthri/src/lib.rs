@@ -529,7 +529,8 @@ where
     SR0: AsRef<str> + 'a,
     SR1: AsRef<str> + 'a,
 {
-    list_objects_stream_with_delim(s3, bucket, key, None as Option<&str>)
+    let no_delim: Option<&str> = None;
+    list_objects_stream_with_delim(s3, bucket, key, no_delim)
 }
 
 pub fn list_directory_stream<'a, T>(
@@ -540,7 +541,8 @@ pub fn list_directory_stream<'a, T>(
 where
     T: S3 + Send,
 {
-    list_objects_stream_with_delim(s3, bucket, key, Some("/"))
+    let slash_delim = Some("/");
+    list_objects_stream_with_delim(s3, bucket, key, slash_delim)
 }
 
 fn list_objects_stream_with_delim<'a, T, SR0, SR1, SR2>(
