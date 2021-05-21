@@ -64,12 +64,16 @@ static GLOBAL_DATA: Lazy<Mutex<GlobalData>> = Lazy::new(|| {
     })
 });
 
-// This is the default chunk size from awscli
-const CHUNK_SIZE: u64 = 8 * 1024 * 1024;
-
 const READ_SIZE: usize = 4096;
 
+/// This is the default chunk size from awscli, multipart uploads
+/// are created in 8 MiB chunks.
+pub const CHUNK_SIZE: u64 = 8 * 1024 * 1024;
+
+/// An empty list of include patterns, for use with [sync](crate::sync).
 pub const INCLUDE_EMPTY: Option<&[&str]> = None;
+
+/// An empty list of exclude patterns, for use with [sync](crate::sync).
 pub const EXCLUDE_EMPTY: Option<&[&str]> = None;
 
 #[logfn(err = "ERROR")]
@@ -954,7 +958,7 @@ where
     Ok(())
 }
 
-pub async fn sync_across<T>(
+async fn sync_across<T>(
     s3: &T,
     source_bucket: &str,
     source_prefix: &str,
