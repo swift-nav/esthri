@@ -33,9 +33,9 @@ use super::SyncParam;
 ///
 /// # Errors
 ///
-/// - [crate::errors::Error::HeadObjectUnexpected]
-/// - [crate::errors::Error::HeadObjectFailure]
-/// - [crate::errors::Error::HeadObjectFailedParseError]
+/// - [HeadObjectUnexpected](crate::errors::Error::HeadObjectUnexpected)
+/// - [HeadObjectFailure](crate::errors::Error::HeadObjectFailure)
+/// - [HeadObjectFailedParseError](crate::errors::Error::HeadObjectFailedParseError)
 ///
 /// # Examples
 ///
@@ -69,7 +69,7 @@ where
 ///
 /// # Errors
 ///
-/// - [crate::errors::Error::AbortMultipartUploadError]
+/// * [AbortMultipartUploadFailed](crate::errors::Error::AbortMultipartUploadFailed)
 ///
 /// # Examples
 ///
@@ -109,6 +109,29 @@ where
     super::abort_upload(s3, bucket, key, upload_id).await
 }
 
+/// (Blocking) version of [esthri::upload](crate::upload) -- upload a file to S3.
+///
+/// # Arguments
+///
+/// * `s3` - S3 client reference, see [rusoto_s3::S3]
+/// * `bucket` - [String] or [&str] name of an S3 bucket
+/// * `key` - Destination key ([String] or [&str] ) for the S3 object
+/// * `file` - The path of the file upload
+///
+/// # Errors
+///
+/// * [PutObjectFailed](crate::errors::Error::PutObjectFailed)
+///
+/// # Examples
+///
+/// ```
+/// # use std::sync::Arc;
+/// # use esthri::rusoto::*;
+/// # use esthri::blocking::*;
+/// # let s3 = Arc::new(S3Client::new(Region::default()));
+/// # let s3 = s3.as_ref();
+/// upload(s3, "esthri-test", "foo.txt", "tests/data/test1mb.bin").unwrap();
+/// ```
 #[tokio::main]
 pub async fn upload<T, P, SR0, SR1>(s3: &T, bucket: SR0, key: SR1, file: P) -> Result<()>
 where

@@ -126,9 +126,9 @@ where
 pub async fn upload<T, P, SR0, SR1>(s3: &T, bucket: SR0, key: SR1, file: P) -> Result<()>
 where
     T: S3 + Send,
-    P: AsRef<Path>,
     SR0: AsRef<str>,
     SR1: AsRef<str>,
+    P: AsRef<Path>,
 {
     let (bucket, key, file) = (bucket.as_ref(), key.as_ref(), file.as_ref());
     info!(
