@@ -115,7 +115,7 @@ where
 ///
 /// * `s3` - S3 client reference, see [rusoto_s3::S3]
 /// * `bucket` - [String] or [&str] name of an S3 bucket
-/// * `key` - Destination key ([String] or [&str] ) for the S3 object
+/// * `key` - Destination key ([String] or [&str]) for the S3 object
 /// * `file` - The path of the file upload
 ///
 /// # Errors
