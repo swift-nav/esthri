@@ -10,7 +10,6 @@
 * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
 */
 
-
 //! Blocking version of the [esthri](crate) crate.  All functions are annotated with
 //! `[tokio::main]` and block until completion.
 

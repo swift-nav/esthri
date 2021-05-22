@@ -1042,30 +1042,6 @@ where
     Ok(res?)
 }
 
-pub fn create_globs(
-    string_vector: &Option<Vec<String>>,
-    includes_flag: bool,
-) -> Result<Vec<Pattern>> {
-    let mut globs: Vec<Pattern> = vec![];
-
-    if let Some(filters) = string_vector {
-        for filter in filters {
-            match Pattern::new(filter) {
-                Err(e) => {
-                    return Err(Error::GlobPatternError(e));
-                }
-                Ok(p) => {
-                    globs.push(p);
-                }
-            }
-        }
-    } else if includes_flag {
-        globs.push(Pattern::new("*")?);
-    }
-
-    Ok(globs)
-}
-
 async fn sync_remote_to_local<T, P: AsRef<Path>>(
     s3: &T,
     bucket: &str,
