@@ -53,13 +53,21 @@ const EXPECT_GLOBAL_CONFIG: &str = "failed to parse config from environment";
 impl Config {
     pub fn global() -> &'static Config {
         CONFIG.get_or_init(|| {
-            envy::prefixed("ESTHRI_").from_env::<Config>().expect(EXPECT_GLOBAL_CONFIG)
+            envy::prefixed("ESTHRI_")
+                .from_env::<Config>()
+                .expect(EXPECT_GLOBAL_CONFIG)
         })
     }
 
-    pub fn read_size(&self) -> usize { self.read_size.0 }
+    pub fn read_size(&self) -> usize {
+        self.read_size.0
+    }
 
-    pub fn chunk_size(&self) -> u64 { self.chunk_size.0 }
+    pub fn chunk_size(&self) -> u64 {
+        self.chunk_size.0
+    }
 
-    pub fn xfer_count(&self) -> usize { self.xfer_count.0 }
+    pub fn xfer_count(&self) -> usize {
+        self.xfer_count.0
+    }
 }
