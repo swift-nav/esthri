@@ -21,8 +21,8 @@ pub struct Config {
     /// The number of workers to use in the when transferring files or running a sync operation.
     #[serde(default)]
     worker_count: WorkerCount,
-    #[serde(default)]
     /// The size of internal buffers used to for file reads.
+    #[serde(default)]
     read_size: ReadSize,
 }
 
@@ -67,9 +67,9 @@ impl Config {
     /// Fetches the global config object, values are either defaulted or populated
     /// from the environment:
     ///
-    /// - `ESTHRI_READ_SIZE` -> [Config::read_size()]
-    /// - `ESTHRI_CHUNK_SIZE` -> [Config::chunk_size()]
-    /// - `ESTHRI_WORKER_COUNT` -> [Config::worker_count()]
+    /// - `ESTHRI_READ_SIZE` - [Config::read_size()]
+    /// - `ESTHRI_CHUNK_SIZE` - [Config::chunk_size()]
+    /// - `ESTHRI_WORKER_COUNT` - [Config::worker_count()]
     pub fn global() -> &'static Config {
         CONFIG.get_or_init(|| {
             envy::prefixed("ESTHRI_")
