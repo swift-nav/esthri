@@ -38,6 +38,7 @@ pub use crate::errors::{Error, Result};
 
 #[cfg(feature = "blocking")]
 pub mod blocking;
+pub mod config;
 pub mod errors;
 #[cfg(feature = "http_server")]
 pub mod http_server;
@@ -49,6 +50,7 @@ pub mod rusoto;
 use crate::retry::handle_dispatch_error;
 use crate::rusoto::*;
 
+use crate::config::Config;
 use crate::types::{GlobalData, S3Listing};
 pub use crate::types::{ObjectInfo, S3ListingItem, S3Object, SyncParam};
 
@@ -63,12 +65,6 @@ static GLOBAL_DATA: Lazy<Mutex<GlobalData>> = Lazy::new(|| {
         upload_id: None,
     })
 });
-
-// This is the default chunk size from awscli
-const CHUNK_SIZE: u64 = 8 * 1024 * 1024;
-const PARALLEL_UPLOAD_COUNT: usize = 16;
-
-const READ_SIZE: usize = 4096;
 
 pub const INCLUDE_EMPTY: Option<&[&str]> = None;
 pub const EXCLUDE_EMPTY: Option<&[&str]> = None;
@@ -154,12 +150,13 @@ async fn create_file_chunk_stream<R: Read>(
     mut reader: R,
     file_size: u64,
 ) -> impl Stream<Item = Result<(i64, Vec<u8>)>> {
+    let chunk_size = Config::global().chunk_size();
     async_stream::stream! {
         let mut remaining = file_size;
         let mut part_number: i64 = 1;
         while remaining != 0 {
-            let chunk_size = if remaining >= CHUNK_SIZE {
-                CHUNK_SIZE
+            let chunk_size = if remaining >= chunk_size {
+                chunk_size
             } else {
                 remaining
             };
@@ -242,6 +239,7 @@ where
     SR0: AsRef<str>,
     SR1: AsRef<str>,
 {
+    let chunk_size = Config::global().chunk_size();
     let (bucket, key) = (bucket.as_ref(), key.as_ref());
 
     info!(
@@ -249,7 +247,7 @@ where
         bucket, key, file_size
     );
 
-    if file_size >= CHUNK_SIZE {
+    if file_size >= chunk_size {
         let cmuo = handle_dispatch_error(|| async {
             let cmur = CreateMultipartUploadRequest {
                 bucket: bucket.into(),
@@ -280,8 +278,10 @@ where
             create_chunk_upload_stream(chunk_stream, s3.clone(), upload_id.clone(), bucket, key)
                 .await;
 
+        let xfer_count = Config::global().xfer_count();
+
         let mut completed_parts: Vec<CompletedPart> = upload_stream
-            .buffer_unordered(PARALLEL_UPLOAD_COUNT)
+            .buffer_unordered(xfer_count)
             .try_collect()
             .await?;
 
@@ -388,7 +388,7 @@ where
     let mut reader = body.into_async_read();
 
     loop {
-        let mut blob = [0u8; READ_SIZE];
+        let mut blob = vec![0u8; Config::global().read_size()];
         let res = reader.read(&mut blob).await;
 
         if let Err(e) = res {
@@ -692,9 +692,11 @@ where
     let mut digests: Vec<[u8; 16]> = vec![];
     let mut remaining = file_size;
 
+    let chunk_size = Config::global().chunk_size();
+
     while remaining != 0 {
-        let chunk_size: usize = (if remaining >= CHUNK_SIZE {
-            CHUNK_SIZE
+        let chunk_size: usize = (if remaining >= chunk_size {
+            chunk_size
         } else {
             remaining
         }) as usize;
@@ -713,7 +715,7 @@ where
         hash.result(&mut hash_bytes);
         let hex_digest = hex::encode(hash_bytes);
         Ok(format!("\"{}\"", hex_digest))
-    } else if digests.len() == 1 && file_size < CHUNK_SIZE {
+    } else if digests.len() == 1 && file_size < chunk_size {
         let hex_digest = hex::encode(digests[0]);
         Ok(format!("\"{}\"", hex_digest))
     } else {
