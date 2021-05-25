@@ -404,9 +404,10 @@ fn write_all_at(writer: File, file_offset: u64, buffer: Vec<u8>, length: usize) 
         while length > 0 {
             let write_size = writer.seek_write(&buffer[buffer_offset..length], file_offset).map_err(Error::from)?;
             length -= write_size;
-            file_offset += write_size;
+            file_offset += write_size as u64;
             buffer_offset += write_size;
         }
+        Ok(())
     }
 }
 
