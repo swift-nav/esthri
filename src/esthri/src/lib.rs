@@ -389,11 +389,26 @@ where
     }
 }
 
-#[cfg(unix)]
-use std::os::unix::prelude::FileExt;
-
-#[cfg(windows)]
-use std::os::windows::prelude::FileExt;
+fn write_all_at(writer: File, file_offset: u64, buffer: Vec<u8>, length: usize) -> Result<()>
+{
+    #[cfg(unix)]
+    {
+        use std::os::unix::prelude::FileExt;
+        writer.write_all_at(&buffer[..length], file_offset).map_err(Error::from)
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::prelude::FileExt;
+        let (mut file_offset, mut length) = (file_offset, length);
+        let mut buffer_offset = 0;
+        while length > 0 {
+            let write_size = writer.seek_write(&buffer[buffer_offset..length], file_offset).map_err(Error::from)?;
+            length -= write_size;
+            file_offset += write_size;
+            buffer_offset += write_size;
+        }
+    }
+}
 
 async fn map_reader_to_writer_stream<'a, T>(chunk_stream: T,
                                             writer: File)
@@ -404,25 +419,12 @@ where
     chunk_stream
         .map(move |value| {
             let writer = writer.try_clone()?;
-            let (offset, read_size, buffer) = value?;
-            Ok((writer, offset, read_size,  buffer))
+            let (file_offset, read_size, buffer) = value?;
+            Ok((writer, file_offset, read_size,  buffer))
         })
         .map(|value: Result<(File, u64, usize, Vec<u8>)>| async move {
             let (writer, file_offset, length, buffer) = value?;
-            #[cfg(unix)]
-            {
-                writer.write_all_at(&buffer[..length], file_offset).map_err(Error::from)
-            }
-            #[cfg(windows)]
-            {
-                let buffer_offset = 0;
-                while length > 0 {
-                    let write_size = writer.seek_write(&buffer[buffer_offset..length], file_offset).map_err(Error::from)?;
-                    length -= write_size;
-                    file_offset += write_size;
-                    buffer_offset += write_size;
-                }
-            }
+            write_all_at(writer, file_offset, buffer, length)
         })
 }
 
