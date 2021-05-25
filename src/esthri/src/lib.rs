@@ -18,10 +18,10 @@ use std::fs;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::ErrorKind;
-use std::io::{BufReader, BufWriter};
+use std::io::BufReader;
 use std::marker::Unpin;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use crypto::digest::Digest;
 use crypto::md5::Md5;
@@ -68,10 +68,6 @@ static GLOBAL_DATA: Lazy<Mutex<GlobalData>> = Lazy::new(|| {
 
 pub const INCLUDE_EMPTY: Option<&[&str]> = None;
 pub const EXCLUDE_EMPTY: Option<&[&str]> = None;
-
-type LockableWriterArc<'a> = Arc<Mutex<Box<dyn Write + 'a>>>;
-
-const LOCK_FILE_POINTER: &str = "could not lock file pointer for write";
 
 #[logfn(err = "ERROR")]
 pub async fn head_object<T, SR0, SR1>(s3: &T, bucket: SR0, key: SR1) -> Result<Option<ObjectInfo>>
@@ -368,13 +364,12 @@ where
     goo.body.ok_or(Error::GetObjectOutputBodyNone)
 }
 
-async fn create_reader_chunk_stream<T>(
-    mut reader: T,
-) -> impl Stream<Item = Result<(usize, Vec<u8>)>>
+async fn create_reader_chunk_stream<T>(mut reader: T) -> impl Stream<Item = Result<(u64, usize, Vec<u8>)>>
 where
-    T: AsyncReadExt + Sync + Send + Unpin,
+    T: AsyncReadExt + Sync + Send + Unpin
 {
     async_stream::stream! {
+        let mut offset: u64 = 0;
         loop {
             let mut blob = vec![0u8; Config::global().read_size()];
             let res = reader.read(&mut blob).await;
@@ -387,33 +382,48 @@ where
                 if read_size == 0 {
                     break;
                 }
-                yield Ok((read_size, blob));
+                yield Ok((offset, read_size, blob));
+                offset += read_size as u64;
             }
         }
     }
 }
 
-async fn map_reader_to_writer_stream<'a, T>(
-    chunk_stream: T,
-    writer: LockableWriterArc<'a>,
-) -> impl Stream<Item = impl Future<Output = Result<()>> + 'a> + 'a
+#[cfg(unix)]
+use std::os::unix::prelude::FileExt;
+
+#[cfg(windows)]
+use std::os::windows::prelude::FileExt;
+
+async fn map_reader_to_writer_stream<'a, T>(chunk_stream: T,
+                                            writer: File)
+    -> impl Stream<Item = impl Future<Output = Result<()>> + 'a> + 'a
 where
-    T: Stream<Item = Result<(usize, Vec<u8>)>> + 'a,
+    T: Stream<Item = Result<(u64, usize, Vec<u8>)>> + 'a
 {
     chunk_stream
         .map(move |value| {
-            let writer = writer.clone();
-            let (read_size, buffer) = value?;
-            Ok((writer, read_size, buffer))
+            let writer = writer.try_clone()?;
+            let (offset, read_size, buffer) = value?;
+            Ok((writer, offset, read_size,  buffer))
         })
-        .map(
-            |value: Result<(LockableWriterArc, usize, Vec<u8>)>| async move {
-                let (writer, read_size, buffer) = value?;
-                let mut writer = writer.lock().expect(LOCK_FILE_POINTER);
-                let writer = writer.as_mut();
-                writer.write_all(&buffer[..read_size]).map_err(Error::from)
-            },
-        )
+        .map(|value: Result<(File, u64, usize, Vec<u8>)>| async move {
+            let (writer, file_offset, length, buffer) = value?;
+            #[cfg(unix)]
+            {
+                writer.write_all_at(&buffer[..length], file_offset).map_err(Error::from)
+            }
+            #[cfg(windows)]
+            {
+                let buffer_offset = 0;
+                while length > 0 {
+                    let write_size = writer.seek_write(&buffer[buffer_offset..length], file_offset).map_err(Error::from)?;
+                    length -= write_size;
+                    file_offset += write_size;
+                    buffer_offset += write_size;
+                }
+            }
+        })
 }
 
 #[logfn(err = "ERROR")]
@@ -433,15 +443,13 @@ where
         file.display()
     );
 
-    let f = File::create(file)?;
-    let writer: Box<dyn Write> = Box::new(BufWriter::new(f));
-    let writer = Arc::new(Mutex::new(writer));
+    let file_output = File::create(file)?;
 
     let body = download_streaming(s3, bucket, key).await?;
     let reader = body.into_async_read();
 
     let reader_chunk_stream = create_reader_chunk_stream(reader).await;
-    let reader_result_stream = map_reader_to_writer_stream(reader_chunk_stream, writer).await;
+    let reader_result_stream = map_reader_to_writer_stream(reader_chunk_stream, file_output).await;
 
     let worker_count = Config::global().worker_count();
 
