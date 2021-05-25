@@ -278,10 +278,10 @@ where
             create_chunk_upload_stream(chunk_stream, s3.clone(), upload_id.clone(), bucket, key)
                 .await;
 
-        let xfer_count = Config::global().xfer_count();
+        let worker_count = Config::global().worker_count();
 
         let mut completed_parts: Vec<CompletedPart> = upload_stream
-            .buffer_unordered(xfer_count)
+            .buffer_unordered(worker_count)
             .try_collect()
             .await?;
 
