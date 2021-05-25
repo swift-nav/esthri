@@ -368,9 +368,11 @@ where
     goo.body.ok_or(Error::GetObjectOutputBodyNone)
 }
 
-async fn create_reader_chunk_stream<T>(mut reader: T) -> impl Stream<Item = Result<(usize, Vec<u8>)>>
+async fn create_reader_chunk_stream<T>(
+    mut reader: T,
+) -> impl Stream<Item = Result<(usize, Vec<u8>)>>
 where
-    T: AsyncReadExt + Sync + Send + Unpin
+    T: AsyncReadExt + Sync + Send + Unpin,
 {
     async_stream::stream! {
         loop {
@@ -391,24 +393,27 @@ where
     }
 }
 
-async fn map_reader_to_writer_stream<'a, T>(chunk_stream: T,
-                                            writer: LockableWriterArc<'a>)
-    -> impl Stream<Item = impl Future<Output = Result<()>> + 'a> + 'a
+async fn map_reader_to_writer_stream<'a, T>(
+    chunk_stream: T,
+    writer: LockableWriterArc<'a>,
+) -> impl Stream<Item = impl Future<Output = Result<()>> + 'a> + 'a
 where
-    T: Stream<Item = Result<(usize, Vec<u8>)>> + 'a
+    T: Stream<Item = Result<(usize, Vec<u8>)>> + 'a,
 {
     chunk_stream
         .map(move |value| {
             let writer = writer.clone();
             let (read_size, buffer) = value?;
-            Ok((writer, read_size,  buffer))
+            Ok((writer, read_size, buffer))
         })
-        .map(|value: Result<(LockableWriterArc, usize, Vec<u8>)>| async move {
-            let (writer, read_size, buffer) = value?;
-            let mut writer = writer.lock().expect(LOCK_FILE_POINTER);
-            let writer = writer.as_mut();
-            writer.write_all(&buffer[..read_size]).map_err(Error::from)
-        })
+        .map(
+            |value: Result<(LockableWriterArc, usize, Vec<u8>)>| async move {
+                let (writer, read_size, buffer) = value?;
+                let mut writer = writer.lock().expect(LOCK_FILE_POINTER);
+                let writer = writer.as_mut();
+                writer.write_all(&buffer[..read_size]).map_err(Error::from)
+            },
+        )
 }
 
 #[logfn(err = "ERROR")]
