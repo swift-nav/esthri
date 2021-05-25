@@ -66,7 +66,7 @@ static GLOBAL_DATA: Lazy<Mutex<GlobalData>> = Lazy::new(|| {
 
 // This is the default chunk size from awscli
 const CHUNK_SIZE: u64 = 8 * 1024 * 1024;
-const PARALLEL_UPLOAD_COUNT: usize = 4;
+const PARALLEL_UPLOAD_COUNT: usize = 16;
 
 const READ_SIZE: usize = 4096;
 
