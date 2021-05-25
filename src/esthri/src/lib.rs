@@ -25,7 +25,7 @@ use std::sync::Mutex;
 
 use crypto::digest::Digest;
 use crypto::md5::Md5;
-use futures::{stream, TryStream, TryStreamExt};
+use futures::{stream, Future, Stream, StreamExt, TryStream, TryStreamExt};
 use glob::Pattern;
 use hyper::client::connect::HttpConnector;
 use log::*;
@@ -38,6 +38,7 @@ pub use crate::errors::{Error, Result};
 
 #[cfg(feature = "blocking")]
 pub mod blocking;
+pub mod config;
 pub mod errors;
 #[cfg(feature = "http_server")]
 pub mod http_server;
@@ -49,6 +50,7 @@ pub mod rusoto;
 use crate::retry::handle_dispatch_error;
 use crate::rusoto::*;
 
+use crate::config::Config;
 use crate::types::{GlobalData, S3Listing};
 pub use crate::types::{ObjectInfo, S3ListingItem, S3Object, SyncParam};
 
@@ -63,11 +65,6 @@ static GLOBAL_DATA: Lazy<Mutex<GlobalData>> = Lazy::new(|| {
         upload_id: None,
     })
 });
-
-// This is the default chunk size from awscli
-const CHUNK_SIZE: u64 = 8 * 1024 * 1024;
-
-const READ_SIZE: usize = 4096;
 
 pub const INCLUDE_EMPTY: Option<&[&str]> = None;
 pub const EXCLUDE_EMPTY: Option<&[&str]> = None;
@@ -121,7 +118,7 @@ where
 
 pub async fn upload<T, P, SR0, SR1>(s3: &T, bucket: SR0, key: SR1, file: P) -> Result<()>
 where
-    T: S3 + Send,
+    T: S3 + Send + Clone,
     P: AsRef<Path>,
     SR0: AsRef<str>,
     SR1: AsRef<str>,
@@ -149,19 +146,100 @@ where
     }
 }
 
+async fn create_file_chunk_stream<R: Read>(
+    mut reader: R,
+    file_size: u64,
+) -> impl Stream<Item = Result<(i64, Vec<u8>)>> {
+    let chunk_size = Config::global().chunk_size();
+    async_stream::stream! {
+        let mut remaining = file_size;
+        let mut part_number: i64 = 1;
+        while remaining != 0 {
+            let chunk_size = if remaining >= chunk_size {
+                chunk_size
+            } else {
+                remaining
+            };
+            let mut buf = vec![0u8; chunk_size as usize];
+            if reader.read(&mut buf)? == 0 {
+                yield Err(Error::ReadZero);
+            }
+            yield Ok((part_number, buf));
+            remaining -= chunk_size;
+            part_number += 1;
+        }
+    }
+}
+
+async fn create_chunk_upload_stream<StreamT, ClientT, SR0, SR1, SR2>(
+    source_stream: StreamT,
+    s3: ClientT,
+    upload_id: SR0,
+    bucket: SR1,
+    key: SR2,
+) -> impl Stream<Item = impl Future<Output = Result<CompletedPart>>>
+where
+    StreamT: Stream<Item = Result<(i64, Vec<u8>)>>,
+    ClientT: S3 + Send + Clone,
+    SR0: Clone + Into<String>,
+    SR1: Clone + Into<String>,
+    SR2: Clone + Into<String>,
+{
+    source_stream
+        .map(move |value| {
+            let s3 = s3.clone();
+            let bucket: String = bucket.clone().into();
+            let key: String = key.clone().into();
+            let upload_id: String = upload_id.clone().into();
+            (s3, bucket, key, upload_id, value)
+        })
+        .map(|(s3, bucket, key, upload_id, value)| async move {
+            let (part_number, buf) = value?;
+            let cp = handle_dispatch_error(|| async {
+                let body: StreamingBody = buf.clone().into();
+                let upr = UploadPartRequest {
+                    bucket: bucket.clone(),
+                    key: key.clone(),
+                    part_number,
+                    upload_id: upload_id.clone(),
+                    body: Some(body),
+                    ..Default::default()
+                };
+                s3.upload_part(upr).await
+            })
+            .await
+            .map(|upo| {
+                if upo.e_tag.is_none() {
+                    warn!(
+                        "upload_part e_tag was not present (part_number: {})",
+                        part_number
+                    );
+                }
+                CompletedPart {
+                    e_tag: upo.e_tag,
+                    part_number: Some(part_number),
+                }
+            })
+            .map_err(Error::UploadPartFailed)?;
+            Ok(cp)
+        })
+}
+
 #[logfn(err = "ERROR")]
-pub async fn upload_from_reader<T, SR0, SR1>(
+pub async fn upload_from_reader<T, R, SR0, SR1>(
     s3: &T,
     bucket: SR0,
     key: SR1,
-    reader: &mut dyn Read,
+    mut reader: R,
     file_size: u64,
 ) -> Result<()>
 where
-    T: S3 + Send,
+    T: S3 + Send + Clone,
+    R: Read,
     SR0: AsRef<str>,
     SR1: AsRef<str>,
 {
+    let chunk_size = Config::global().chunk_size();
     let (bucket, key) = (bucket.as_ref(), key.as_ref());
 
     info!(
@@ -169,7 +247,7 @@ where
         bucket, key, file_size
     );
 
-    if file_size >= CHUNK_SIZE {
+    if file_size >= chunk_size {
         let cmuo = handle_dispatch_error(|| async {
             let cmur = CreateMultipartUploadRequest {
                 bucket: bucket.into(),
@@ -195,53 +273,19 @@ where
             global_data.upload_id = Some(upload_id.clone());
         }
 
-        let mut remaining = file_size;
-        let mut part_number = 1;
-        let mut completed_parts: Vec<CompletedPart> = vec![];
+        let chunk_stream = create_file_chunk_stream(reader, file_size).await;
+        let upload_stream =
+            create_chunk_upload_stream(chunk_stream, s3.clone(), upload_id.clone(), bucket, key)
+                .await;
 
-        while remaining != 0 {
-            let chunk_size = if remaining >= CHUNK_SIZE {
-                CHUNK_SIZE
-            } else {
-                remaining
-            };
-            let mut buf = vec![0u8; chunk_size as usize];
+        let worker_count = Config::global().worker_count();
 
-            if reader.read(&mut buf)? == 0 {
-                return Err(Error::ReadZero);
-            }
+        let mut completed_parts: Vec<CompletedPart> = upload_stream
+            .buffer_unordered(worker_count)
+            .try_collect()
+            .await?;
 
-            let upo = handle_dispatch_error(|| async {
-                let body: StreamingBody = buf.clone().into();
-
-                let upr = UploadPartRequest {
-                    bucket: bucket.into(),
-                    key: key.into(),
-                    part_number,
-                    upload_id: upload_id.clone(),
-                    body: Some(body),
-                    ..Default::default()
-                };
-
-                s3.upload_part(upr).await
-            })
-            .await
-            .map_err(Error::UploadPartFailed)?;
-
-            if upo.e_tag.is_none() {
-                warn!("upload_part e_tag was not present");
-            }
-
-            let cp = CompletedPart {
-                e_tag: upo.e_tag,
-                part_number: Some(part_number),
-            };
-
-            completed_parts.push(cp);
-
-            remaining -= chunk_size;
-            part_number += 1;
-        }
+        completed_parts.sort_unstable_by_key(|a| a.part_number);
 
         handle_dispatch_error(|| async {
             let cmpu = CompletedMultipartUpload {
@@ -344,7 +388,7 @@ where
     let mut reader = body.into_async_read();
 
     loop {
-        let mut blob = [0u8; READ_SIZE];
+        let mut blob = vec![0u8; Config::global().read_size()];
         let res = reader.read(&mut blob).await;
 
         if let Err(e) = res {
@@ -372,7 +416,7 @@ pub async fn sync<T, SR0, SR1>(
     excludes: Option<&[SR1]>,
 ) -> Result<()>
 where
-    T: S3 + Send,
+    T: S3 + Send + Clone,
     SR0: AsRef<str>,
     SR1: AsRef<str>,
 {
@@ -648,9 +692,11 @@ where
     let mut digests: Vec<[u8; 16]> = vec![];
     let mut remaining = file_size;
 
+    let chunk_size = Config::global().chunk_size();
+
     while remaining != 0 {
-        let chunk_size: usize = (if remaining >= CHUNK_SIZE {
-            CHUNK_SIZE
+        let chunk_size: usize = (if remaining >= chunk_size {
+            chunk_size
         } else {
             remaining
         }) as usize;
@@ -669,7 +715,7 @@ where
         hash.result(&mut hash_bytes);
         let hex_digest = hex::encode(hash_bytes);
         Ok(format!("\"{}\"", hex_digest))
-    } else if digests.len() == 1 && file_size < CHUNK_SIZE {
+    } else if digests.len() == 1 && file_size < chunk_size {
         let hex_digest = hex::encode(digests[0]);
         Ok(format!("\"{}\"", hex_digest))
     } else {
@@ -899,7 +945,7 @@ async fn sync_local_to_remote<T, P: AsRef<Path>>(
     glob_excludes: &[Pattern],
 ) -> Result<()>
 where
-    T: S3 + Send,
+    T: S3 + Send + Clone,
 {
     let directory = directory.as_ref();
     if !key.ends_with(FORWARD_SLASH) {

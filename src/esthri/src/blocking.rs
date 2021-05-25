@@ -48,7 +48,7 @@ where
 #[tokio::main]
 pub async fn upload<T, P, SR0, SR1>(s3: &T, bucket: SR0, key: SR1, file: P) -> Result<()>
 where
-    T: S3 + Send,
+    T: S3 + Send + Clone,
     P: AsRef<Path>,
     SR0: AsRef<str>,
     SR1: AsRef<str>,
@@ -65,7 +65,7 @@ pub async fn upload_from_reader<T, SR0, SR1>(
     file_size: u64,
 ) -> Result<()>
 where
-    T: S3 + Send,
+    T: S3 + Send + Clone,
     SR0: AsRef<str>,
     SR1: AsRef<str>,
 {
@@ -92,7 +92,7 @@ pub async fn sync<T, SR0, SR1>(
     excludes: Option<&[SR1]>,
 ) -> Result<()>
 where
-    T: S3 + Send,
+    T: S3 + Send + Clone,
     SR0: AsRef<str>,
     SR1: AsRef<str>,
 {

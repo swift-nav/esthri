@@ -134,9 +134,9 @@ impl ErrorTrackerArc {
     }
 }
 
-impl Into<Option<io::Error>> for ErrorTrackerArc {
-    fn into(self) -> Option<io::Error> {
-        let the_error = self.0.the_error.lock().unwrap();
+impl From<ErrorTrackerArc> for Option<io::Error> {
+    fn from(s: ErrorTrackerArc) -> Option<io::Error> {
+        let the_error = s.0.the_error.lock().unwrap();
         let the_error = {
             if let Some(the_error) = &*the_error {
                 the_error
