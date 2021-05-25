@@ -25,7 +25,7 @@ use std::sync::Mutex;
 
 use crypto::digest::Digest;
 use crypto::md5::Md5;
-use futures::{Future, stream, Stream, StreamExt, TryStream, TryStreamExt};
+use futures::{stream, Future, Stream, StreamExt, TryStream, TryStreamExt};
 use glob::Pattern;
 use hyper::client::connect::HttpConnector;
 use log::*;
@@ -153,8 +153,7 @@ where
 async fn create_file_chunk_stream<R: Read>(
     mut reader: R,
     file_size: u64,
-) -> impl Stream<Item = Result<(i64, Vec<u8>)>>
-{
+) -> impl Stream<Item = Result<(i64, Vec<u8>)>> {
     async_stream::stream! {
         let mut remaining = file_size;
         let mut part_number: i64 = 1;
@@ -196,7 +195,6 @@ where
             let key: String = key.clone().into();
             let upload_id: String = upload_id.clone().into();
             (s3, bucket, key, upload_id, value)
-
         })
         .map(|(s3, bucket, key, upload_id, value)| async move {
             let (part_number, buf) = value?;
@@ -215,7 +213,10 @@ where
             .await
             .map(|upo| {
                 if upo.e_tag.is_none() {
-                    warn!("upload_part e_tag was not present (part_number: {})", part_number);
+                    warn!(
+                        "upload_part e_tag was not present (part_number: {})",
+                        part_number
+                    );
                 }
                 CompletedPart {
                     e_tag: upo.e_tag,
@@ -224,8 +225,7 @@ where
             })
             .map_err(Error::UploadPartFailed)?;
             Ok(cp)
-
-    })
+        })
 }
 
 #[logfn(err = "ERROR")]
@@ -276,7 +276,9 @@ where
         }
 
         let chunk_stream = create_file_chunk_stream(reader, file_size).await;
-        let upload_stream = create_chunk_upload_stream(chunk_stream, s3.clone(), upload_id.clone(), bucket, key).await;
+        let upload_stream =
+            create_chunk_upload_stream(chunk_stream, s3.clone(), upload_id.clone(), bucket, key)
+                .await;
 
         let mut completed_parts: Vec<CompletedPart> = upload_stream
             .buffer_unordered(PARALLEL_UPLOAD_COUNT)
