@@ -21,7 +21,7 @@ use std::io::ErrorKind;
 use std::io::{BufReader, BufWriter};
 use std::marker::Unpin;
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use crypto::digest::Digest;
 use crypto::md5::Md5;
@@ -68,6 +68,10 @@ static GLOBAL_DATA: Lazy<Mutex<GlobalData>> = Lazy::new(|| {
 
 pub const INCLUDE_EMPTY: Option<&[&str]> = None;
 pub const EXCLUDE_EMPTY: Option<&[&str]> = None;
+
+type LockableWriterArc<'a> = Arc<Mutex<Box<dyn Write + 'a>>>;
+
+const LOCK_FILE_POINTER: &str = "could not lock file pointer for write";
 
 #[logfn(err = "ERROR")]
 pub async fn head_object<T, SR0, SR1>(s3: &T, bucket: SR0, key: SR1) -> Result<Option<ObjectInfo>>
@@ -364,6 +368,49 @@ where
     goo.body.ok_or(Error::GetObjectOutputBodyNone)
 }
 
+async fn create_reader_chunk_stream<T>(mut reader: T) -> impl Stream<Item = Result<(usize, Vec<u8>)>>
+where
+    T: AsyncReadExt + Sync + Send + Unpin
+{
+    async_stream::stream! {
+        loop {
+            let mut blob = vec![0u8; Config::global().read_size()];
+            let res = reader.read(&mut blob).await;
+            if let Err(e) = res {
+                if e.kind() == ErrorKind::Interrupted {
+                    continue;
+                }
+            } else {
+                let read_size = res?;
+                if read_size == 0 {
+                    break;
+                }
+                yield Ok((read_size, blob));
+            }
+        }
+    }
+}
+
+async fn map_reader_to_writer_stream<'a, T>(chunk_stream: T,
+                                            writer: LockableWriterArc<'a>)
+    -> impl Stream<Item = impl Future<Output = Result<()>> + 'a> + 'a
+where
+    T: Stream<Item = Result<(usize, Vec<u8>)>> + 'a
+{
+    chunk_stream
+        .map(move |value| {
+            let writer = writer.clone();
+            let (read_size, buffer) = value?;
+            Ok((writer, read_size,  buffer))
+        })
+        .map(|value: Result<(LockableWriterArc, usize, Vec<u8>)>| async move {
+            let (writer, read_size, buffer) = value?;
+            let mut writer = writer.lock().expect(LOCK_FILE_POINTER);
+            let writer = writer.as_mut();
+            writer.write_all(&buffer[..read_size]).map_err(Error::from)
+        })
+}
+
 #[logfn(err = "ERROR")]
 pub async fn download<T, P, SR0, SR1>(s3: &T, bucket: SR0, key: SR1, file: P) -> Result<()>
 where
@@ -382,27 +429,21 @@ where
     );
 
     let f = File::create(file)?;
-    let mut writer = BufWriter::new(f);
+    let writer: Box<dyn Write> = Box::new(BufWriter::new(f));
+    let writer = Arc::new(Mutex::new(writer));
 
     let body = download_streaming(s3, bucket, key).await?;
-    let mut reader = body.into_async_read();
+    let reader = body.into_async_read();
 
-    loop {
-        let mut blob = vec![0u8; Config::global().read_size()];
-        let res = reader.read(&mut blob).await;
+    let reader_chunk_stream = create_reader_chunk_stream(reader).await;
+    let reader_result_stream = map_reader_to_writer_stream(reader_chunk_stream, writer).await;
 
-        if let Err(e) = res {
-            if e.kind() == ErrorKind::Interrupted {
-                continue;
-            }
-        } else {
-            let read_size = res?;
-            if read_size == 0 {
-                break;
-            }
-            writer.write_all(&blob[..read_size])?;
-        }
-    }
+    let worker_count = Config::global().worker_count();
+
+    reader_result_stream
+        .buffered(worker_count)
+        .try_collect()
+        .await?;
 
     Ok(())
 }
