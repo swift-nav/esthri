@@ -51,7 +51,7 @@ use crate::retry::handle_dispatch_error;
 use crate::rusoto::*;
 
 use crate::config::Config;
-use crate::types::{GlobalData, S3Listing};
+use crate::types::{GlobalData, ReadSize, S3Listing};
 pub use crate::types::{ObjectInfo, S3ListingItem, S3Object, SyncParam};
 
 const EXPECT_GLOBAL_DATA: &str = "failed to lock global data";
@@ -150,22 +150,22 @@ async fn create_file_chunk_stream<R: Read>(
     mut reader: R,
     file_size: u64,
 ) -> impl Stream<Item = Result<(i64, Vec<u8>)>> {
-    let chunk_size = Config::global().chunk_size();
+    let upload_part_size = Config::global().upload_part_size();
     async_stream::stream! {
         let mut remaining = file_size;
         let mut part_number: i64 = 1;
         while remaining != 0 {
-            let chunk_size = if remaining >= chunk_size {
-                chunk_size
+            let upload_part_size = if remaining >= upload_part_size {
+                upload_part_size
             } else {
                 remaining
             };
-            let mut buf = vec![0u8; chunk_size as usize];
+            let mut buf = vec![0u8; upload_part_size as usize];
             if reader.read(&mut buf)? == 0 {
                 yield Err(Error::ReadZero);
             }
             yield Ok((part_number, buf));
-            remaining -= chunk_size;
+            remaining -= upload_part_size;
             part_number += 1;
         }
     }
@@ -239,7 +239,7 @@ where
     SR0: AsRef<str>,
     SR1: AsRef<str>,
 {
-    let chunk_size = Config::global().chunk_size();
+    let upload_part_size = Config::global().upload_part_size();
     let (bucket, key) = (bucket.as_ref(), key.as_ref());
 
     info!(
@@ -247,7 +247,7 @@ where
         bucket, key, file_size
     );
 
-    if file_size >= chunk_size {
+    if file_size >= upload_part_size {
         let cmuo = handle_dispatch_error(|| async {
             let cmur = CreateMultipartUploadRequest {
                 bucket: bucket.into(),
@@ -278,10 +278,10 @@ where
             create_chunk_upload_stream(chunk_stream, s3.clone(), upload_id.clone(), bucket, key)
                 .await;
 
-        let worker_count = Config::global().worker_count(1);
+        let downloaders_count = Config::global().concurrent_downloader_tasks();
 
         let mut completed_parts: Vec<CompletedPart> = upload_stream
-            .buffer_unordered(worker_count)
+            .buffer_unordered(downloaders_count)
             .try_collect()
             .await?;
 
@@ -338,49 +338,6 @@ where
     }
 
     Ok(())
-}
-
-#[derive(Debug, Clone, Copy)]
-struct ReadSize {
-    read_size: usize,
-    remaining: u64,
-    offset: u64,
-    total: u64,
-}
-
-impl ToString for ReadSize {
-    fn to_string(&self) -> String {
-        format!(
-            "bytes={}-{}",
-            self.offset,
-            self.offset + self.read_size() as u64 - 1,
-        )
-    }
-}
-
-impl ReadSize {
-    fn new(read_size: usize, total: u64) -> Self {
-        ReadSize {
-            offset: 0,
-            read_size: usize::min(total as usize, read_size),
-            remaining: total,
-            total,
-        }
-    }
-    fn update(&mut self, amount: usize) -> usize {
-        self.remaining -= amount as u64;
-        self.offset += amount as u64;
-        self.read_size()
-    }
-    fn read_size(&self) -> usize {
-        usize::min(self.remaining as usize, self.read_size)
-    }
-    fn complete(&self) -> bool {
-        self.remaining == 0
-    }
-    fn total(&self) -> u64 {
-        self.total
-    }
 }
 
 async fn download_streaming_range<T, SR0, SR1>(
@@ -481,13 +438,13 @@ where
                 let reader = stream.into_async_read();
                 let (read_size, buffer) =
                     read_ignore_interrupted(&s3, bucket, key, reader, &range).await?;
-                Ok((range.offset, read_size, buffer))
+                Ok((range.offset(), read_size, buffer))
             }
         }
     };
 
     async_stream::stream! {
-        let read_size = Config::global().read_size();
+        let read_size = Config::global().download_buffer_size();
         let stat = head_object_request(&s3, bucket.clone(), key.clone()).await;
         if let Ok(stat) = stat {
             if let Some(stat) = stat {
@@ -578,13 +535,13 @@ where
 
     let reader_chunk_stream = create_download_readers_stream(s3, bucket, key)
         .await
-        .buffer_unordered(Config::global().worker_count(2));
+        .buffer_unordered(Config::global().concurrent_downloader_tasks());
 
     let reader_result_stream =
         map_download_readers_to_writer(reader_chunk_stream, file_output).await;
 
     reader_result_stream
-        .buffer_unordered(Config::global().worker_count(4))
+        .buffer_unordered(Config::global().concurrent_writer_tasks())
         .try_collect()
         .await?;
 
@@ -876,22 +833,22 @@ where
     let mut digests: Vec<[u8; 16]> = vec![];
     let mut remaining = file_size;
 
-    let chunk_size = Config::global().chunk_size();
+    let upload_part_size = Config::global().upload_part_size();
 
     while remaining != 0 {
-        let chunk_size: usize = (if remaining >= chunk_size {
-            chunk_size
+        let upload_part_size: usize = (if remaining >= upload_part_size {
+            upload_part_size
         } else {
             remaining
         }) as usize;
         hash.reset();
-        let mut blob = vec![0u8; chunk_size];
+        let mut blob = vec![0u8; upload_part_size];
         reader.read_exact(&mut blob)?;
         hash.input(&blob);
         let mut hash_bytes = [0u8; 16];
         hash.result(&mut hash_bytes);
         digests.push(hash_bytes);
-        remaining -= chunk_size as u64;
+        remaining -= upload_part_size as u64;
     }
 
     if digests.is_empty() {
@@ -899,7 +856,7 @@ where
         hash.result(&mut hash_bytes);
         let hex_digest = hex::encode(hash_bytes);
         Ok(format!("\"{}\"", hex_digest))
-    } else if digests.len() == 1 && file_size < chunk_size {
+    } else if digests.len() == 1 && file_size < upload_part_size {
         let hex_digest = hex::encode(digests[0]);
         Ok(format!("\"{}\"", hex_digest))
     } else {
