@@ -351,10 +351,9 @@ struct ReadSize {
 impl ToString for ReadSize {
     fn to_string(&self) -> String {
         format!(
-            "{}-{}/{}",
+            "bytes={}-{}",
             self.offset,
-            self.offset + self.read_size() as u64,
-            self.total
+            self.offset + self.read_size() as u64 - 1,
         )
     }
 }
