@@ -141,7 +141,7 @@ impl ToString for ReadSize {
 }
 
 impl ReadSize {
-    /// Creats an object for tracking read sizes and offsets when requesting data from S3.  Goals
+    /// Creates an object for tracking read sizes and offsets when requesting data from S3.  Goals
     /// are as follows:
     /// * Uses [ToString@ReadSize] to build a Range header value to request data from S3, see the [MDN docs](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Range) and [S3 docs](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html#API_GetObject_RequestSyntax) for reference
     /// * Tracks when the end of the object is reached and adjusts the read size accordingly
