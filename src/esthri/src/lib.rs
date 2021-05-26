@@ -278,7 +278,7 @@ where
             create_chunk_upload_stream(chunk_stream, s3.clone(), upload_id.clone(), bucket, key)
                 .await;
 
-        let worker_count = Config::global().worker_count(1.0);
+        let worker_count = Config::global().worker_count(1);
 
         let mut completed_parts: Vec<CompletedPart> = upload_stream
             .buffer_unordered(worker_count)
@@ -578,13 +578,13 @@ where
 
     let reader_chunk_stream = create_download_readers_stream(s3, bucket, key)
         .await
-        .buffer_unordered(Config::global().worker_count(2.0));
+        .buffer_unordered(Config::global().worker_count(2));
 
     let reader_result_stream =
         map_download_readers_to_writer(reader_chunk_stream, file_output).await;
 
     reader_result_stream
-        .buffer_unordered(Config::global().worker_count(4.0))
+        .buffer_unordered(Config::global().worker_count(4))
         .try_collect()
         .await?;
 

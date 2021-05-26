@@ -91,8 +91,7 @@ impl Config {
 
     /// The number of workers to use in the when transferring files or running a sync operation.
     /// See [WORKER_COUNT].
-    pub fn worker_count(&self, multiplier: f64) -> usize {
-        let worker_count = self.worker_count.0 as f64;
-        usize::max(1, (worker_count * multiplier) as usize)
+    pub fn worker_count(&self, multiplier: usize) -> usize {
+        self.worker_count.0 as usize * multiplier
     }
 }
