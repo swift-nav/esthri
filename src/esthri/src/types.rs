@@ -123,7 +123,7 @@ pub struct S3Object {
 
 /// Used to track parallel reads when downloading data from S3.
 #[derive(Debug, Clone, Copy)]
-pub (in super) struct ReadSize {
+pub(super) struct ReadSize {
     read_size: usize,
     remaining: u64,
     offset: u64,
@@ -150,7 +150,7 @@ impl ReadSize {
     /// # Arguments
     /// * `read_size` - the size of each read to request from S3
     /// * `total` - the total size of the remote object on S3
-    pub (in super) fn new(read_size: usize, total: u64) -> Self {
+    pub(super) fn new(read_size: usize, total: u64) -> Self {
         ReadSize {
             offset: 0,
             read_size: usize::min(total as usize, read_size),
@@ -159,25 +159,25 @@ impl ReadSize {
         }
     }
     /// Advance the read to the next chunk.
-    pub (in super) fn update(&mut self, amount: usize) -> usize {
+    pub(super) fn update(&mut self, amount: usize) -> usize {
         self.remaining -= amount as u64;
         self.offset += amount as u64;
         self.read_size()
     }
     /// Fetch the next read size
-    pub (in super) fn read_size(&self) -> usize {
+    pub(super) fn read_size(&self) -> usize {
         usize::min(self.remaining as usize, self.read_size)
     }
     /// Indicates if the read process is completed
-    pub (in super) fn complete(&self) -> bool {
+    pub(super) fn complete(&self) -> bool {
         self.remaining == 0
     }
     /// Tracks the total object size on S3
-    pub (in super) fn total(&self) -> u64 {
+    pub(super) fn total(&self) -> u64 {
         self.total
     }
     /// The current read offset
-    pub (in super) fn offset(&self) -> u64 {
+    pub(super) fn offset(&self) -> u64 {
         self.offset
     }
 }

@@ -111,7 +111,9 @@ impl Config {
     /// The default size of parts in a multipart upload to S3.  8 MiB is the default chunk size
     /// from awscli, changing this size will affect the calculation of ETags.  Defaults to
     /// [UPLOAD_PART_SIZE].
-    pub fn upload_part_size(&self) -> u64 { self.upload_part_size.0 }
+    pub fn upload_part_size(&self) -> u64 {
+        self.upload_part_size.0
+    }
 
     /// The number of concurrent tasks run when sending data to S3.  Defautls to
     /// [CONCURRENT_UPLOAD_TASKS].
