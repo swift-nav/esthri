@@ -282,7 +282,7 @@ async fn abort_with_error(
     ErrorTracker::record_error(error_tracker, err);
 }
 
-async fn stream_object_to_archive<T: S3 + Send>(
+async fn stream_object_to_archive<T: S3 + Send + Clone>(
     s3: &T,
     bucket: &str,
     path: &str,

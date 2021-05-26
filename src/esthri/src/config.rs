@@ -8,9 +8,9 @@ use serde::Deserialize;
 /// size from awscli.
 pub const CHUNK_SIZE: u64 = 8 * 1024 * 1024;
 /// The default number of workers to use in the when transferring files or running a sync operation.
-pub const WORKER_COUNT: usize = 16;
+pub const WORKER_COUNT: u16 = 16;
 /// The default size of internal buffers used to for file reads.
-pub const READ_SIZE: usize = 4096;
+pub const READ_SIZE: usize = 8 * 1024 * 1024;
 
 /// Holds configuration information for the library.
 #[derive(Deserialize)]
@@ -40,7 +40,7 @@ impl Default for ChunkSize {
 /// Wrapper type for [WORKER_COUNT] and [Config::worker_count()] to bind a default value.
 #[derive(Deserialize)]
 #[serde(transparent)]
-struct WorkerCount(usize);
+struct WorkerCount(u16);
 
 impl Default for WorkerCount {
     fn default() -> Self {
@@ -91,7 +91,8 @@ impl Config {
 
     /// The number of workers to use in the when transferring files or running a sync operation.
     /// See [WORKER_COUNT].
-    pub fn worker_count(&self) -> usize {
-        self.worker_count.0
+    pub fn worker_count(&self, multiplier: f64) -> usize {
+        let worker_count = self.worker_count.0 as f64;
+        usize::max(1, (worker_count * multiplier) as usize)
     }
 }
