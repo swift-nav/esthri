@@ -23,6 +23,7 @@ use esthri::*;
 use structopt::StructOpt;
 
 use hyper::Client;
+use tokio::runtime::Builder;
 
 #[logfn(err = "ERROR")]
 fn log_etag(path: &str) -> Result<String> {
@@ -117,8 +118,7 @@ enum Command {
     },
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+async fn async_main() -> Result<()> {
     if std::env::var("RUST_LOG").is_err() {
         std::env::set_var("RUST_LOG", "esthri=debug,esthri_lib=debug");
     }
@@ -195,4 +195,9 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn main() -> Result<()> {
+    let rt = Builder::new_multi_thread().enable_all().build().expect("failed to create tokio runtime");
+    rt.block_on(async { async_main().await })
 }

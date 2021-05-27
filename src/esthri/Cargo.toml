@@ -84,8 +84,8 @@ version = "0.3"
 optional = true
 
 [dependencies.tokio]
-version = "1.5"
-features = [ "io-std", "net", "rt", "time",]
+version = "1.6"
+features = [ "io-std", "net", "rt", "time", "rt-multi-thread"]
 
 [dependencies.backoff]
 version = "0.3"

@@ -16,6 +16,8 @@ pub const DOWNLOAD_BUFFER_SIZE: usize = 8 * 1024 * 1024;
 pub const CONCURRENT_DOWNLOADER_TASKS: u16 = 32;
 /// The default number of concurrent tasks run when writing download data to disk.
 pub const CONCURRENT_WRITER_TASKS: u16 = 64;
+/// The default number of concurrent tasks run when running a sync operation
+pub const CONCURRENT_SYNC_TASKS: u16 = 16;
 
 /// Holds configuration information for the library.
 #[derive(Deserialize)]
@@ -30,9 +32,12 @@ pub struct Config {
     concurrent_downloader_tasks: ConcurrentDownloaderTasks,
     #[serde(default)]
     concurrent_writer_tasks: ConcurrentWriterTasks,
+    #[serde(default)]
+    concurrent_sync_tasks: ConcurrentSyncTasks,
 }
 
-/// Wrapper type for [UPLOAD_PART_SIZE] which allows [Config::upload_part_size()] to bind a default value.
+/// Wrapper type for [UPLOAD_PART_SIZE] which allows [Config::upload_part_size()] to bind a default
+/// value.
 #[derive(Deserialize)]
 #[serde(transparent)]
 struct UploadPartSize(u64);
@@ -43,7 +48,8 @@ impl Default for UploadPartSize {
     }
 }
 
-/// Wrapper type for [CONCURRENT_UPLOAD_TASKS] and [Config::concurrent_upload_tasks()] to bind a default value.
+/// Wrapper type for [CONCURRENT_UPLOAD_TASKS] which allows [Config::concurrent_upload_tasks()] to
+/// bind a default value.
 #[derive(Deserialize)]
 #[serde(transparent)]
 struct ConcurrentUploadTasks(u16);
@@ -54,7 +60,8 @@ impl Default for ConcurrentUploadTasks {
     }
 }
 
-/// Wrapper type for [CONCURRENT_DOWNLOADER_TASKS] and [Config::concurrent_downloader_tasks()] to bind a default value.
+/// Wrapper type for [CONCURRENT_DOWNLOADER_TASKS] which allows
+/// [Config::concurrent_downloader_tasks()] to bind a default value.
 #[derive(Deserialize)]
 #[serde(transparent)]
 struct ConcurrentDownloaderTasks(u16);
@@ -65,7 +72,8 @@ impl Default for ConcurrentDownloaderTasks {
     }
 }
 
-/// Wrapper type for [DOWNLOAD_BUFFER_SIZE] and [Config::download_buffer_size()] to bind a default value.
+/// Wrapper type for [DOWNLOAD_BUFFER_SIZE] which allows [Config::download_buffer_size()] to bind a
+/// default value.
 #[derive(Deserialize)]
 #[serde(transparent)]
 struct DownloadBufferSize(usize);
@@ -76,7 +84,8 @@ impl Default for DownloadBufferSize {
     }
 }
 
-/// Wrapper type for [CONCURRENT_WRITER_TASKS] and [Config::concurrent_writer_tasks()] to bind a default value.
+/// Wrapper type for [CONCURRENT_WRITER_TASKS] which allows [Config::concurrent_writer_tasks()] to
+/// bind a default value.
 #[derive(Deserialize)]
 #[serde(transparent)]
 struct ConcurrentWriterTasks(u16);
@@ -84,6 +93,18 @@ struct ConcurrentWriterTasks(u16);
 impl Default for ConcurrentWriterTasks {
     fn default() -> Self {
         ConcurrentWriterTasks(CONCURRENT_WRITER_TASKS)
+    }
+}
+
+/// Wrapper type for [CONCURRENT_SYNC_TASKS] which allows [Config::concurrent_sync_tasks()] to bind
+/// a default value.
+#[derive(Deserialize)]
+#[serde(transparent)]
+struct ConcurrentSyncTasks(u16);
+
+impl Default for ConcurrentSyncTasks {
+    fn default() -> Self {
+        ConcurrentSyncTasks(CONCURRENT_SYNC_TASKS)
     }
 }
 
@@ -137,5 +158,11 @@ impl Config {
     /// [CONCURRENT_WRITER_TASKS].
     pub fn concurrent_writer_tasks(&self) -> usize {
         self.concurrent_writer_tasks.0 as usize
+    }
+
+    /// The number of concurrent tasks run when running a sync operation.  Defaults to
+    /// [CONCURRENT_SYNC_TASKS].
+    pub fn concurrent_sync_tasks(&self) -> usize {
+        self.concurrent_sync_tasks.0 as usize
     }
 }

@@ -21,6 +21,7 @@ use rusoto_s3::{
     CreateMultipartUploadError, GetObjectError, HeadObjectError, ListObjectsV2Error,
     PutObjectError, UploadPartError,
 };
+use tokio::task::JoinError;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -100,6 +101,9 @@ pub enum Error {
 
     #[error(transparent)]
     IoError(#[from] std::io::Error),
+
+    #[error(transparent)]
+    JoinError(#[from] JoinError),
 }
 
 impl From<std::convert::Infallible> for Error {
