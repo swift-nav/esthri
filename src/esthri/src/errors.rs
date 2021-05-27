@@ -89,6 +89,15 @@ pub enum Error {
     #[error(transparent)]
     GetObjectFailed(#[from] RusotoError<GetObjectError>),
 
+    #[error("invalid key, did not exist remotely: {0}")]
+    GetObjectInvalidKey(String),
+
+    #[error("invalid read, sizes did not match {0} and {1}")]
+    GetObjectInvalidRead(usize, usize),
+
+    #[error("remote object sized changed while reading")]
+    GetObjectSizeChanged,
+
     #[error(transparent)]
     IoError(#[from] std::io::Error),
 }

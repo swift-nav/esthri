@@ -120,3 +120,64 @@ pub struct S3Object {
     pub key: String,
     pub e_tag: String,
 }
+
+/// Used to track parallel reads when downloading data from S3.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct ReadSize {
+    read_size: usize,
+    remaining: u64,
+    offset: u64,
+    total: u64,
+}
+
+impl ToString for ReadSize {
+    fn to_string(&self) -> String {
+        format!(
+            "bytes={}-{}",
+            self.offset,
+            self.offset + self.read_size() as u64 - 1,
+        )
+    }
+}
+
+impl ReadSize {
+    /// Creates an object for tracking read sizes and offsets when requesting data from S3.  Goals
+    /// are as follows:
+    /// * Uses [ToString@ReadSize] to build a Range header value to request data from S3, see the [MDN docs](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Range) and [S3 docs](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html#API_GetObject_RequestSyntax) for reference
+    /// * Tracks when the end of the object is reached and adjusts the read size accordingly
+    /// * Allows the read process to know if the object size has changed, and abort the read
+    ///
+    /// # Arguments
+    /// * `read_size` - the size of each read to request from S3
+    /// * `total` - the total size of the remote object on S3
+    pub(super) fn new(read_size: usize, total: u64) -> Self {
+        ReadSize {
+            offset: 0,
+            read_size: usize::min(total as usize, read_size),
+            remaining: total,
+            total,
+        }
+    }
+    /// Advance the read to the next chunk.
+    pub(super) fn update(&mut self, amount: usize) -> usize {
+        self.remaining -= amount as u64;
+        self.offset += amount as u64;
+        self.read_size()
+    }
+    /// Fetch the next read size
+    pub(super) fn read_size(&self) -> usize {
+        usize::min(self.remaining as usize, self.read_size)
+    }
+    /// Indicates if the read process is completed
+    pub(super) fn complete(&self) -> bool {
+        self.remaining == 0
+    }
+    /// Tracks the total object size on S3
+    pub(super) fn total(&self) -> u64 {
+        self.total
+    }
+    /// The current read offset
+    pub(super) fn offset(&self) -> u64 {
+        self.offset
+    }
+}

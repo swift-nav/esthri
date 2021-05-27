@@ -1,61 +1,89 @@
-//! Configuration module for the library, allows sizing of internal worker pool sizes, multipart
-//! upload sizes and read buffer sizes, among other things.
+//! Configuration module for the library, allows sizing of internal concurrent task counts,
+//! multipart upload sizes and read buffer sizes, among other things.
 
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
 
-/// The default size of chunks or parts in a multipart upload to S3.  8 MiB is the default chunk
-/// size from awscli.
-pub const CHUNK_SIZE: u64 = 8 * 1024 * 1024;
-/// The default number of workers to use in the when transferring files or running a sync operation.
-pub const WORKER_COUNT: usize = 16;
-/// The default size of internal buffers used to for file reads.
-pub const READ_SIZE: usize = 4096;
+/// The default size of parts in a multipart upload to S3.  8 MiB is the default chunk
+/// size from awscli, changing this size will affect the calculation of ETags.
+pub const UPLOAD_PART_SIZE: u64 = 8 * 1024 * 1024;
+/// The default number of concurrent tasks run when sending data to S3.
+pub const CONCURRENT_UPLOAD_TASKS: u16 = 16;
+/// When downloading or receiving data from S3, this sizes a task's download buffer.
+pub const DOWNLOAD_BUFFER_SIZE: usize = 8 * 1024 * 1024;
+/// The default number of concurrent tasks run when receiving data from S3.  Each task
+/// represents a connection to S3.
+pub const CONCURRENT_DOWNLOADER_TASKS: u16 = 32;
+/// The default number of concurrent tasks run when writing download data to disk.
+pub const CONCURRENT_WRITER_TASKS: u16 = 64;
 
 /// Holds configuration information for the library.
 #[derive(Deserialize)]
 pub struct Config {
-    /// The size of chunks or parts in a multipart upload to S3.  Default value is 8 MiB.
     #[serde(default)]
-    chunk_size: ChunkSize,
-    /// The number of workers to use in the when transferring files or running a sync operation.
+    upload_part_size: UploadPartSize,
     #[serde(default)]
-    worker_count: WorkerCount,
-    /// The size of internal buffers used to for file reads.
+    concurrent_upload_tasks: ConcurrentUploadTasks,
     #[serde(default)]
-    read_size: ReadSize,
+    download_buffer_size: DownloadBufferSize,
+    #[serde(default)]
+    concurrent_downloader_tasks: ConcurrentDownloaderTasks,
+    #[serde(default)]
+    concurrent_writer_tasks: ConcurrentWriterTasks,
 }
 
-/// Wrapper type for [CHUNK_SIZE] and [Config::chunk_size()] to bind a default value.
+/// Wrapper type for [UPLOAD_PART_SIZE] which allows [Config::upload_part_size()] to bind a default value.
 #[derive(Deserialize)]
 #[serde(transparent)]
-struct ChunkSize(u64);
+struct UploadPartSize(u64);
 
-impl Default for ChunkSize {
+impl Default for UploadPartSize {
     fn default() -> Self {
-        ChunkSize(CHUNK_SIZE)
+        UploadPartSize(UPLOAD_PART_SIZE)
     }
 }
 
-/// Wrapper type for [WORKER_COUNT] and [Config::worker_count()] to bind a default value.
+/// Wrapper type for [CONCURRENT_UPLOAD_TASKS] and [Config::concurrent_upload_tasks()] to bind a default value.
 #[derive(Deserialize)]
 #[serde(transparent)]
-struct WorkerCount(usize);
+struct ConcurrentUploadTasks(u16);
 
-impl Default for WorkerCount {
+impl Default for ConcurrentUploadTasks {
     fn default() -> Self {
-        WorkerCount(WORKER_COUNT)
+        ConcurrentUploadTasks(CONCURRENT_UPLOAD_TASKS)
     }
 }
 
-/// Wrapper type for [READ_SIZE] and [Config::read_size()] to bind a default value.
+/// Wrapper type for [CONCURRENT_DOWNLOADER_TASKS] and [Config::concurrent_downloader_tasks()] to bind a default value.
 #[derive(Deserialize)]
 #[serde(transparent)]
-struct ReadSize(usize);
+struct ConcurrentDownloaderTasks(u16);
 
-impl Default for ReadSize {
+impl Default for ConcurrentDownloaderTasks {
     fn default() -> Self {
-        ReadSize(READ_SIZE)
+        ConcurrentDownloaderTasks(CONCURRENT_DOWNLOADER_TASKS)
+    }
+}
+
+/// Wrapper type for [DOWNLOAD_BUFFER_SIZE] and [Config::download_buffer_size()] to bind a default value.
+#[derive(Deserialize)]
+#[serde(transparent)]
+struct DownloadBufferSize(usize);
+
+impl Default for DownloadBufferSize {
+    fn default() -> Self {
+        DownloadBufferSize(DOWNLOAD_BUFFER_SIZE)
+    }
+}
+
+/// Wrapper type for [CONCURRENT_WRITER_TASKS] and [Config::concurrent_writer_tasks()] to bind a default value.
+#[derive(Deserialize)]
+#[serde(transparent)]
+struct ConcurrentWriterTasks(u16);
+
+impl Default for ConcurrentWriterTasks {
+    fn default() -> Self {
+        ConcurrentWriterTasks(CONCURRENT_WRITER_TASKS)
     }
 }
 
@@ -67,9 +95,11 @@ impl Config {
     /// Fetches the global config object, values are either defaulted or populated
     /// from the environment:
     ///
-    /// - `ESTHRI_READ_SIZE` - [Config::read_size()]
-    /// - `ESTHRI_CHUNK_SIZE` - [Config::chunk_size()]
-    /// - `ESTHRI_WORKER_COUNT` - [Config::worker_count()]
+    /// - `ESTHRI_UPLOAD_PART_SIZE` - [Config::upload_part_size()]
+    /// - `ESTHRI_CONCURRENT_DOWNLOADER_TASKS` - [Config::concurrent_downloader_tasks()]
+    /// - `ESTHRI_DOWNLOAD_BUFFER_SIZE` - [Config::download_buffer_size()]
+    /// - `ESTHRI_CONCURRENT_DOWNLOADER_TASKS` - [Config::concurrent_downloader_tasks()]
+    /// - `ESTHRI_CONCURRENT_WRITER_TASKS` - [Config::concurrent_writer_tasks()]
     pub fn global() -> &'static Config {
         CONFIG.get_or_init(|| {
             envy::prefixed("ESTHRI_")
@@ -78,20 +108,34 @@ impl Config {
         })
     }
 
-    /// The size of internal buffers used to for file reads. See [READ_SIZE].
-    pub fn read_size(&self) -> usize {
-        self.read_size.0
+    /// The default size of parts in a multipart upload to S3.  8 MiB is the default chunk size
+    /// from awscli, changing this size will affect the calculation of ETags.  Defaults to
+    /// [UPLOAD_PART_SIZE].
+    pub fn upload_part_size(&self) -> u64 {
+        self.upload_part_size.0
     }
 
-    /// The size of chunks or parts in a multipart upload to S3.  Default value is 8 MiB.
-    /// See [CHUNK_SIZE].
-    pub fn chunk_size(&self) -> u64 {
-        self.chunk_size.0
+    /// The number of concurrent tasks run when sending data to S3.  Defautls to
+    /// [CONCURRENT_UPLOAD_TASKS].
+    pub fn concurrent_upload_tasks(&self) -> usize {
+        self.concurrent_upload_tasks.0 as usize
     }
 
-    /// The number of workers to use in the when transferring files or running a sync operation.
-    /// See [WORKER_COUNT].
-    pub fn worker_count(&self) -> usize {
-        self.worker_count.0
+    /// When downloading or receiving data from S3, this sizes a task's download buffer.  Defaults
+    /// to [DOWNLOAD_BUFFER_SIZE].
+    pub fn download_buffer_size(&self) -> usize {
+        self.download_buffer_size.0
+    }
+
+    /// The number of concurrent tasks run when receiving data from S3.  Each task represents a
+    /// connection to S3.  Defaults to [CONCURRENT_DOWNLOADER_TASKS].
+    pub fn concurrent_downloader_tasks(&self) -> usize {
+        self.concurrent_downloader_tasks.0 as usize
+    }
+
+    /// The number of concurrent tasks run when writing download data to disk.  Defaults to
+    /// [CONCURRENT_WRITER_TASKS].
+    pub fn concurrent_writer_tasks(&self) -> usize {
+        self.concurrent_writer_tasks.0 as usize
     }
 }
