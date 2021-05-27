@@ -88,7 +88,7 @@ optional = true
 
 [dependencies.tokio]
 version = "1.6"
-features = [ "io-std", "rt",]
+features = [ "rt",]
 
 [dependencies.backoff]
 version = "0.3"
