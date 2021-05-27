@@ -24,7 +24,7 @@ fn test_sync_down() {
         includes.as_deref(),
         excludes.as_deref(),
     );
-    assert!(res.is_ok(), format!("s3_sync result: {:?}", res));
+    assert!(res.is_ok(), "s3_sync result: {:?}", res);
 }
 
 #[tokio::test]
@@ -46,7 +46,7 @@ async fn test_sync_down_async() {
         excludes.as_deref(),
     )
     .await;
-    assert!(res.is_ok(), format!("s3_sync result: {:?}", res));
+    assert!(res.is_ok(), "s3_sync result: {:?}", res);
 }
 
 #[test]
@@ -152,6 +152,7 @@ fn test_sync_up_default() {
         KeyHashPair("1-one.data", "\"827aa1b392c93cb25d2348bdc9b907b0\""),
         KeyHashPair("2-two.bin", "\"35500e07a35b413fc5f434397a4c6bfa\""),
         KeyHashPair("3-three.junk", "\"388f9763d78cecece332459baecb4b85\""),
+        KeyHashPair("nested/2MiB.bin", "\"64a2635e42ef61c69d62feebdbf118d4\""),
     ];
 
     for key_hash_pair in &key_hash_pairs[..] {
@@ -197,6 +198,7 @@ fn test_sync_down_default() {
         KeyHashPair("1-one.data", "827aa1b392c93cb25d2348bdc9b907b0"),
         KeyHashPair("2-two.bin", "35500e07a35b413fc5f434397a4c6bfa"),
         KeyHashPair("3-three.junk", "388f9763d78cecece332459baecb4b85"),
+        KeyHashPair("nested/2MiB.bin", "64a2635e42ef61c69d62feebdbf118d4"),
     ];
 
     validate_key_hash_pairs(local_directory, &key_hash_pairs);
@@ -222,5 +224,5 @@ async fn test_sync_across() {
         excludes.as_deref(),
     )
     .await;
-    assert!(res.is_ok(), format!("s3_sync result: {:?}", res));
+    assert!(res.is_ok(), "s3_sync result: {:?}", res);
 }

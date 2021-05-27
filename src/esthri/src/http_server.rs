@@ -366,7 +366,7 @@ async fn create_error_monitor_stream<T: Stream<Item = io::Result<BytesMut>> + Un
                 } else {
                     debug!("wrapped stream done, no error signaled");
                 }
-                break;
+                return;
             }
         }
     }
@@ -460,6 +460,7 @@ async fn create_index_stream(
                 }
                 Err(err) => {
                     yield Err(into_io_error(anyhow!(err)));
+                    return;
                 }
             }
         }
@@ -473,18 +474,18 @@ async fn create_item_stream(
     path: String,
 ) -> impl Stream<Item = io::Result<Bytes>> {
     stream! {
-    let mut stream = match download_streaming(&s3, &bucket, &path).await {
-        Ok(byte_stream) => byte_stream,
-        Err(err) => {
-            yield Err(into_io_error(anyhow!(err)));
-            return;
-        }
-    };
+        let mut stream = match download_streaming(&s3, &bucket, &path).await {
+            Ok(byte_stream) => byte_stream,
+            Err(err) => {
+                yield Err(into_io_error(anyhow!(err)));
+                return;
+            }
+        };
         loop {
             if let Some(data) = stream.next().await {
                 yield data;
             } else {
-                break;
+                return;
             }
         }
     }

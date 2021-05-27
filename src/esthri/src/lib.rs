@@ -20,7 +20,8 @@ use std::io::prelude::*;
 use std::io::BufReader;
 use std::io::ErrorKind;
 use std::marker::Unpin;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::result::Result as StdResult;
 use std::sync::Mutex;
 
 use crypto::digest::Digest;
@@ -31,7 +32,10 @@ use hyper::client::connect::HttpConnector;
 use log::*;
 use log_derive::logfn;
 use once_cell::sync::Lazy;
-use tokio::io::AsyncReadExt;
+use tokio::{
+    io::AsyncReadExt,
+    task::{self, JoinError, JoinHandle},
+};
 use walkdir::WalkDir;
 
 pub use crate::errors::{Error, Result};
@@ -51,7 +55,7 @@ use crate::retry::handle_dispatch_error;
 use crate::rusoto::*;
 
 use crate::config::Config;
-use crate::types::{GlobalData, ReadSize, S3Listing};
+use crate::types::{GlobalData, ListingMetadata, MapEtagResult, ReadSize, S3Listing};
 pub use crate::types::{ObjectInfo, S3ListingItem, S3Object, SyncParam};
 
 const EXPECT_GLOBAL_DATA: &str = "failed to lock global data";
@@ -163,10 +167,12 @@ async fn create_file_chunk_stream<R: Read>(
             let mut buf = vec![0u8; upload_part_size as usize];
             if reader.read(&mut buf)? == 0 {
                 yield Err(Error::ReadZero);
+                return;
+            } else {
+                yield Ok((part_number, buf));
+                remaining -= upload_part_size;
+                part_number += 1;
             }
-            yield Ok((part_number, buf));
-            remaining -= upload_part_size;
-            part_number += 1;
         }
     }
 }
@@ -352,6 +358,14 @@ where
     SR1: AsRef<str>,
 {
     let (bucket, key) = (bucket.as_ref(), key.as_ref());
+
+    if let Some(range) = range {
+        if range.total() == 0 {
+            let empty = vec![0u8; 0];
+            return Ok(empty.into());
+        }
+    }
+
     let range = range.map(|r| r.to_string());
 
     let goo = get_object_request(
@@ -415,7 +429,7 @@ where
     }
 }
 
-async fn create_download_readers_stream<'a, ClientT, SR0, SR1>(
+fn create_download_readers_stream<'a, ClientT, SR0, SR1>(
     s3: &ClientT,
     bucket: SR0,
     key: SR1,
@@ -495,7 +509,7 @@ fn write_all_at(writer: File, file_offset: u64, buffer: Vec<u8>, length: usize) 
     }
 }
 
-async fn map_download_readers_to_writer<'a, T>(
+fn map_download_readers_to_writer<'a, T>(
     chunk_stream: T,
     writer: File,
 ) -> impl Stream<Item = impl Future<Output = Result<()>> + 'a> + 'a
@@ -534,11 +548,9 @@ where
     let file_output = File::create(file)?;
 
     let reader_chunk_stream = create_download_readers_stream(s3, bucket, key)
-        .await
         .buffer_unordered(Config::global().concurrent_downloader_tasks());
 
-    let reader_result_stream =
-        map_download_readers_to_writer(reader_chunk_stream, file_output).await;
+    let reader_result_stream = map_download_readers_to_writer(reader_chunk_stream, file_output);
 
     reader_result_stream
         .buffer_unordered(Config::global().concurrent_writer_tasks())
@@ -1034,21 +1046,26 @@ where
     Ok(listing)
 }
 
-fn process_globs<'a>(
-    path: &'a str,
+fn process_globs<'a, P: AsRef<Path> + 'a>(
+    path: P,
     glob_includes: &[Pattern],
     glob_excludes: &[Pattern],
-) -> Option<&'a str> {
+) -> Option<P> {
     let mut excluded = false;
     let mut included = false;
-    for pattern in glob_excludes {
-        if pattern.matches(path) {
-            excluded = true;
+    {
+        let path = path.as_ref();
+        for pattern in glob_excludes {
+            if pattern.matches(path.to_string_lossy().as_ref()) {
+                excluded = true;
+                break;
+            }
         }
-    }
-    for pattern in glob_includes {
-        if pattern.matches(path) {
-            included = true;
+        for pattern in glob_includes {
+            if pattern.matches(path.to_string_lossy().as_ref()) {
+                included = true;
+                break;
+            }
         }
     }
     if included && !excluded {
@@ -1072,8 +1089,6 @@ where
     let dest_path = local_dir.join(s3_suffix);
 
     let parent_dir = dest_path.parent().ok_or(Error::ParentDirNone)?;
-    let parent_dir = format!("{}", parent_dir.display());
-
     fs::create_dir_all(parent_dir)?;
 
     let key = format!("{}", Path::new(s3_prefix).join(s3_suffix).display());
@@ -1084,7 +1099,118 @@ where
     Ok(())
 }
 
-async fn sync_local_to_remote<T, P: AsRef<Path>>(
+fn create_dirent_stream<'a>(
+    directory: &'a Path,
+    glob_includes: &'a [Pattern],
+    glob_excludes: &'a [Pattern],
+) -> impl Stream<Item = Result<(String, Option<ListingMetadata>)>> + 'a {
+    async_stream::stream! {
+        for entry in WalkDir::new(directory) {
+            let entry = if let Ok(entry) = entry {
+                entry
+            } else {
+                yield Err(entry.err().unwrap().into());
+                return;
+            };
+            let metadata = entry.metadata();
+            let stat = if let Ok(stat) = metadata {
+                stat
+            } else {
+                yield Err(metadata.err().unwrap().into());
+                return;
+            };
+            if stat.is_dir() {
+                continue;
+            }
+            if entry.path_is_symlink() {
+                warn!("symlinks are ignored");
+                continue;
+            }
+            let path = entry.path();
+            debug!("local path={}", path.display());
+            if process_globs(&path, glob_includes, glob_excludes).is_some() {
+                yield Ok((path.to_string_lossy().into(), ListingMetadata::none()));
+            }
+        }
+    }
+}
+
+fn map_paths_to_etags<StreamT>(
+    input_stream: StreamT,
+) -> impl Stream<Item = JoinHandle<MapEtagResult>>
+where
+    StreamT: Stream<Item = Result<(String, Option<ListingMetadata>)>>,
+{
+    input_stream.map(|params| {
+        task::spawn_blocking(move || {
+            let (path, metadata) = params?;
+            let local_etag = s3_compute_etag(&path);
+            Ok((path, local_etag, metadata))
+        })
+    })
+}
+
+fn local_to_remote_sync_tasks<ClientT, StreamT>(
+    s3: ClientT,
+    bucket: String,
+    key: String,
+    directory: PathBuf,
+    dirent_stream: StreamT,
+) -> impl Stream<Item = impl Future<Output = Result<()>>>
+where
+    ClientT: S3 + Send + Clone,
+    StreamT: Stream<Item = StdResult<MapEtagResult, JoinError>>,
+{
+    dirent_stream
+        .map(move |entry| {
+            (
+                s3.clone(),
+                bucket.clone(),
+                key.clone(),
+                directory.clone(),
+                entry.unwrap(),
+            )
+        })
+        .map(|clones| async move {
+            let (s3, bucket, key, directory, entry) = clones;
+            let (path, local_etag, _metadata) = entry?;
+            let path = Path::new(&path);
+            let remote_path = Path::new(&key);
+            let stripped_path = path.strip_prefix(&directory);
+            let stripped_path = match stripped_path {
+                Err(e) => {
+                    warn!("unexpected: failed to strip prefix: {}", e);
+                    return Ok(());
+                }
+                Ok(result) => result,
+            };
+            let remote_path: String = format!("{}", remote_path.join(&stripped_path).display());
+            debug!("checking remote: {}", remote_path);
+            let local_etag = local_etag?;
+            let object_info = head_object_request(&s3, &bucket, &remote_path).await?;
+            if let Some(object_info) = object_info {
+                let remote_etag = object_info.e_tag;
+                if remote_etag != local_etag {
+                    info!(
+                        "etag mis-match: {}, remote_etag={}, local_etag={}",
+                        remote_path, remote_etag, local_etag
+                    );
+                    upload(&s3, bucket, &remote_path, &path).await?;
+                } else {
+                    debug!(
+                        "etags matched: {}, remote_etag={}, local_etag={}",
+                        remote_path, remote_etag, local_etag
+                    );
+                }
+            } else {
+                info!("file did not exist remotely: {}", remote_path);
+                upload(&s3, bucket, &remote_path, &path).await?;
+            }
+            Ok(())
+        })
+}
+
+async fn sync_local_to_remote<T, P>(
     s3: &T,
     bucket: &str,
     key: &str,
@@ -1094,56 +1220,29 @@ async fn sync_local_to_remote<T, P: AsRef<Path>>(
 ) -> Result<()>
 where
     T: S3 + Send + Clone,
+    P: AsRef<Path>,
 {
     let directory = directory.as_ref();
+
     if !key.ends_with(FORWARD_SLASH) {
         return Err(Error::DirlikePrefixRequired);
     }
-    for entry in WalkDir::new(directory) {
-        let entry = entry?;
-        let stat = entry.metadata()?;
-        if stat.is_dir() {
-            continue;
-        }
-        // TODO: abort if symlink?
-        let path = format!("{}", entry.path().display());
-        debug!("local path={}", path);
-        let path = process_globs(&path, glob_includes, glob_excludes);
-        if let Some(path) = path {
-            let remote_path = Path::new(key);
-            let stripped_path = entry.path().strip_prefix(&directory);
-            let stripped_path = match stripped_path {
-                Err(e) => {
-                    warn!("unexpected: failed to strip prefix: {}", e);
-                    continue;
-                }
-                Ok(result) => result,
-            };
-            let stripped_path = format!("{}", stripped_path.display());
-            let remote_path: String = format!("{}", remote_path.join(&stripped_path).display());
-            debug!("checking remote: {}", remote_path);
-            let object_info = head_object_request(s3, bucket, &remote_path).await?;
-            let local_etag = s3_compute_etag(&path)?;
-            if let Some(object_info) = object_info {
-                let remote_etag = object_info.e_tag;
-                if remote_etag != local_etag {
-                    info!(
-                        "etag mis-match: {}, remote_etag={}, local_etag={}",
-                        remote_path, remote_etag, local_etag
-                    );
-                    upload(s3, bucket, &remote_path, &path).await?;
-                } else {
-                    debug!(
-                        "etags matched: {}, remote_etag={}, local_etag={}",
-                        remote_path, remote_etag, local_etag
-                    );
-                }
-            } else {
-                info!("file did not exist remotely: {}", remote_path);
-                upload(s3, bucket, &remote_path, &path).await?;
-            }
-        }
-    }
+
+    let task_count = Config::global().concurrent_sync_tasks();
+    let dirent_stream = create_dirent_stream(directory, glob_includes, glob_excludes);
+    let etag_stream = map_paths_to_etags(dirent_stream).buffer_unordered(task_count);
+    let sync_tasks = local_to_remote_sync_tasks(
+        s3.clone(),
+        bucket.into(),
+        key.into(),
+        directory.into(),
+        etag_stream,
+    );
+
+    sync_tasks
+        .buffer_unordered(task_count)
+        .try_collect()
+        .await?;
 
     Ok(())
 }
@@ -1256,6 +1355,99 @@ pub fn create_globs(
     Ok(globs)
 }
 
+fn flattened_object_listing<'a, ClientT>(
+    s3: &'a ClientT,
+    bucket: &'a str,
+    key: &'a str,
+    directory: &'a Path,
+    glob_includes: &'a [Pattern],
+    glob_excludes: &'a [Pattern],
+) -> impl Stream<Item = Result<(String, Option<ListingMetadata>)>> + 'a
+where
+    ClientT: S3 + Send + Clone,
+{
+    async_stream::stream! {
+        let mut stream = list_objects_stream(s3, bucket, key);
+        loop {
+            let entries_result = stream.try_next().await;
+            if let Ok(entries_option) = entries_result {
+                if let Some(entries) = entries_option {
+                    for entry in entries {
+                        let entry = entry.unwrap_object();
+                        debug!("key={}", entry.key);
+                        let path_result = Path::new(&entry.key).strip_prefix(key);
+                        if let Ok(s3_suffix) = path_result {
+                            if process_globs(&s3_suffix, glob_includes, glob_excludes).is_some() {
+                                let local_path: String = directory.join(&s3_suffix).to_string_lossy().into();
+                                let s3_suffix = s3_suffix.to_string_lossy().into();
+                                yield Ok((local_path, ListingMetadata::some(s3_suffix, entry.e_tag)));
+                            }
+                        } else {
+                            yield Err(path_result.err().unwrap().into());
+                            return;
+                        }
+                    }
+                } else {
+                    break;
+                }
+            } else {
+                yield Err(entries_result.err().unwrap());
+                return;
+            }
+        }
+    }
+}
+
+fn remote_to_local_sync_tasks<ClientT, StreamT>(
+    s3: ClientT,
+    bucket: String,
+    key: String,
+    directory: PathBuf,
+    input_stream: StreamT,
+) -> impl Stream<Item = impl Future<Output = Result<()>>>
+where
+    ClientT: S3 + Send + Clone,
+    StreamT: Stream<Item = StdResult<MapEtagResult, JoinError>>,
+{
+    input_stream
+        .map(move |entry| {
+            (
+                s3.clone(),
+                bucket.clone(),
+                key.clone(),
+                directory.clone(),
+                entry.unwrap(),
+            )
+        })
+        .map(|(s3, bucket, key, directory, entry)| async move {
+            let (path, local_etag, metadata) = entry?;
+            let metadata = metadata.unwrap();
+            match local_etag {
+                Ok(local_etag) => {
+                    if local_etag != metadata.e_tag {
+                        debug!(
+                            "etag mismatch: {}, local etag={}, remote etag={}",
+                            path, local_etag, metadata.e_tag
+                        );
+                        download_with_dir(&s3, &bucket, &key, &metadata.s3_suffix, &directory)
+                            .await?;
+                    }
+                }
+                Err(err) => match err {
+                    Error::ETagNotPresent => {
+                        debug!("file did not exist locally: {}", path);
+                        download_with_dir(&s3, &bucket, &key, &metadata.s3_suffix, &directory)
+                            .await?;
+                    }
+                    _ => {
+                        warn!("s3 etag error: {}", err);
+                    }
+                },
+            }
+            Ok(())
+        })
+}
+
 async fn sync_remote_to_local<T, P: AsRef<Path>>(
     s3: &T,
     bucket: &str,
@@ -1272,43 +1464,22 @@ where
         return Err(Error::DirlikePrefixRequired);
     }
 
-    let mut stream = list_objects_stream(s3, bucket, key);
+    let task_count = Config::global().concurrent_sync_tasks();
+    let object_listing =
+        flattened_object_listing(s3, bucket, key, directory, glob_includes, glob_excludes);
+    let etag_stream = map_paths_to_etags(object_listing).buffer_unordered(task_count);
+    let sync_tasks = remote_to_local_sync_tasks(
+        s3.clone(),
+        bucket.into(),
+        key.into(),
+        directory.into(),
+        etag_stream,
+    );
 
-    while let Some(entries) = stream.try_next().await? {
-        for entry in entries {
-            let entry = entry.unwrap_object();
-            debug!("key={}", entry.key);
-
-            let path = format!("{}", Path::new(&entry.key).strip_prefix(key)?.display());
-            let path = process_globs(&path, glob_includes, glob_excludes);
-
-            if let Some(path) = path {
-                let local_path: String = format!("{}", directory.join(&path).display());
-                debug!("checking {}", local_path);
-                let local_etag = s3_compute_etag(&local_path);
-                match local_etag {
-                    Ok(local_etag) => {
-                        if local_etag != entry.e_tag {
-                            debug!(
-                                "etag mismatch: {}, local etag={}, remote etag={}",
-                                local_path, local_etag, entry.e_tag
-                            );
-                            download_with_dir(s3, bucket, &key, &path, &directory).await?;
-                        }
-                    }
-                    Err(err) => match err {
-                        Error::ETagNotPresent => {
-                            debug!("file did not exist locally: {}", local_path);
-                            download_with_dir(s3, bucket, &key, &path, &directory).await?;
-                        }
-                        _ => {
-                            warn!("s3 etag error: {}", err);
-                        }
-                    },
-                }
-            }
-        }
-    }
+    sync_tasks
+        .buffer_unordered(task_count)
+        .try_collect()
+        .await?;
 
     Ok(())
 }

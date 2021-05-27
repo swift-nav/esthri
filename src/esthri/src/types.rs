@@ -11,14 +11,17 @@
 */
 
 use std::path::{Path, PathBuf};
+use std::result::Result as StdResult;
 
 use chrono::{DateTime, Utc};
 use regex::Regex;
 
-pub(crate) struct GlobalData {
-    pub(crate) bucket: Option<String>,
-    pub(crate) key: Option<String>,
-    pub(crate) upload_id: Option<String>,
+use crate::errors::Result;
+
+pub(super) struct GlobalData {
+    pub(super) bucket: Option<String>,
+    pub(super) key: Option<String>,
+    pub(super) upload_id: Option<String>,
 }
 
 #[derive(Debug)]
@@ -51,7 +54,7 @@ impl SyncParam {
 impl std::str::FromStr for SyncParam {
     type Err = String;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    fn from_str(s: &str) -> StdResult<Self, Self::Err> {
         let s3_format = Regex::new(r"^s3://(?P<bucket>[^/]+)/(?P<key>.*)$").unwrap();
 
         if let Some(captures) = s3_format.captures(s) {
@@ -181,3 +184,22 @@ impl ReadSize {
         self.offset
     }
 }
+
+/// For syncing from remote to local, or local to remote, "metadata" is attached to the listing in
+/// the remote case (the S3 "suffix" and the ETag) so that we can make the comparison to decide if
+/// we need to download or upload.
+pub(super) struct ListingMetadata {
+    pub(super) s3_suffix: String,
+    pub(super) e_tag: String,
+}
+
+impl ListingMetadata {
+    pub(super) fn some(s3_suffix: String, e_tag: String) -> Option<Self> {
+        Some(Self { s3_suffix, e_tag })
+    }
+    pub(super) fn none() -> Option<Self> {
+        None
+    }
+}
+
+pub(super) type MapEtagResult = Result<(String, Result<String>, Option<ListingMetadata>)>;
