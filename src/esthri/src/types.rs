@@ -18,10 +18,10 @@ use regex::Regex;
 
 use crate::errors::Result;
 
-pub(crate) struct GlobalData {
-    pub(crate) bucket: Option<String>,
-    pub(crate) key: Option<String>,
-    pub(crate) upload_id: Option<String>,
+pub(super) struct GlobalData {
+    pub(super) bucket: Option<String>,
+    pub(super) key: Option<String>,
+    pub(super) upload_id: Option<String>,
 }
 
 #[derive(Debug)]
