@@ -366,7 +366,7 @@ async fn create_error_monitor_stream<T: Stream<Item = io::Result<BytesMut>> + Un
                 } else {
                     debug!("wrapped stream done, no error signaled");
                 }
-                break;
+                return;
             }
         }
     }
@@ -460,7 +460,7 @@ async fn create_index_stream(
                 }
                 Err(err) => {
                     yield Err(into_io_error(anyhow!(err)));
-                    break;
+                    return;
                 }
             }
         }
@@ -485,7 +485,7 @@ async fn create_item_stream(
             if let Some(data) = stream.next().await {
                 yield data;
             } else {
-                break;
+                return;
             }
         }
     }

@@ -167,10 +167,12 @@ async fn create_file_chunk_stream<R: Read>(
             let mut buf = vec![0u8; upload_part_size as usize];
             if reader.read(&mut buf)? == 0 {
                 yield Err(Error::ReadZero);
+                return;
+            } else {
+                yield Ok((part_number, buf));
+                remaining -= upload_part_size;
+                part_number += 1;
             }
-            yield Ok((part_number, buf));
-            remaining -= upload_part_size;
-            part_number += 1;
         }
     }
 }
@@ -1105,14 +1107,14 @@ fn create_dirent_stream<'a>(
                 entry
             } else {
                 yield Err(entry.err().unwrap().into());
-                break;
+                return;
             };
             let metadata = entry.metadata();
             let stat = if let Ok(stat) = metadata {
                 stat
             } else {
                 yield Err(metadata.err().unwrap().into());
-                break;
+                return;
             };
             if stat.is_dir() {
                 continue;
@@ -1380,7 +1382,7 @@ where
                             }
                         } else {
                             yield Err(path_result.err().unwrap().into());
-                            break;
+                            return;
                         }
                     }
                 } else {
@@ -1388,7 +1390,7 @@ where
                 }
             } else {
                 yield Err(entries_result.err().unwrap());
-                break;
+                return;
             }
         }
     }
