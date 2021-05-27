@@ -25,6 +25,8 @@ chrono = "0.4"
 regex = "1"
 envy = "0.4"
 async-stream = "0.3"
+serde = "1"
+serde_derive = "1"
 
 [dev-dependencies]
 md5 = "0.7"
@@ -41,7 +43,7 @@ path = "src/lib.rs"
 default = [ "rustls", "cli", "http_server", "blocking",]
 aggressive_lint = []
 blocking = []
-http_server = [ "async-tar", "async-compression", "bytes", "futures-util", "mime_guess", "sluice", "sanitize-filename", "serde", "serde_derive", "tokio-util", "warp", "ctrlc", "anyhow"]
+http_server = [ "async-tar", "async-compression", "bytes", "futures-util", "mime_guess", "sluice", "sanitize-filename", "tokio-util", "warp", "ctrlc", "anyhow",]
 nativetls = [ "rusoto_credential", "rusoto_core/native-tls", "rusoto_signature", "rusoto_s3/native-tls", "hyper-tls",]
 rustls = [ "rusoto_credential", "rusoto_core/rustls", "rusoto_signature", "rusoto_s3/rustls", "hyper-rustls",]
 cli = [ "ctrlc", "structopt", "blocking", "tokio/rt-multi-thread",]
@@ -120,14 +122,6 @@ optional = true
 [dependencies.tokio-util]
 version = "0.6"
 features = [ "compat", "codec",]
-optional = true
-
-[dependencies.serde]
-version = "1.0"
-optional = true
-
-[dependencies.serde_derive]
-version = "1.0"
 optional = true
 
 [dependencies.mime_guess]
