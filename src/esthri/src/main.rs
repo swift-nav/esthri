@@ -198,6 +198,9 @@ async fn async_main() -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    let rt = Builder::new_multi_thread().enable_all().build().expect("failed to create tokio runtime");
+    let rt = Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("failed to create tokio runtime");
     rt.block_on(async { async_main().await })
 }

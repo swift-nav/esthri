@@ -21,8 +21,8 @@ use std::io::BufReader;
 use std::io::ErrorKind;
 use std::marker::Unpin;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 use std::result::Result as StdResult;
+use std::sync::Mutex;
 
 use crypto::digest::Digest;
 use crypto::md5::Md5;
@@ -73,7 +73,21 @@ static GLOBAL_DATA: Lazy<Mutex<GlobalData>> = Lazy::new(|| {
 pub const INCLUDE_EMPTY: Option<&[&str]> = None;
 pub const EXCLUDE_EMPTY: Option<&[&str]> = None;
 
-type MapEtagResult = Result<(String, Result<String>, String)>;
+struct ListingMetadata {
+    s3_suffix: String,
+    e_tag: String,
+}
+
+impl ListingMetadata {
+    fn some(s3_suffix: String, e_tag: String) -> Option<Self> {
+        Some(Self { s3_suffix, e_tag })
+    }
+    fn none() -> Option<Self> {
+        None
+    }
+}
+
+type MapEtagResult = Result<(String, Result<String>, Option<ListingMetadata>)>;
 
 #[logfn(err = "ERROR")]
 pub async fn head_object<T, SR0, SR1>(s3: &T, bucket: SR0, key: SR1) -> Result<Option<ObjectInfo>>
@@ -1100,7 +1114,7 @@ fn create_dirent_stream<'a>(
     directory: &'a Path,
     glob_includes: &'a [Pattern],
     glob_excludes: &'a [Pattern],
-) -> impl Stream<Item = Result<(String, String)>> + 'a {
+) -> impl Stream<Item = Result<(String, Option<ListingMetadata>)>> + 'a {
     async_stream::stream! {
         for entry in WalkDir::new(directory) {
             let entry = if let Ok(entry) = entry {
@@ -1126,7 +1140,7 @@ fn create_dirent_stream<'a>(
             let path = format!("{}", entry.path().display());
             debug!("local path={}", path);
             if process_globs(&path, glob_includes, glob_excludes).is_some() {
-                yield Ok((entry.path().display().to_string(), String::from("")));
+                yield Ok((entry.path().display().to_string(), ListingMetadata::none()));
             }
         }
     }
@@ -1136,7 +1150,7 @@ fn map_paths_to_etags<StreamT>(
     input_stream: StreamT,
 ) -> impl Stream<Item = JoinHandle<MapEtagResult>>
 where
-    StreamT: Stream<Item = Result<(String, String)>>,
+    StreamT: Stream<Item = Result<(String, Option<ListingMetadata>)>>,
 {
     input_stream.map(|params| {
         task::spawn_blocking(move || {
@@ -1357,9 +1371,10 @@ fn flattened_object_listing<'a, ClientT>(
     s3: &'a ClientT,
     bucket: &'a str,
     key: &'a str,
+    directory: &'a Path,
     glob_includes: &'a [Pattern],
     glob_excludes: &'a [Pattern],
-) -> impl Stream<Item = Result<(String, String)>> + 'a
+) -> impl Stream<Item = Result<(String, Option<ListingMetadata>)>> + 'a
 where
     ClientT: S3 + Send + Clone,
 {
@@ -1376,7 +1391,8 @@ where
                         if let Ok(path) = path_result {
                             let path = format!("{}", path.display());
                             if process_globs(&path, glob_includes, glob_excludes).is_some() {
-                                yield Ok((path, entry.e_tag));
+                                let local_path: String = format!("{}", directory.join(&path).display());
+                                yield Ok((local_path, ListingMetadata::some(path, entry.e_tag)));
                             }
                         } else {
                             yield Err(path_result.err().unwrap().into());
@@ -1416,21 +1432,24 @@ where
             )
         })
         .map(|(s3, bucket, key, directory, entry)| async move {
-            let (path, local_etag, remote_etag) = entry?;
+            let (path, local_etag, metadata) = entry?;
+            let metadata = metadata.unwrap();
             match local_etag {
                 Ok(local_etag) => {
-                    if local_etag != remote_etag {
+                    if local_etag != metadata.e_tag {
                         debug!(
                             "etag mismatch: {}, local etag={}, remote etag={}",
-                            path, local_etag, remote_etag
+                            path, local_etag, metadata.e_tag
                         );
-                        download_with_dir(&s3, &bucket, &key, &path, &directory).await?;
+                        download_with_dir(&s3, &bucket, &key, &metadata.s3_suffix, &directory)
+                            .await?;
                     }
                 }
                 Err(err) => match err {
                     Error::ETagNotPresent => {
                         debug!("file did not exist locally: {}", path);
-                        download_with_dir(&s3, &bucket, &key, &path, &directory).await?;
+                        download_with_dir(&s3, &bucket, &key, &metadata.s3_suffix, &directory)
+                            .await?;
                     }
                     _ => {
                         warn!("s3 etag error: {}", err);
@@ -1458,7 +1477,8 @@ where
     }
 
     let task_count = Config::global().concurrent_sync_tasks();
-    let object_listing = flattened_object_listing(s3, bucket, key, glob_includes, glob_excludes);
+    let object_listing =
+        flattened_object_listing(s3, bucket, key, directory, glob_includes, glob_excludes);
     let etag_stream = map_paths_to_etags(object_listing).buffer_unordered(task_count);
     let sync_tasks = remote_to_local_sync_tasks(
         s3.clone(),
