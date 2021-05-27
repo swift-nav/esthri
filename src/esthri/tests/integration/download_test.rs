@@ -30,7 +30,13 @@ async fn test_download_zero_size() {
     let _tmp_dir = crate::EphemeralTempDir::pushd();
 
     // Test object `test_download/test0b.bin` must be prepopulated in the S3 bucket
-    let res = download(s3client.as_ref(), crate::TEST_BUCKET, "test_download/test0b.bin", "test0b.download").await;
+    let res = download(
+        s3client.as_ref(),
+        crate::TEST_BUCKET,
+        "test_download/test0b.bin",
+        "test0b.download",
+    )
+    .await;
     assert!(res.is_ok());
 
     let stat = std::fs::metadata("test0b.download");
