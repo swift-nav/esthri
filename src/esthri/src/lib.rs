@@ -55,7 +55,7 @@ use crate::retry::handle_dispatch_error;
 use crate::rusoto::*;
 
 use crate::config::Config;
-use crate::types::{GlobalData, ReadSize, S3Listing};
+use crate::types::{GlobalData, ListingMetadata, MapEtagResult, ReadSize, S3Listing};
 pub use crate::types::{ObjectInfo, S3ListingItem, S3Object, SyncParam};
 
 const EXPECT_GLOBAL_DATA: &str = "failed to lock global data";
@@ -72,22 +72,6 @@ static GLOBAL_DATA: Lazy<Mutex<GlobalData>> = Lazy::new(|| {
 
 pub const INCLUDE_EMPTY: Option<&[&str]> = None;
 pub const EXCLUDE_EMPTY: Option<&[&str]> = None;
-
-struct ListingMetadata {
-    s3_suffix: String,
-    e_tag: String,
-}
-
-impl ListingMetadata {
-    fn some(s3_suffix: String, e_tag: String) -> Option<Self> {
-        Some(Self { s3_suffix, e_tag })
-    }
-    fn none() -> Option<Self> {
-        None
-    }
-}
-
-type MapEtagResult = Result<(String, Result<String>, Option<ListingMetadata>)>;
 
 #[logfn(err = "ERROR")]
 pub async fn head_object<T, SR0, SR1>(s3: &T, bucket: SR0, key: SR1) -> Result<Option<ObjectInfo>>
