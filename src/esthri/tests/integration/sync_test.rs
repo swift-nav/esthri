@@ -24,7 +24,7 @@ fn test_sync_down() {
         includes.as_deref(),
         excludes.as_deref(),
     );
-    assert!(res.is_ok(), format!("s3_sync result: {:?}", res));
+    assert!(res.is_ok(), "s3_sync result: {:?}", res);
 }
 
 #[tokio::test]
@@ -46,7 +46,7 @@ async fn test_sync_down_async() {
         excludes.as_deref(),
     )
     .await;
-    assert!(res.is_ok(), format!("s3_sync result: {:?}", res));
+    assert!(res.is_ok(), "s3_sync result: {:?}", res);
 }
 
 #[test]
@@ -222,5 +222,5 @@ async fn test_sync_across() {
         excludes.as_deref(),
     )
     .await;
-    assert!(res.is_ok(), format!("s3_sync result: {:?}", res));
+    assert!(res.is_ok(), "s3_sync result: {:?}", res);
 }
