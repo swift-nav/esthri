@@ -1046,21 +1046,26 @@ where
     Ok(listing)
 }
 
-fn process_globs<'a>(
-    path: &'a str,
+fn process_globs<'a, P: AsRef<Path> + 'a>(
+    path: P,
     glob_includes: &[Pattern],
     glob_excludes: &[Pattern],
-) -> Option<&'a str> {
+) -> Option<P> {
     let mut excluded = false;
     let mut included = false;
-    for pattern in glob_excludes {
-        if pattern.matches(path) {
-            excluded = true;
+    {
+        let path = path.as_ref();
+        for pattern in glob_excludes {
+            if pattern.matches(path.to_string_lossy().as_ref()) {
+                excluded = true;
+                break;
+            }
         }
-    }
-    for pattern in glob_includes {
-        if pattern.matches(path) {
-            included = true;
+        for pattern in glob_includes {
+            if pattern.matches(path.to_string_lossy().as_ref()) {
+                included = true;
+                break;
+            }
         }
     }
     if included && !excluded {
@@ -1084,8 +1089,6 @@ where
     let dest_path = local_dir.join(s3_suffix);
 
     let parent_dir = dest_path.parent().ok_or(Error::ParentDirNone)?;
-    let parent_dir = format!("{}", parent_dir.display());
-
     fs::create_dir_all(parent_dir)?;
 
     let key = format!("{}", Path::new(s3_prefix).join(s3_suffix).display());
@@ -1123,10 +1126,10 @@ fn create_dirent_stream<'a>(
                 warn!("symlinks are ignored");
                 continue;
             }
-            let path = format!("{}", entry.path().display());
-            debug!("local path={}", path);
+            let path = entry.path();
+            debug!("local path={}", path.display());
             if process_globs(&path, glob_includes, glob_excludes).is_some() {
-                yield Ok((entry.path().display().to_string(), ListingMetadata::none()));
+                yield Ok((path.to_string_lossy().into(), ListingMetadata::none()));
             }
         }
     }
@@ -1181,7 +1184,6 @@ where
                 }
                 Ok(result) => result,
             };
-            let stripped_path = format!("{}", stripped_path.display());
             let remote_path: String = format!("{}", remote_path.join(&stripped_path).display());
             debug!("checking remote: {}", remote_path);
             let local_etag = local_etag?;
@@ -1374,11 +1376,11 @@ where
                         let entry = entry.unwrap_object();
                         debug!("key={}", entry.key);
                         let path_result = Path::new(&entry.key).strip_prefix(key);
-                        if let Ok(path) = path_result {
-                            let path = format!("{}", path.display());
-                            if process_globs(&path, glob_includes, glob_excludes).is_some() {
-                                let local_path: String = format!("{}", directory.join(&path).display());
-                                yield Ok((local_path, ListingMetadata::some(path, entry.e_tag)));
+                        if let Ok(s3_suffix) = path_result {
+                            if process_globs(&s3_suffix, glob_includes, glob_excludes).is_some() {
+                                let local_path: String = directory.join(&s3_suffix).to_string_lossy().into();
+                                let s3_suffix = s3_suffix.to_string_lossy().into();
+                                yield Ok((local_path, ListingMetadata::some(s3_suffix, entry.e_tag)));
                             }
                         } else {
                             yield Err(path_result.err().unwrap().into());
