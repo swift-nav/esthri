@@ -42,10 +42,7 @@ use tokio::{
 use walkdir::WalkDir;
 
 #[cfg(feature = "compression")]
-use async_compression::tokio::bufread::GzipDecoder;
-
-#[cfg(feature = "compression")]
-use flate2::{read::GzEncoder, Compression};
+use flate2::{read::GzEncoder, write::GzDecoder, Compression};
 
 pub use crate::errors::{Error, Result};
 
@@ -83,7 +80,11 @@ pub const INCLUDE_EMPTY: Option<&[&str]> = None;
 pub const EXCLUDE_EMPTY: Option<&[&str]> = None;
 
 #[logfn(err = "ERROR")]
-pub async fn head_object<T>(s3: &T, bucket: impl AsRef<str>, key: impl AsRef<str>) -> Result<Option<ObjectInfo>>
+pub async fn head_object<T>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+) -> Result<Option<ObjectInfo>>
 where
     T: S3 + Send,
 {
@@ -169,7 +170,12 @@ where
 }
 
 #[logfn(err = "ERROR")]
-pub async fn upload<T>(s3: &T, bucket: impl AsRef<str>, key: impl AsRef<str>, file: impl AsRef<Path>) -> Result<()>
+pub async fn upload<T>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+    file: impl AsRef<Path>,
+) -> Result<()>
 where
     T: S3 + Send + Clone,
 {
@@ -186,7 +192,12 @@ where
 
 #[cfg(feature = "compression")]
 #[logfn(err = "ERROR")]
-pub async fn upload_compressed<T>(s3: &T, bucket: impl AsRef<str>, key: impl AsRef<str>, file: impl AsRef<Path>) -> Result<()>
+pub async fn upload_compressed<T>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+    file: impl AsRef<Path>,
+) -> Result<()>
 where
     T: S3 + Send + Clone,
 {
@@ -426,26 +437,6 @@ where
     goo.body.ok_or(Error::GetObjectOutputBodyNone)
 }
 
-async fn read_all<ReaderT>(
-    initial_buffer_size: usize,
-    mut reader: ReaderT,
-) -> Result<(usize, Vec<u8>)>
-where
-    ReaderT: AsyncReadExt + Unpin,
-{
-    let mut blob = vec![0u8; initial_buffer_size];
-    loop {
-        let result = reader.read_to_end(&mut blob).await;
-        if let Err(e) = result {
-            if e.kind() == ErrorKind::Interrupted {
-                continue;
-            }
-        } else {
-            return Ok((result?, blob));
-        }
-    }
-}
-
 async fn read_exact<ClientT, ReaderT>(
     s3: &ClientT,
     bucket: String,
@@ -482,36 +473,24 @@ where
     }
 }
 
-fn create_reader(stream: ByteStream, decompress: bool) -> Pin<Box<dyn AsyncRead + Send + Sync>> {
+fn create_reader(stream: ByteStream) -> Pin<Box<dyn AsyncRead + Send + Sync>> {
     let async_reader = stream.into_async_read();
     let buf_reader = tokio::io::BufReader::new(async_reader);
-
-    if decompress {
-        #[cfg(feature = "compression")]
-        {
-            Box::pin(GzipDecoder::new(buf_reader))
-        }
-        #[cfg(not(feature = "compression"))]
-        {
-            panic!("compression feature not enabled");
-        }
-    } else {
-        Box::pin(buf_reader)
-    }
+    Box::pin(buf_reader)
 }
 
-type DownloaderResult<'a, ClientT, ChunkT, SelfT> = (BoxFuture<'a, Result<ChunkT>>, (SelfT, ClientT));
+type DownloaderResult<'a, ClientT, ChunkT, SelfT> =
+    (BoxFuture<'a, Result<ChunkT>>, (SelfT, ClientT));
 
 trait Downloader {
-    type Chunk: DownloaderChunk + Sized;
+    type Chunk: DownloaderChunk + Sized + Unpin + Send;
 
-    fn create_future<'a, T>(
-        self,
-        client: T,
-    ) -> Option<DownloaderResult<'a, T, Self::Chunk, Self>>
+    fn create_future<'a, T>(self, client: T) -> Option<DownloaderResult<'a, T, Self::Chunk, Self>>
     where
         T: S3 + Send + Sync + Clone + Sized + 'a,
         Self: Sized;
+
+    //fn create_writer(&self, file: File) -> Box<dyn TokioAsyncWrite>;
 
     fn concurrent_downloader_tasks(&self) -> usize;
 
@@ -519,18 +498,35 @@ trait Downloader {
 }
 
 trait DownloaderChunk {
-    fn write_chunk(self, writer: File) -> Result<()>;
+    fn write_chunk(self) -> Result<()>;
 }
 
-struct DownloadMultipleChunk(u64, usize, Vec<u8>);
+struct DownloadMultipleChunk {
+    file: File,
+    offset: u64,
+    buffer: Vec<u8>,
+    length: usize,
+}
+
+impl DownloadMultipleChunk {
+    fn new(file: File, offset: u64, buffer: Vec<u8>, length: usize) -> Self {
+        Self {
+            file,
+            offset,
+            buffer,
+            length,
+        }
+    }
+}
 
 impl DownloaderChunk for DownloadMultipleChunk {
-    fn write_chunk(self, writer: File) -> Result<()> {
-        write_all_at(writer, self.0, self.2, self.1)
+    fn write_chunk(self) -> Result<()> {
+        write_all_at(self.file, self.offset, self.buffer, self.length)
     }
 }
 
 struct DownloadMultiple {
+    file: File,
     bucket: String,
     key: String,
     read_state: ReadState,
@@ -538,11 +534,11 @@ struct DownloadMultiple {
 }
 
 impl DownloadMultiple {
-    fn new(bucket: impl Into<String>, key: impl Into<String>, total_size: u64) -> Self {
+    fn new(file: File, bucket: impl Into<String>, key: impl Into<String>, total_size: u64) -> Self {
         let download_buffer_size = Config::global().download_buffer_size();
         let read_state = ReadState::new(download_buffer_size, total_size);
-
-        DownloadMultiple {
+        Self {
+            file,
             key: key.into(),
             bucket: bucket.into(),
             read_state,
@@ -568,17 +564,27 @@ impl Downloader for DownloadMultiple {
             let bucket = self.bucket.clone();
             let key = self.key.clone();
             let range = self.read_state;
+            let file = self.file.try_clone();
             let fut = async move {
                 let client = client.clone();
                 let stream = download_streaming_range(&client, &bucket, &key, Some(range)).await?;
-                let reader = create_reader(stream, false);
+                let reader = create_reader(stream);
                 let (read_size, buffer) = read_exact(&client, bucket, key, reader, &range).await?;
-                Ok(DownloadMultipleChunk(range.offset(), read_size, buffer))
+                Ok(DownloadMultipleChunk::new(
+                    file?,
+                    range.offset(),
+                    buffer,
+                    read_size,
+                ))
             };
             self.read_size = self.read_state.update(self.read_size);
             Some((Box::pin(fut), (self, client_in)))
         }
     }
+
+    // fn create_writer(&self, file: File) -> Box<dyn TokioAsyncWrite> {
+    //     Box::new(TokioFile::from_std(file))
+    // }
 
     fn concurrent_downloader_tasks(&self) -> usize {
         Config::global().concurrent_downloader_tasks()
@@ -589,14 +595,35 @@ impl Downloader for DownloadMultiple {
     }
 }
 
-struct DownloadCompressedChunk(usize, Vec<u8>);
+use std::sync::Arc;
+
+type BoxedWrite = Arc<Mutex<Box<dyn Write + Unpin + Send + Sync>>>;
+
+struct DownloadCompressedChunk {
+    writer: BoxedWrite,
+    buffer: Vec<u8>,
+    length: usize,
+}
+
+impl DownloadCompressedChunk {
+    fn new(writer: BoxedWrite, buffer: Vec<u8>, length: usize) -> Self {
+        Self {
+            writer,
+            buffer,
+            length,
+        }
+    }
+}
 
 impl DownloaderChunk for DownloadCompressedChunk {
-    fn write_chunk(self, writer: File) -> Result<()> {
-        write_all(writer, self.1, self.0)
+    fn write_chunk(self) -> Result<()> {
+        let mut writer = self.writer.lock().unwrap();
+        let writer = writer.as_mut();
+        write_all(writer, self.buffer, self.length)
     }
 }
 struct DownloadCompressed {
+    file: BoxedWrite,
     bucket: String,
     key: String,
     read_state: ReadState,
@@ -604,11 +631,16 @@ struct DownloadCompressed {
 }
 
 impl DownloadCompressed {
-    fn new(bucket: impl Into<String>, key: impl Into<String>, total_size: u64) -> Self {
+    fn new(
+        file: BoxedWrite,
+        bucket: impl Into<String>,
+        key: impl Into<String>,
+        total_size: u64,
+    ) -> Self {
         let download_buffer_size = Config::global().download_buffer_size();
         let read_state = ReadState::new(download_buffer_size, total_size);
-
-        DownloadCompressed {
+        Self {
+            file: file.clone(),
             key: key.into(),
             bucket: bucket.into(),
             read_state,
@@ -634,13 +666,13 @@ impl Downloader for DownloadCompressed {
             let bucket = self.bucket.clone();
             let key = self.key.clone();
             let range = self.read_state;
+            let file = self.file.clone();
             let fut = async move {
                 let client = client.clone();
                 let stream = download_streaming_range(&client, &bucket, &key, Some(range)).await?;
-                let reader = create_reader(stream, true);
-                let initial_buffer_size = Config::global().download_buffer_size();
-                let (read_size, buffer) = read_all(initial_buffer_size, reader).await?;
-                Ok(DownloadCompressedChunk(read_size, buffer))
+                let reader = create_reader(stream);
+                let (read_size, buffer) = read_exact(&client, bucket, key, reader, &range).await?;
+                Ok(DownloadCompressedChunk::new(file, buffer, read_size))
             };
             self.read_size = self.read_state.update(self.read_size);
             Some((Box::pin(fut), (self, client_in)))
@@ -672,7 +704,7 @@ where
     }))
 }
 
-fn write_all(mut writer: File, buffer: Vec<u8>, length: usize) -> Result<()> {
+fn write_all(writer: &mut dyn Write, buffer: Vec<u8>, length: usize) -> Result<()> {
     writer.write_all(&buffer[..length]).map_err(Error::from)
 }
 
@@ -703,21 +735,12 @@ fn write_all_at(writer: File, file_offset: u64, buffer: Vec<u8>, length: usize) 
 
 fn map_download_readers_to_writer<'a, StreamT, ChunkT>(
     chunk_stream: StreamT,
-    writer: File,
 ) -> impl Stream<Item = impl Future<Output = Result<()>> + 'a> + 'a
 where
     StreamT: Stream<Item = Result<ChunkT>> + 'a,
     ChunkT: DownloaderChunk + 'a,
 {
-    chunk_stream
-        .map(move |chunk| {
-            let writer = writer.try_clone()?;
-            Ok((writer, chunk?))
-        })
-        .map(|value: Result<(File, ChunkT)>| async move {
-            let (writer, chunk) = value?;
-            chunk.write_chunk(writer)
-        })
+    chunk_stream.map(|chunk: Result<ChunkT>| async move { chunk?.write_chunk() })
 }
 
 async fn download_helper<T>(
@@ -732,44 +755,59 @@ where
 {
     let (bucket, key, file) = (bucket.as_ref(), key.as_ref(), file.as_ref());
 
-    let file_output = File::create(file)?;
-
     let stat = head_object_request(s3, bucket, key).await?;
     let total_size = stat
         .ok_or_else(|| Error::GetObjectInvalidKey(key.into()))?
         .size as u64;
 
-    fn run_downloader<'a, T: Downloader + 'a, ClientT>(
+    fn run_downloader<'a, T: Downloader + Send + 'a, ClientT>(
         s3: ClientT,
         downloader: T,
-        file_output: File,
-    ) -> impl Future<Output = Result<()>> + 'a
+        decompress: bool,
+    ) -> BoxFuture<'a, Result<()>>
     where
         ClientT: S3 + Send + Sync + Clone + 'a,
     {
         let concurrent_downloader_tasks = downloader.concurrent_downloader_tasks();
         let concurrent_writer_tasks = downloader.concurrent_writer_tasks();
 
-        let reader_chunk_stream = create_download_readers_stream(s3, downloader)
-            .buffer_unordered(concurrent_downloader_tasks);
-
-        let reader_result_stream = map_download_readers_to_writer(reader_chunk_stream, file_output);
-
-        reader_result_stream
-            .buffer_unordered(concurrent_writer_tasks)
-            .try_collect()
+        if decompress {
+            let reader_chunk_stream = create_download_readers_stream(s3, downloader)
+                .buffered(concurrent_downloader_tasks);
+            let reader_result_stream = map_download_readers_to_writer(reader_chunk_stream);
+            let fut = reader_result_stream
+                .buffered(concurrent_writer_tasks)
+                .try_collect();
+            Box::pin(fut)
+        } else {
+            let reader_chunk_stream = create_download_readers_stream(s3, downloader)
+                .buffer_unordered(concurrent_downloader_tasks);
+            let reader_result_stream = map_download_readers_to_writer(reader_chunk_stream);
+            let fut = reader_result_stream
+                .buffer_unordered(concurrent_writer_tasks)
+                .try_collect();
+            Box::pin(fut)
+        }
     }
 
     if decompress {
-        let downloader = DownloadCompressed::new(bucket, key, total_size);
-        run_downloader(s3.clone(), downloader, file_output).await
+        let file_output: Box<dyn Write + Send + Sync + Unpin> =
+            Box::new(GzDecoder::new(File::create(file)?));
+        let file_output = Arc::new(Mutex::new(file_output));
+        let downloader = DownloadCompressed::new(file_output, bucket, key, total_size);
+        run_downloader(s3.clone(), downloader, decompress).await
     } else {
-        let downloader = DownloadMultiple::new(bucket, key, total_size);
-        run_downloader(s3.clone(), downloader, file_output).await
+        let file_output = File::create(file)?;
+        let downloader = DownloadMultiple::new(file_output, bucket, key, total_size);
+        run_downloader(s3.clone(), downloader, decompress).await
     }
 }
 
-pub async fn download_streaming<T>(s3: &T, bucket: impl AsRef<str>, key: impl AsRef<str>) -> Result<ByteStream>
+pub async fn download_streaming<T>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+) -> Result<ByteStream>
 where
     T: S3 + Send + Clone,
 {
@@ -778,7 +816,12 @@ where
 }
 
 #[logfn(err = "ERROR")]
-pub async fn download<T>(s3: &T, bucket: impl AsRef<str>, key: impl AsRef<str>, file: impl AsRef<Path>) -> Result<()>
+pub async fn download<T>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+    file: impl AsRef<Path>,
+) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
 {
@@ -915,7 +958,11 @@ where
 }
 
 #[logfn(err = "ERROR")]
-pub async fn list_objects<T>(s3: &T, bucket: impl AsRef<str>, key: impl AsRef<str>) -> Result<Vec<String>>
+pub async fn list_objects<T>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+) -> Result<Vec<String>>
 where
     T: S3 + Send,
 {
@@ -924,7 +971,11 @@ where
 }
 
 #[logfn(err = "ERROR")]
-pub async fn list_directory<T>(s3: &T, bucket: impl AsRef<str>, dir_path: impl AsRef<str>) -> Result<Vec<String>>
+pub async fn list_directory<T>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    dir_path: impl AsRef<str>,
+) -> Result<Vec<String>>
 where
     T: S3 + Send,
 {
@@ -1072,8 +1123,7 @@ pub fn setup_upload_termination_handler() {
     .expect("Error setting Ctrl-C handler");
 }
 
-pub fn s3_compute_etag(path: impl AsRef<Path>) -> Result<String>
-{
+pub fn s3_compute_etag(path: impl AsRef<Path>) -> Result<String> {
     let path = path.as_ref();
     if !path.exists() {
         return Err(Error::ETagNotPresent);

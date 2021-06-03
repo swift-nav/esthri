@@ -20,7 +20,11 @@ use super::Result;
 use super::SyncParam;
 
 #[tokio::main]
-pub async fn head_object<T>(s3: &T, bucket: impl AsRef<str>, key: impl AsRef<str>) -> Result<Option<ObjectInfo>>
+pub async fn head_object<T>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+) -> Result<Option<ObjectInfo>>
 where
     T: S3 + Send,
 {
@@ -41,7 +45,12 @@ where
 }
 
 #[tokio::main]
-pub async fn upload<T>(s3: &T, bucket: impl AsRef<str>, key: impl AsRef<str>, file: impl AsRef<Path>) -> Result<()>
+pub async fn upload<T>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+    file: impl AsRef<Path>,
+) -> Result<()>
 where
     T: S3 + Send + Clone,
 {
@@ -63,7 +72,12 @@ where
 }
 
 #[tokio::main]
-pub async fn download<T>(s3: &T, bucket: impl AsRef<str>, key: impl AsRef<str>, file: impl AsRef<Path>) -> Result<()>
+pub async fn download<T>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+    file: impl AsRef<Path>,
+) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
 {
@@ -85,7 +99,11 @@ where
 }
 
 #[tokio::main]
-pub async fn list_objects<T>(s3: &T, bucket: impl AsRef<str>, key: impl AsRef<str>) -> Result<Vec<String>>
+pub async fn list_objects<T>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+) -> Result<Vec<String>>
 where
     T: S3 + Send,
 {

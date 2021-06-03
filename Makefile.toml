@@ -39,7 +39,7 @@ args = [
 cwd = "src/esthri"
 
 [tasks.test]
-env = { "RUST_LOG" = "esthri=debug", "RUST_BACKTRACE" = "1" }
+env = { RUST_LOG = "esthri=debug", RUST_BACKTRACE = "1" }
 cwd = "src/esthri"
 command = "cargo"
 args = [
