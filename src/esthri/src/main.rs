@@ -148,7 +148,12 @@ async fn async_main() -> Result<()> {
     use Command::*;
 
     match cli.cmd {
-        Put { bucket, key, file, compress } => {
+        Put {
+            bucket,
+            key,
+            file,
+            compress,
+        } => {
             setup_upload_termination_handler();
             if compress {
                 upload_compressed(&s3, &bucket, &key, &file).await?;
@@ -157,7 +162,12 @@ async fn async_main() -> Result<()> {
             }
         }
 
-        Get { bucket, key, file, decompress } => {
+        Get {
+            bucket,
+            key,
+            file,
+            decompress,
+        } => {
             if decompress {
                 download_decompressed(&s3, &bucket, &key, &file).await?;
             } else {

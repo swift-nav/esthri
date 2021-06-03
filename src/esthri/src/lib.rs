@@ -22,12 +22,12 @@ use std::io::ErrorKind;
 use std::io::SeekFrom;
 use std::marker::Unpin;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::result::Result as StdResult;
 use std::sync::Mutex;
 
 use crypto::digest::Digest;
 use crypto::md5::Md5;
-use futures::AsyncBufRead;
 use futures::future::BoxFuture;
 use futures::{stream, Future, Stream, StreamExt, TryStream, TryStreamExt};
 use glob::Pattern;
@@ -36,7 +36,7 @@ use log::*;
 use log_derive::logfn;
 use once_cell::sync::Lazy;
 use tokio::{
-    io::AsyncReadExt,
+    io::{AsyncRead, AsyncReadExt},
     task::{self, JoinError, JoinHandle},
 };
 use walkdir::WalkDir;
@@ -45,7 +45,7 @@ use walkdir::WalkDir;
 use async_compression::tokio::bufread::GzipDecoder;
 
 #[cfg(feature = "compression")]
-use flate2::{Compression, read::GzEncoder};
+use flate2::{read::GzEncoder, Compression};
 
 pub use crate::errors::{Error, Result};
 
@@ -129,7 +129,13 @@ where
     Ok(())
 }
 
-async fn upload_helper<T, P, SR0, SR1>(s3: &T, bucket: SR0, key: SR1, file: P, compressed: bool) -> Result<()>
+async fn upload_helper<T, P, SR0, SR1>(
+    s3: &T,
+    bucket: SR0,
+    key: SR1,
+    file: P,
+    compressed: bool,
+) -> Result<()>
 where
     T: S3 + Send + Clone,
     P: AsRef<Path>,
@@ -441,12 +447,11 @@ where
     goo.body.ok_or(Error::GetObjectOutputBodyNone)
 }
 
-async fn read_all<ClientT, ReaderT>(
+async fn read_all<ReaderT>(
     initial_buffer_size: usize,
     mut reader: ReaderT,
 ) -> Result<(usize, Vec<u8>)>
 where
-    ClientT: S3 + Send + Clone,
     ReaderT: AsyncReadExt + Unpin,
 {
     let mut blob = vec![0u8; initial_buffer_size];
@@ -499,11 +504,7 @@ where
     }
 }
 
-use tokio::io::AsyncRead;
-use std::pin::Pin;
-
-fn create_reader(stream: ByteStream, decompress: bool) -> Pin<Box<dyn AsyncRead + Send + Sync>>
-{
+fn create_reader(stream: ByteStream, decompress: bool) -> Pin<Box<dyn AsyncRead + Send + Sync>> {
     let async_reader = stream.into_async_read();
     let buf_reader = tokio::io::BufReader::new(async_reader);
 
@@ -521,20 +522,33 @@ fn create_reader(stream: ByteStream, decompress: bool) -> Pin<Box<dyn AsyncRead 
     }
 }
 
-trait Downloader<'a, T: S3 + Send + Clone + Sized + 'a> {
-    type Chunk: DownloaderChunk + Send;
-    fn create_future(self, client: T) -> Option<(BoxFuture<'a, Result<Self::Chunk>>, (Self, T))>
-        where Self: Sized;
+trait Downloader {
+    type Chunk: DownloaderChunk + Sized;
+
+    fn create_future<'a, T>(
+        self,
+        client: T,
+    ) -> Option<(BoxFuture<'a, Result<Self::Chunk>>, (Self, T))>
+    where
+        T: S3 + Send + Sync + Clone + Sized + 'a,
+        Self: Sized;
+
+    fn concurrent_downloader_tasks(&self) -> usize;
+
+    fn concurrent_writer_tasks(&self) -> usize;
 }
 
-trait DownloaderChunk { }
+trait DownloaderChunk {
+    fn write_chunk(self, writer: File) -> Result<()>;
+}
 
 struct DownloadMultipleChunk(u64, usize, Vec<u8>);
 
-#[derive(Debug, Clone, Copy)]
-struct DownloadMultipleParams(ReadState);
-
-impl DownloaderChunk for DownloadMultipleChunk { }
+impl DownloaderChunk for DownloadMultipleChunk {
+    fn write_chunk(self, writer: File) -> Result<()> {
+        write_all_at(writer, self.0, self.2, self.1)
+    }
+}
 
 struct DownloadMultiple {
     bucket: String,
@@ -544,8 +558,7 @@ struct DownloadMultiple {
 }
 
 impl DownloadMultiple {
-    fn new(bucket: impl Into<String>, key: impl Into<String>, total_size: u64) -> Self
-    {
+    fn new(bucket: impl Into<String>, key: impl Into<String>, total_size: u64) -> Self {
         let download_buffer_size = Config::global().download_buffer_size();
         let read_state = ReadState::new(download_buffer_size, total_size);
 
@@ -558,22 +571,26 @@ impl DownloadMultiple {
     }
 }
 
-impl<'a, T: S3 + Send + Sync + Clone + 'a> Downloader<'a, T> for DownloadMultiple {
-
+impl Downloader for DownloadMultiple {
     type Chunk = DownloadMultipleChunk;
 
-    fn create_future(mut self, client_in: T) -> Option<(BoxFuture<'a, Result<Self::Chunk>>, (Self, T))> {
+    fn create_future<'a, T>(
+        mut self,
+        client_in: T,
+    ) -> Option<(BoxFuture<'a, Result<Self::Chunk>>, (Self, T))>
+    where
+        T: S3 + Send + Sync + Clone + 'a,
+    {
         if self.read_state.complete() {
             None
         } else {
             let client = client_in.clone();
             let bucket = self.bucket.clone();
-            let key= self.key.clone();
+            let key = self.key.clone();
             let range = self.read_state;
             let fut = async move {
                 let client = client.clone();
-                let stream =
-                    download_streaming_range(&client, &bucket, &key, Some(range)).await?;
+                let stream = download_streaming_range(&client, &bucket, &key, Some(range)).await?;
                 let reader = create_reader(stream, false);
                 let (read_size, buffer) = read_exact(&client, bucket, key, reader, &range).await?;
                 Ok(DownloadMultipleChunk(range.offset(), read_size, buffer))
@@ -582,16 +599,91 @@ impl<'a, T: S3 + Send + Sync + Clone + 'a> Downloader<'a, T> for DownloadMultipl
             Some((Box::pin(fut), (self, client_in.clone())))
         }
     }
+
+    fn concurrent_downloader_tasks(&self) -> usize {
+        Config::global().concurrent_downloader_tasks()
+    }
+
+    fn concurrent_writer_tasks(&self) -> usize {
+        Config::global().concurrent_writer_tasks()
+    }
+}
+
+struct DownloadCompressedChunk(usize, Vec<u8>);
+
+impl DownloaderChunk for DownloadCompressedChunk {
+    fn write_chunk(self, writer: File) -> Result<()> {
+        write_all(writer, self.1, self.0)
+    }
+}
+struct DownloadCompressed {
+    bucket: String,
+    key: String,
+    read_state: ReadState,
+    read_size: usize,
+}
+
+impl DownloadCompressed {
+    fn new(bucket: impl Into<String>, key: impl Into<String>, total_size: u64) -> Self {
+        let download_buffer_size = Config::global().download_buffer_size();
+        let read_state = ReadState::new(download_buffer_size, total_size);
+
+        DownloadCompressed {
+            key: key.into(),
+            bucket: bucket.into(),
+            read_state,
+            read_size: read_state.read_size(),
+        }
+    }
+}
+
+impl Downloader for DownloadCompressed {
+    type Chunk = DownloadCompressedChunk;
+
+    fn create_future<'a, T>(
+        mut self,
+        client_in: T,
+    ) -> Option<(BoxFuture<'a, Result<Self::Chunk>>, (Self, T))>
+    where
+        T: S3 + Send + Sync + Clone + 'a,
+    {
+        if self.read_state.complete() {
+            None
+        } else {
+            let client = client_in.clone();
+            let bucket = self.bucket.clone();
+            let key = self.key.clone();
+            let range = self.read_state;
+            let fut = async move {
+                let client = client.clone();
+                let stream = download_streaming_range(&client, &bucket, &key, Some(range)).await?;
+                let reader = create_reader(stream, true);
+                let initial_buffer_size = Config::global().download_buffer_size();
+                let (read_size, buffer) = read_all(initial_buffer_size, reader).await?;
+                Ok(DownloadCompressedChunk(read_size, buffer))
+            };
+            self.read_size = self.read_state.update(self.read_size);
+            Some((Box::pin(fut), (self, client_in.clone())))
+        }
+    }
+
+    fn concurrent_downloader_tasks(&self) -> usize {
+        2
+    }
+
+    fn concurrent_writer_tasks(&self) -> usize {
+        1
+    }
 }
 
 fn create_download_readers_stream<'a, ClientT, DownloaderT, ChunkT>(
-    s3: &'a ClientT,
+    s3: ClientT,
     downloader: DownloaderT,
 ) -> impl Stream<Item = BoxFuture<'a, Result<ChunkT>>> + 'a
 where
-    ClientT: S3 + Send + Clone + 'a,
+    ClientT: S3 + Sync + Send + Clone + 'a,
     ChunkT: DownloaderChunk,
-    DownloaderT: Downloader<'a, ClientT, Chunk = ChunkT> + 'a,
+    DownloaderT: Downloader<Chunk = ChunkT> + 'a,
 {
     let s3 = s3.clone();
     let state = (downloader, s3);
@@ -630,28 +722,34 @@ fn write_all_at(writer: File, file_offset: u64, buffer: Vec<u8>, length: usize) 
     }
 }
 
-fn map_download_readers_to_writer<'a, T>(
-    chunk_stream: T,
+fn map_download_readers_to_writer<'a, StreamT, ChunkT>(
+    chunk_stream: StreamT,
     writer: File,
 ) -> impl Stream<Item = impl Future<Output = Result<()>> + 'a> + 'a
 where
-    T: Stream<Item = Result<DownloadMultipleChunk>> + 'a,
+    StreamT: Stream<Item = Result<ChunkT>> + 'a,
+    ChunkT: DownloaderChunk + 'a,
 {
     chunk_stream
         .map(move |chunk| {
             let writer = writer.try_clone()?;
-            let chunk = chunk?;
-            Ok((writer, chunk.0, chunk.1, chunk.2))
+            Ok((writer, chunk?))
         })
-        .map(|value: Result<(File, u64, usize, Vec<u8>)>| async move {
-            let (writer, file_offset, length, buffer) = value?;
-            write_all_at(writer, file_offset, buffer, length)
+        .map(|value: Result<(File, ChunkT)>| async move {
+            let (writer, chunk) = value?;
+            chunk.write_chunk(writer)
         })
 }
 
-async fn download_helper<T, P, SR0, SR1>(s3: &T, bucket: SR0, key: SR1, file: P, decompress: bool) -> Result<()>
+async fn download_helper<ClientT, P, SR0, SR1>(
+    s3: &ClientT,
+    bucket: SR0,
+    key: SR1,
+    file: P,
+    decompress: bool,
+) -> Result<()>
 where
-    T: S3 + Send + Sync + Clone,
+    ClientT: S3 + Send + Sync + Clone,
     P: AsRef<Path>,
     SR0: AsRef<str>,
     SR1: AsRef<str>,
@@ -661,21 +759,39 @@ where
     let file_output = File::create(file)?;
 
     let stat = head_object_request(s3, bucket.clone(), key.clone()).await?;
-    let total_size = stat.ok_or_else(|| Error::GetObjectInvalidKey(key.into()))?.size as u64;
+    let total_size = stat
+        .ok_or_else(|| Error::GetObjectInvalidKey(key.into()))?
+        .size as u64;
 
-    let downloader = DownloadMultiple::new(bucket, key, total_size);
+    fn run_downloader<'a, T: Downloader + 'a, ClientT>(
+        s3: ClientT,
+        downloader: T,
+        file_output: File,
+    ) -> impl Future<Output = Result<()>> + 'a
+    where
+        ClientT: S3 + Send + Sync + Clone + 'a,
+    {
+        let concurrent_downloader_tasks = downloader.concurrent_downloader_tasks();
+        let concurrent_writer_tasks = downloader.concurrent_writer_tasks();
 
-    let reader_chunk_stream = create_download_readers_stream(s3, downloader)
-        .buffer_unordered(Config::global().concurrent_downloader_tasks());
+        let reader_chunk_stream = create_download_readers_stream(s3, downloader)
+            .buffer_unordered(concurrent_downloader_tasks);
 
-    let reader_result_stream = map_download_readers_to_writer(reader_chunk_stream, file_output);
+        let reader_result_stream = map_download_readers_to_writer(reader_chunk_stream, file_output);
 
-    reader_result_stream
-        .buffer_unordered(Config::global().concurrent_writer_tasks())
-        .try_collect()
-        .await?;
+        reader_result_stream
+            .buffer_unordered(concurrent_writer_tasks)
+            .try_collect()
+    }
 
-    Ok(())
+    if decompress {
+        debug!("download decompressed...");
+        let downloader = DownloadCompressed::new(bucket, key, total_size);
+        run_downloader(s3.clone(), downloader, file_output).await
+    } else {
+        let downloader = DownloadMultiple::new(bucket, key, total_size);
+        run_downloader(s3.clone(), downloader, file_output).await
+    }
 }
 
 pub async fn download_streaming<T, SR0, SR1>(s3: &T, bucket: SR0, key: SR1) -> Result<ByteStream>
@@ -709,7 +825,12 @@ where
 
 #[cfg(feature = "compression")]
 #[logfn(err = "ERROR")]
-pub async fn download_decompressed<T, P, SR0, SR1>(s3: &T, bucket: SR0, key: SR1, file: P) -> Result<()>
+pub async fn download_decompressed<T, P, SR0, SR1>(
+    s3: &T,
+    bucket: SR0,
+    key: SR1,
+    file: P,
+) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
     P: AsRef<Path>,
