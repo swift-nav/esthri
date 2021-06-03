@@ -83,11 +83,9 @@ pub const INCLUDE_EMPTY: Option<&[&str]> = None;
 pub const EXCLUDE_EMPTY: Option<&[&str]> = None;
 
 #[logfn(err = "ERROR")]
-pub async fn head_object<T, SR0, SR1>(s3: &T, bucket: SR0, key: SR1) -> Result<Option<ObjectInfo>>
+pub async fn head_object<T>(s3: &T, bucket: impl AsRef<str>, key: impl AsRef<str>) -> Result<Option<ObjectInfo>>
 where
     T: S3 + Send,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
 {
     let (bucket, key) = (bucket.as_ref(), key.as_ref());
     info!("head-object: bucket={}, key={}", bucket, key);
@@ -95,17 +93,14 @@ where
 }
 
 #[logfn(err = "ERROR")]
-pub async fn abort_upload<T, SR0, SR1, SR2>(
+pub async fn abort_upload<T>(
     s3: &T,
-    bucket: SR0,
-    key: SR1,
-    upload_id: SR2,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+    upload_id: impl AsRef<str>,
 ) -> Result<()>
 where
     T: S3 + Send,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
-    SR2: AsRef<str>,
 {
     let (bucket, key, upload_id) = (bucket.as_ref(), key.as_ref(), upload_id.as_ref());
 
@@ -129,18 +124,15 @@ where
     Ok(())
 }
 
-async fn upload_helper<T, P, SR0, SR1>(
+async fn upload_helper<T>(
     s3: &T,
-    bucket: SR0,
-    key: SR1,
-    file: P,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+    file: impl AsRef<Path>,
     compressed: bool,
 ) -> Result<()>
 where
     T: S3 + Send + Clone,
-    P: AsRef<Path>,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
 {
     let (bucket, key, file) = (bucket.as_ref(), key.as_ref(), file.as_ref());
 
@@ -177,12 +169,9 @@ where
 }
 
 #[logfn(err = "ERROR")]
-pub async fn upload<T, P, SR0, SR1>(s3: &T, bucket: SR0, key: SR1, file: P) -> Result<()>
+pub async fn upload<T>(s3: &T, bucket: impl AsRef<str>, key: impl AsRef<str>, file: impl AsRef<Path>) -> Result<()>
 where
     T: S3 + Send + Clone,
-    P: AsRef<Path>,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
 {
     info!(
         "put: bucket={}, key={}, file={}",
@@ -197,12 +186,9 @@ where
 
 #[cfg(feature = "compression")]
 #[logfn(err = "ERROR")]
-pub async fn upload_compressed<T, P, SR0, SR1>(s3: &T, bucket: SR0, key: SR1, file: P) -> Result<()>
+pub async fn upload_compressed<T>(s3: &T, bucket: impl AsRef<str>, key: impl AsRef<str>, file: impl AsRef<Path>) -> Result<()>
 where
     T: S3 + Send + Clone,
-    P: AsRef<Path>,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
 {
     info!(
         "put(compressed): bucket={}, key={}, file={}",
@@ -242,19 +228,16 @@ async fn create_file_chunk_stream<R: Read>(
     }
 }
 
-async fn create_chunk_upload_stream<StreamT, ClientT, SR0, SR1, SR2>(
+async fn create_chunk_upload_stream<StreamT, ClientT>(
     source_stream: StreamT,
     s3: ClientT,
-    upload_id: SR0,
-    bucket: SR1,
-    key: SR2,
+    upload_id: impl Into<String> + Clone,
+    bucket: impl Into<String> + Clone,
+    key: impl Into<String> + Clone,
 ) -> impl Stream<Item = impl Future<Output = Result<CompletedPart>>>
 where
     StreamT: Stream<Item = Result<(i64, Vec<u8>)>>,
     ClientT: S3 + Send + Clone,
-    SR0: Clone + Into<String>,
-    SR1: Clone + Into<String>,
-    SR2: Clone + Into<String>,
 {
     source_stream
         .map(move |value| {
@@ -297,18 +280,16 @@ where
 }
 
 #[logfn(err = "ERROR")]
-pub async fn upload_from_reader<T, R, SR0, SR1>(
+pub async fn upload_from_reader<T, R>(
     s3: &T,
-    bucket: SR0,
-    key: SR1,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
     mut reader: R,
     file_size: u64,
 ) -> Result<()>
 where
     T: S3 + Send + Clone,
     R: Read,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
 {
     let upload_part_size = Config::global().upload_part_size();
     let (bucket, key) = (bucket.as_ref(), key.as_ref());
@@ -411,16 +392,14 @@ where
     Ok(())
 }
 
-async fn download_streaming_range<T, SR0, SR1>(
+async fn download_streaming_range<T>(
     s3: &T,
-    bucket: SR0,
-    key: SR1,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
     range: Option<ReadState>,
 ) -> Result<ByteStream>
 where
     T: S3 + Send + Clone,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
 {
     let (bucket, key) = (bucket.as_ref(), key.as_ref());
 
@@ -479,7 +458,6 @@ where
     ReaderT: AsyncReadExt + Unpin,
 {
     let read_expected = range.read_size();
-    let s3 = s3.clone();
     let mut blob = vec![0u8; read_expected as usize];
     loop {
         let result = reader.read_exact(&mut blob).await;
@@ -522,13 +500,15 @@ fn create_reader(stream: ByteStream, decompress: bool) -> Pin<Box<dyn AsyncRead 
     }
 }
 
+type DownloaderResult<'a, ClientT, ChunkT, SelfT> = (BoxFuture<'a, Result<ChunkT>>, (SelfT, ClientT));
+
 trait Downloader {
     type Chunk: DownloaderChunk + Sized;
 
     fn create_future<'a, T>(
         self,
         client: T,
-    ) -> Option<(BoxFuture<'a, Result<Self::Chunk>>, (Self, T))>
+    ) -> Option<DownloaderResult<'a, T, Self::Chunk, Self>>
     where
         T: S3 + Send + Sync + Clone + Sized + 'a,
         Self: Sized;
@@ -577,7 +557,7 @@ impl Downloader for DownloadMultiple {
     fn create_future<'a, T>(
         mut self,
         client_in: T,
-    ) -> Option<(BoxFuture<'a, Result<Self::Chunk>>, (Self, T))>
+    ) -> Option<DownloaderResult<'a, T, Self::Chunk, Self>>
     where
         T: S3 + Send + Sync + Clone + 'a,
     {
@@ -596,7 +576,7 @@ impl Downloader for DownloadMultiple {
                 Ok(DownloadMultipleChunk(range.offset(), read_size, buffer))
             };
             self.read_size = self.read_state.update(self.read_size);
-            Some((Box::pin(fut), (self, client_in.clone())))
+            Some((Box::pin(fut), (self, client_in)))
         }
     }
 
@@ -643,7 +623,7 @@ impl Downloader for DownloadCompressed {
     fn create_future<'a, T>(
         mut self,
         client_in: T,
-    ) -> Option<(BoxFuture<'a, Result<Self::Chunk>>, (Self, T))>
+    ) -> Option<DownloaderResult<'a, T, Self::Chunk, Self>>
     where
         T: S3 + Send + Sync + Clone + 'a,
     {
@@ -663,7 +643,7 @@ impl Downloader for DownloadCompressed {
                 Ok(DownloadCompressedChunk(read_size, buffer))
             };
             self.read_size = self.read_state.update(self.read_size);
-            Some((Box::pin(fut), (self, client_in.clone())))
+            Some((Box::pin(fut), (self, client_in)))
         }
     }
 
@@ -685,7 +665,6 @@ where
     ChunkT: DownloaderChunk,
     DownloaderT: Downloader<Chunk = ChunkT> + 'a,
 {
-    let s3 = s3.clone();
     let state = (downloader, s3);
 
     Box::pin(stream::unfold(state, |(downloader, s3)| async move {
@@ -741,24 +720,21 @@ where
         })
 }
 
-async fn download_helper<ClientT, P, SR0, SR1>(
-    s3: &ClientT,
-    bucket: SR0,
-    key: SR1,
-    file: P,
+async fn download_helper<T>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+    file: impl AsRef<Path>,
     decompress: bool,
 ) -> Result<()>
 where
-    ClientT: S3 + Send + Sync + Clone,
-    P: AsRef<Path>,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
+    T: S3 + Send + Sync + Clone,
 {
     let (bucket, key, file) = (bucket.as_ref(), key.as_ref(), file.as_ref());
 
     let file_output = File::create(file)?;
 
-    let stat = head_object_request(s3, bucket.clone(), key.clone()).await?;
+    let stat = head_object_request(s3, bucket, key).await?;
     let total_size = stat
         .ok_or_else(|| Error::GetObjectInvalidKey(key.into()))?
         .size as u64;
@@ -785,7 +761,6 @@ where
     }
 
     if decompress {
-        debug!("download decompressed...");
         let downloader = DownloadCompressed::new(bucket, key, total_size);
         run_downloader(s3.clone(), downloader, file_output).await
     } else {
@@ -794,23 +769,18 @@ where
     }
 }
 
-pub async fn download_streaming<T, SR0, SR1>(s3: &T, bucket: SR0, key: SR1) -> Result<ByteStream>
+pub async fn download_streaming<T>(s3: &T, bucket: impl AsRef<str>, key: impl AsRef<str>) -> Result<ByteStream>
 where
     T: S3 + Send + Clone,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
 {
     let range = None;
     download_streaming_range(s3, bucket, key, range).await
 }
 
 #[logfn(err = "ERROR")]
-pub async fn download<T, P, SR0, SR1>(s3: &T, bucket: SR0, key: SR1, file: P) -> Result<()>
+pub async fn download<T>(s3: &T, bucket: impl AsRef<str>, key: impl AsRef<str>, file: impl AsRef<Path>) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
-    P: AsRef<Path>,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
 {
     info!(
         "get: bucket={}, key={}, file={}",
@@ -825,17 +795,14 @@ where
 
 #[cfg(feature = "compression")]
 #[logfn(err = "ERROR")]
-pub async fn download_decompressed<T, P, SR0, SR1>(
+pub async fn download_decompressed<T>(
     s3: &T,
-    bucket: SR0,
-    key: SR1,
-    file: P,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+    file: impl AsRef<Path>,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
-    P: AsRef<Path>,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
 {
     info!(
         "get(decompress): bucket={}, key={}, file={}",
@@ -849,17 +816,15 @@ where
 }
 
 #[logfn(err = "ERROR")]
-pub async fn sync<T, SR0, SR1>(
+pub async fn sync<T>(
     s3: &T,
     source: SyncParam,
     destination: SyncParam,
-    includes: Option<&[SR0]>,
-    excludes: Option<&[SR1]>,
+    includes: Option<&[impl AsRef<str>]>,
+    excludes: Option<&[impl AsRef<str>]>,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
 {
     let mut glob_excludes: Vec<Pattern> = vec![];
     let mut glob_includes: Vec<Pattern> = vec![];
@@ -950,22 +915,18 @@ where
 }
 
 #[logfn(err = "ERROR")]
-pub async fn list_objects<T, SR0, SR1>(s3: &T, bucket: SR0, key: SR1) -> Result<Vec<String>>
+pub async fn list_objects<T>(s3: &T, bucket: impl AsRef<str>, key: impl AsRef<str>) -> Result<Vec<String>>
 where
     T: S3 + Send,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
 {
     let none: Option<&str> = None;
     list_objects_with_delim(s3, bucket, key, none).await
 }
 
 #[logfn(err = "ERROR")]
-pub async fn list_directory<T, SR0, SR1>(s3: &T, bucket: SR0, dir_path: SR1) -> Result<Vec<String>>
+pub async fn list_directory<T>(s3: &T, bucket: impl AsRef<str>, dir_path: impl AsRef<str>) -> Result<Vec<String>>
 where
     T: S3 + Send,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
 {
     list_objects_with_delim(s3, bucket, dir_path, Some("/")).await
 }
@@ -1004,15 +965,13 @@ where
     Ok(keys)
 }
 
-pub fn list_objects_stream<'a, T, SR0, SR1>(
+pub fn list_objects_stream<'a, T>(
     s3: &'a T,
-    bucket: SR0,
-    key: SR1,
+    bucket: impl AsRef<str> + 'a,
+    key: impl AsRef<str> + 'a,
 ) -> impl TryStream<Ok = Vec<S3ListingItem>, Error = Error> + Unpin + 'a
 where
     T: S3 + Send,
-    SR0: AsRef<str> + 'a,
-    SR1: AsRef<str> + 'a,
 {
     let no_delim: Option<&str> = None;
     list_objects_stream_with_delim(s3, bucket, key, no_delim)
@@ -1030,17 +989,14 @@ where
     list_objects_stream_with_delim(s3, bucket, key, slash_delim)
 }
 
-fn list_objects_stream_with_delim<'a, T, SR0, SR1, SR2>(
-    s3: &'a T,
-    bucket: SR0,
-    key: SR1,
-    delimiter: Option<SR2>,
-) -> impl TryStream<Ok = Vec<S3ListingItem>, Error = Error> + Unpin + 'a
+fn list_objects_stream_with_delim<T>(
+    s3: &'_ T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+    delimiter: Option<impl AsRef<str>>,
+) -> impl TryStream<Ok = Vec<S3ListingItem>, Error = Error> + Unpin + '_
 where
     T: S3 + Send,
-    SR0: AsRef<str> + 'a,
-    SR1: AsRef<str> + 'a,
-    SR2: AsRef<str> + 'a,
 {
     let (bucket, key) = (bucket.as_ref().to_owned(), key.as_ref().to_owned());
 
@@ -1116,9 +1072,7 @@ pub fn setup_upload_termination_handler() {
     .expect("Error setting Ctrl-C handler");
 }
 
-pub fn s3_compute_etag<P>(path: P) -> Result<String>
-where
-    P: AsRef<Path>,
+pub fn s3_compute_etag(path: impl AsRef<Path>) -> Result<String>
 {
     let path = path.as_ref();
     if !path.exists() {
@@ -1226,15 +1180,13 @@ fn process_head_obj_resp(hoo: HeadObjectOutput) -> Result<Option<ObjectInfo>> {
 }
 
 #[logfn(err = "ERROR")]
-async fn head_object_request<T, SR0, SR1>(
+async fn head_object_request<T>(
     s3: &T,
-    bucket: SR0,
-    key: SR1,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
 ) -> Result<Option<ObjectInfo>>
 where
     T: S3,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
 {
     let (bucket, key) = (bucket.as_ref(), key.as_ref());
     let mut res = Some(
@@ -1363,12 +1315,12 @@ fn process_globs<'a, P: AsRef<Path> + 'a>(
     }
 }
 
-async fn download_with_dir<T, P: AsRef<Path>>(
+async fn download_with_dir<T>(
     s3: &T,
     bucket: &str,
     s3_prefix: &str,
     s3_suffix: &str,
-    local_dir: P,
+    local_dir: impl AsRef<Path>,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
@@ -1498,17 +1450,16 @@ where
         })
 }
 
-async fn sync_local_to_remote<T, P>(
+async fn sync_local_to_remote<T>(
     s3: &T,
     bucket: &str,
     key: &str,
-    directory: P,
+    directory: impl AsRef<Path>,
     glob_includes: &[Pattern],
     glob_excludes: &[Pattern],
 ) -> Result<()>
 where
     T: S3 + Send + Clone,
-    P: AsRef<Path>,
 {
     let directory = directory.as_ref();
 
@@ -1736,11 +1687,11 @@ where
         })
 }
 
-async fn sync_remote_to_local<T, P: AsRef<Path>>(
+async fn sync_remote_to_local<T>(
     s3: &T,
     bucket: &str,
     key: &str,
-    directory: P,
+    directory: impl AsRef<Path>,
     glob_includes: &[Pattern],
     glob_excludes: &[Pattern],
 ) -> Result<()>
