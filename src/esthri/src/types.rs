@@ -126,14 +126,14 @@ pub struct S3Object {
 
 /// Used to track parallel reads when downloading data from S3.
 #[derive(Debug, Clone, Copy)]
-pub(super) struct ReadSize {
+pub(super) struct ReadState {
     read_size: usize,
     remaining: u64,
     offset: u64,
     total: u64,
 }
 
-impl ToString for ReadSize {
+impl ToString for ReadState {
     fn to_string(&self) -> String {
         format!(
             "bytes={}-{}",
@@ -143,7 +143,7 @@ impl ToString for ReadSize {
     }
 }
 
-impl ReadSize {
+impl ReadState {
     /// Creates an object for tracking read sizes and offsets when requesting data from S3.  Goals
     /// are as follows:
     /// * Uses [ToString@ReadSize] to build a Range header value to request data from S3, see the [MDN docs](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Range) and [S3 docs](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html#API_GetObject_RequestSyntax) for reference
@@ -154,7 +154,7 @@ impl ReadSize {
     /// * `read_size` - the size of each read to request from S3
     /// * `total` - the total size of the remote object on S3
     pub(super) fn new(read_size: usize, total: u64) -> Self {
-        ReadSize {
+        ReadState {
             offset: 0,
             read_size: usize::min(total as usize, read_size),
             remaining: total,

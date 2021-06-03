@@ -44,6 +44,9 @@ struct Cli {
 enum Command {
     /// Upload an object to S3
     Put {
+        /// Should the file be compressed during upload
+        #[structopt(long)]
+        compress: bool,
         #[structopt(long)]
         bucket: String,
         #[structopt(long)]
@@ -53,6 +56,9 @@ enum Command {
     },
     /// Download an object from S3
     Get {
+        /// Should the file be decompressed during download
+        #[structopt(long)]
+        decompress: bool,
         #[structopt(long)]
         bucket: String,
         #[structopt(long)]
@@ -142,13 +148,21 @@ async fn async_main() -> Result<()> {
     use Command::*;
 
     match cli.cmd {
-        Put { bucket, key, file } => {
+        Put { bucket, key, file, compress } => {
             setup_upload_termination_handler();
-            upload(&s3, &bucket, &key, &file).await?;
+            if compress {
+                upload_compressed(&s3, &bucket, &key, &file).await?;
+            } else {
+                upload(&s3, &bucket, &key, &file).await?;
+            }
         }
 
-        Get { bucket, key, file } => {
-            download(&s3, &bucket, &key, &file).await?;
+        Get { bucket, key, file, decompress } => {
+            if decompress {
+                download_decompressed(&s3, &bucket, &key, &file).await?;
+            } else {
+                download(&s3, &bucket, &key, &file).await?;
+            }
         }
 
         Abort {

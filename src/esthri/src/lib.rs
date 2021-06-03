@@ -19,6 +19,7 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufReader;
 use std::io::ErrorKind;
+use std::io::SeekFrom;
 use std::marker::Unpin;
 use std::path::{Path, PathBuf};
 use std::result::Result as StdResult;
@@ -26,6 +27,8 @@ use std::sync::Mutex;
 
 use crypto::digest::Digest;
 use crypto::md5::Md5;
+use futures::AsyncBufRead;
+use futures::future::BoxFuture;
 use futures::{stream, Future, Stream, StreamExt, TryStream, TryStreamExt};
 use glob::Pattern;
 use hyper::client::connect::HttpConnector;
@@ -37,6 +40,12 @@ use tokio::{
     task::{self, JoinError, JoinHandle},
 };
 use walkdir::WalkDir;
+
+#[cfg(feature = "compression")]
+use async_compression::tokio::bufread::GzipDecoder;
+
+#[cfg(feature = "compression")]
+use flate2::{Compression, read::GzEncoder};
 
 pub use crate::errors::{Error, Result};
 
@@ -55,7 +64,7 @@ use crate::retry::handle_dispatch_error;
 use crate::rusoto::*;
 
 use crate::config::Config;
-use crate::types::{GlobalData, ListingMetadata, MapEtagResult, ReadSize, S3Listing};
+use crate::types::{GlobalData, ListingMetadata, MapEtagResult, ReadState, S3Listing};
 pub use crate::types::{ObjectInfo, S3ListingItem, S3Object, SyncParam};
 
 const EXPECT_GLOBAL_DATA: &str = "failed to lock global data";
@@ -120,7 +129,7 @@ where
     Ok(())
 }
 
-pub async fn upload<T, P, SR0, SR1>(s3: &T, bucket: SR0, key: SR1, file: P) -> Result<()>
+async fn upload_helper<T, P, SR0, SR1>(s3: &T, bucket: SR0, key: SR1, file: P, compressed: bool) -> Result<()>
 where
     T: S3 + Send + Clone,
     P: AsRef<Path>,
@@ -128,26 +137,76 @@ where
     SR1: AsRef<str>,
 {
     let (bucket, key, file) = (bucket.as_ref(), key.as_ref(), file.as_ref());
-    info!(
-        "put: bucket={}, key={}, file={}",
-        bucket,
-        key,
-        file.display()
-    );
 
     if file.exists() {
         let stat = fs::metadata(&file)?;
         let file_size = stat.len();
-
-        debug!("file_size: {}", file_size);
-
         let f = File::open(file)?;
-        let mut reader = BufReader::new(f);
-
-        upload_from_reader(s3, bucket, key, &mut reader, file_size).await
+        if compressed {
+            #[cfg(feature = "compression")]
+            {
+                debug!("old file_size: {}", file_size);
+                debug!("compressing: {}", file.display());
+                let mut reader = GzEncoder::new(BufReader::new(f), Compression::default());
+                let mut temp_compressed = tempfile::tempfile()?;
+                std::io::copy(&mut reader, &mut temp_compressed)?;
+                temp_compressed.flush()?;
+                temp_compressed.seek(SeekFrom::Start(0))?;
+                let file_size = temp_compressed.metadata()?.len();
+                debug!("new file_size: {}", file_size);
+                upload_from_reader(s3, bucket, key, &mut temp_compressed, file_size).await
+            }
+            #[cfg(not(feature = "compression"))]
+            {
+                panic!("compression feature not enabled");
+            }
+        } else {
+            debug!("file_size: {}", file_size);
+            let mut reader = BufReader::new(f);
+            upload_from_reader(s3, bucket, key, &mut reader, file_size).await
+        }
     } else {
         Err(Error::InvalidSourceFile(file.into()))
     }
+}
+
+#[logfn(err = "ERROR")]
+pub async fn upload<T, P, SR0, SR1>(s3: &T, bucket: SR0, key: SR1, file: P) -> Result<()>
+where
+    T: S3 + Send + Clone,
+    P: AsRef<Path>,
+    SR0: AsRef<str>,
+    SR1: AsRef<str>,
+{
+    info!(
+        "put: bucket={}, key={}, file={}",
+        bucket.as_ref(),
+        key.as_ref(),
+        file.as_ref().display()
+    );
+
+    let compressed = false;
+    upload_helper(s3, bucket, key, file, compressed).await
+}
+
+#[cfg(feature = "compression")]
+#[logfn(err = "ERROR")]
+pub async fn upload_compressed<T, P, SR0, SR1>(s3: &T, bucket: SR0, key: SR1, file: P) -> Result<()>
+where
+    T: S3 + Send + Clone,
+    P: AsRef<Path>,
+    SR0: AsRef<str>,
+    SR1: AsRef<str>,
+{
+    info!(
+        "put(compressed): bucket={}, key={}, file={}",
+        bucket.as_ref(),
+        key.as_ref(),
+        file.as_ref().display()
+    );
+
+    let compressed = true;
+    upload_helper(s3, bucket, key, file, compressed).await
 }
 
 async fn create_file_chunk_stream<R: Read>(
@@ -350,7 +409,7 @@ async fn download_streaming_range<T, SR0, SR1>(
     s3: &T,
     bucket: SR0,
     key: SR1,
-    range: Option<ReadSize>,
+    range: Option<ReadState>,
 ) -> Result<ByteStream>
 where
     T: S3 + Send + Clone,
@@ -382,25 +441,36 @@ where
     goo.body.ok_or(Error::GetObjectOutputBodyNone)
 }
 
-pub async fn download_streaming<T, SR0, SR1>(s3: &T, bucket: SR0, key: SR1) -> Result<ByteStream>
+async fn read_all<ClientT, ReaderT>(
+    initial_buffer_size: usize,
+    mut reader: ReaderT,
+) -> Result<(usize, Vec<u8>)>
 where
-    T: S3 + Send + Clone,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
+    ClientT: S3 + Send + Clone,
+    ReaderT: AsyncReadExt + Unpin,
 {
-    let range = None;
-    download_streaming_range(s3, bucket, key, range).await
+    let mut blob = vec![0u8; initial_buffer_size];
+    loop {
+        let result = reader.read_to_end(&mut blob).await;
+        if let Err(e) = result {
+            if e.kind() == ErrorKind::Interrupted {
+                continue;
+            }
+        } else {
+            return Ok((result?, blob));
+        }
+    }
 }
 
-async fn read_ignore_interrupted<ClientT, ReaderT>(
+async fn read_exact<ClientT, ReaderT>(
     s3: &ClientT,
     bucket: String,
     key: String,
     mut reader: ReaderT,
-    range: &ReadSize,
+    range: &ReadState,
 ) -> Result<(usize, Vec<u8>)>
 where
-    ClientT: S3 + Send + Clone,
+    ClientT: S3,
     ReaderT: AsyncReadExt + Unpin,
 {
     let read_expected = range.read_size();
@@ -408,7 +478,7 @@ where
     let mut blob = vec![0u8; read_expected as usize];
     loop {
         let result = reader.read_exact(&mut blob).await;
-        let stat = head_object_request(&s3, bucket.clone(), key.clone())
+        let stat = head_object_request(s3, bucket.clone(), key.clone())
             .await?
             .ok_or_else(|| Error::GetObjectInvalidKey(key.clone()))?;
         if stat.size as u64 != range.total() {
@@ -429,59 +499,110 @@ where
     }
 }
 
-fn create_download_readers_stream<'a, ClientT, SR0, SR1>(
-    s3: &ClientT,
-    bucket: SR0,
-    key: SR1,
-) -> impl Stream<Item = impl Future<Output = Result<(u64, usize, Vec<u8>)>>> + 'a
-where
-    ClientT: S3 + Send + Clone + 'a,
-    SR0: Into<String>,
-    SR1: Into<String>,
+use tokio::io::AsyncRead;
+use std::pin::Pin;
+
+fn create_reader(stream: ByteStream, decompress: bool) -> Pin<Box<dyn AsyncRead + Send + Sync>>
 {
-    let bucket: String = bucket.into();
-    let key: String = key.into();
-    let s3 = s3.clone();
+    let async_reader = stream.into_async_read();
+    let buf_reader = tokio::io::BufReader::new(async_reader);
 
-    let create_future = |result: Result<(ClientT, String, String, ReadSize)>| async move {
-        match result {
-            Err(error) => Err(error),
-            Ok((s3, bucket, key, range)) => {
-                let stream =
-                    download_streaming_range(&s3, bucket.clone(), key.clone(), Some(range)).await?;
-                let reader = stream.into_async_read();
-                let (read_size, buffer) =
-                    read_ignore_interrupted(&s3, bucket, key, reader, &range).await?;
-                Ok((range.offset(), read_size, buffer))
-            }
+    if decompress {
+        #[cfg(feature = "compression")]
+        {
+            Box::pin(GzipDecoder::new(buf_reader))
         }
-    };
+        #[cfg(not(feature = "compression"))]
+        {
+            panic!("compression feature not enabled");
+        }
+    } else {
+        Box::pin(buf_reader)
+    }
+}
 
-    async_stream::stream! {
-        let read_size = Config::global().download_buffer_size();
-        let stat = head_object_request(&s3, bucket.clone(), key.clone()).await;
-        if let Ok(stat) = stat {
-            if let Some(stat) = stat {
-                let mut range = ReadSize::new(read_size, stat.size as u64);
-                let mut read_size = range.read_size();
-                loop {
-                    let s3 = s3.clone();
-                    let bucket = bucket.clone();
-                    let key = key.clone();
-                    yield create_future(Ok((s3, bucket, key, range)));
-                    read_size = range.update(read_size);
-                    if range.complete() {
-                        break;
-                    }
-                }
-            } else {
-                let err = Error::GetObjectInvalidKey(key.clone());
-                yield create_future(Err(err))
-            }
-        } else {
-            yield create_future(Err(stat.err().unwrap()));
+trait Downloader<'a, T: S3 + Send + Clone + Sized + 'a> {
+    type Chunk: DownloaderChunk + Send;
+    fn create_future(self, client: T) -> Option<(BoxFuture<'a, Result<Self::Chunk>>, (Self, T))>
+        where Self: Sized;
+}
+
+trait DownloaderChunk { }
+
+struct DownloadMultipleChunk(u64, usize, Vec<u8>);
+
+#[derive(Debug, Clone, Copy)]
+struct DownloadMultipleParams(ReadState);
+
+impl DownloaderChunk for DownloadMultipleChunk { }
+
+struct DownloadMultiple {
+    bucket: String,
+    key: String,
+    read_state: ReadState,
+    read_size: usize,
+}
+
+impl DownloadMultiple {
+    fn new(bucket: impl Into<String>, key: impl Into<String>, total_size: u64) -> Self
+    {
+        let download_buffer_size = Config::global().download_buffer_size();
+        let read_state = ReadState::new(download_buffer_size, total_size);
+
+        DownloadMultiple {
+            key: key.into(),
+            bucket: bucket.into(),
+            read_state,
+            read_size: read_state.read_size(),
         }
     }
+}
+
+impl<'a, T: S3 + Send + Sync + Clone + 'a> Downloader<'a, T> for DownloadMultiple {
+
+    type Chunk = DownloadMultipleChunk;
+
+    fn create_future(mut self, client_in: T) -> Option<(BoxFuture<'a, Result<Self::Chunk>>, (Self, T))> {
+        if self.read_state.complete() {
+            None
+        } else {
+            let client = client_in.clone();
+            let bucket = self.bucket.clone();
+            let key= self.key.clone();
+            let range = self.read_state;
+            let fut = async move {
+                let client = client.clone();
+                let stream =
+                    download_streaming_range(&client, &bucket, &key, Some(range)).await?;
+                let reader = create_reader(stream, false);
+                let (read_size, buffer) = read_exact(&client, bucket, key, reader, &range).await?;
+                Ok(DownloadMultipleChunk(range.offset(), read_size, buffer))
+            };
+            self.read_size = self.read_state.update(self.read_size);
+            Some((Box::pin(fut), (self, client_in.clone())))
+        }
+    }
+}
+
+fn create_download_readers_stream<'a, ClientT, DownloaderT, ChunkT>(
+    s3: &'a ClientT,
+    downloader: DownloaderT,
+) -> impl Stream<Item = BoxFuture<'a, Result<ChunkT>>> + 'a
+where
+    ClientT: S3 + Send + Clone + 'a,
+    ChunkT: DownloaderChunk,
+    DownloaderT: Downloader<'a, ClientT, Chunk = ChunkT> + 'a,
+{
+    let s3 = s3.clone();
+    let state = (downloader, s3);
+
+    Box::pin(stream::unfold(state, |(downloader, s3)| async move {
+        downloader.create_future(s3.clone())
+    }))
+}
+
+fn write_all(mut writer: File, buffer: Vec<u8>, length: usize) -> Result<()> {
+    writer.write_all(&buffer[..length]).map_err(Error::from)
 }
 
 fn write_all_at(writer: File, file_offset: u64, buffer: Vec<u8>, length: usize) -> Result<()> {
@@ -514,13 +635,13 @@ fn map_download_readers_to_writer<'a, T>(
     writer: File,
 ) -> impl Stream<Item = impl Future<Output = Result<()>> + 'a> + 'a
 where
-    T: Stream<Item = Result<(u64, usize, Vec<u8>)>> + 'a,
+    T: Stream<Item = Result<DownloadMultipleChunk>> + 'a,
 {
     chunk_stream
-        .map(move |value| {
+        .map(move |chunk| {
             let writer = writer.try_clone()?;
-            let (file_offset, read_size, buffer) = value?;
-            Ok((writer, file_offset, read_size, buffer))
+            let chunk = chunk?;
+            Ok((writer, chunk.0, chunk.1, chunk.2))
         })
         .map(|value: Result<(File, u64, usize, Vec<u8>)>| async move {
             let (writer, file_offset, length, buffer) = value?;
@@ -528,26 +649,23 @@ where
         })
 }
 
-#[logfn(err = "ERROR")]
-pub async fn download<T, P, SR0, SR1>(s3: &T, bucket: SR0, key: SR1, file: P) -> Result<()>
+async fn download_helper<T, P, SR0, SR1>(s3: &T, bucket: SR0, key: SR1, file: P, decompress: bool) -> Result<()>
 where
-    T: S3 + Send + Clone,
+    T: S3 + Send + Sync + Clone,
     P: AsRef<Path>,
     SR0: AsRef<str>,
     SR1: AsRef<str>,
 {
     let (bucket, key, file) = (bucket.as_ref(), key.as_ref(), file.as_ref());
 
-    info!(
-        "get: bucket={}, key={}, file={}",
-        bucket,
-        key,
-        file.display()
-    );
-
     let file_output = File::create(file)?;
 
-    let reader_chunk_stream = create_download_readers_stream(s3, bucket, key)
+    let stat = head_object_request(s3, bucket.clone(), key.clone()).await?;
+    let total_size = stat.ok_or_else(|| Error::GetObjectInvalidKey(key.into()))?.size as u64;
+
+    let downloader = DownloadMultiple::new(bucket, key, total_size);
+
+    let reader_chunk_stream = create_download_readers_stream(s3, downloader)
         .buffer_unordered(Config::global().concurrent_downloader_tasks());
 
     let reader_result_stream = map_download_readers_to_writer(reader_chunk_stream, file_output);
@@ -560,6 +678,55 @@ where
     Ok(())
 }
 
+pub async fn download_streaming<T, SR0, SR1>(s3: &T, bucket: SR0, key: SR1) -> Result<ByteStream>
+where
+    T: S3 + Send + Clone,
+    SR0: AsRef<str>,
+    SR1: AsRef<str>,
+{
+    let range = None;
+    download_streaming_range(s3, bucket, key, range).await
+}
+
+#[logfn(err = "ERROR")]
+pub async fn download<T, P, SR0, SR1>(s3: &T, bucket: SR0, key: SR1, file: P) -> Result<()>
+where
+    T: S3 + Sync + Send + Clone,
+    P: AsRef<Path>,
+    SR0: AsRef<str>,
+    SR1: AsRef<str>,
+{
+    info!(
+        "get: bucket={}, key={}, file={}",
+        bucket.as_ref(),
+        key.as_ref(),
+        file.as_ref().display()
+    );
+
+    let decompress = false;
+    download_helper(s3, bucket, key, file, decompress).await
+}
+
+#[cfg(feature = "compression")]
+#[logfn(err = "ERROR")]
+pub async fn download_decompressed<T, P, SR0, SR1>(s3: &T, bucket: SR0, key: SR1, file: P) -> Result<()>
+where
+    T: S3 + Sync + Send + Clone,
+    P: AsRef<Path>,
+    SR0: AsRef<str>,
+    SR1: AsRef<str>,
+{
+    info!(
+        "get(decompress): bucket={}, key={}, file={}",
+        bucket.as_ref(),
+        key.as_ref(),
+        file.as_ref().display()
+    );
+
+    let decompress = true;
+    download_helper(s3, bucket, key, file, decompress).await
+}
+
 #[logfn(err = "ERROR")]
 pub async fn sync<T, SR0, SR1>(
     s3: &T,
@@ -569,7 +736,7 @@ pub async fn sync<T, SR0, SR1>(
     excludes: Option<&[SR1]>,
 ) -> Result<()>
 where
-    T: S3 + Send + Clone,
+    T: S3 + Sync + Send + Clone,
     SR0: AsRef<str>,
     SR1: AsRef<str>,
 {
@@ -944,7 +1111,7 @@ async fn head_object_request<T, SR0, SR1>(
     key: SR1,
 ) -> Result<Option<ObjectInfo>>
 where
-    T: S3 + Send,
+    T: S3,
     SR0: AsRef<str>,
     SR1: AsRef<str>,
 {
@@ -1083,7 +1250,7 @@ async fn download_with_dir<T, P: AsRef<Path>>(
     local_dir: P,
 ) -> Result<()>
 where
-    T: S3 + Send + Clone,
+    T: S3 + Sync + Send + Clone,
 {
     let local_dir = local_dir.as_ref();
     let dest_path = local_dir.join(s3_suffix);
@@ -1406,7 +1573,7 @@ fn remote_to_local_sync_tasks<ClientT, StreamT>(
     input_stream: StreamT,
 ) -> impl Stream<Item = impl Future<Output = Result<()>>>
 where
-    ClientT: S3 + Send + Clone,
+    ClientT: S3 + Sync + Send + Clone,
     StreamT: Stream<Item = StdResult<MapEtagResult, JoinError>>,
 {
     input_stream
@@ -1457,7 +1624,7 @@ async fn sync_remote_to_local<T, P: AsRef<Path>>(
     glob_excludes: &[Pattern],
 ) -> Result<()>
 where
-    T: S3 + Send + Clone,
+    T: S3 + Sync + Send + Clone,
 {
     let directory = directory.as_ref();
     if !key.ends_with(FORWARD_SLASH) {

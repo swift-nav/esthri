@@ -64,6 +64,7 @@ dependencies = [
  "futures-io",
  "memchr",
  "pin-project-lite",
+ "tokio",
 ]
 
 [[package]]
@@ -669,6 +670,7 @@ dependencies = [
  "structopt",
  "tar",
  "tempdir",
+ "tempfile",
  "thiserror",
  "tokio",
  "tokio-util",

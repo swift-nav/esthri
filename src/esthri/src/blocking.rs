@@ -75,7 +75,7 @@ where
 #[tokio::main]
 pub async fn download<T, P, SR0, SR1>(s3: &T, bucket: SR0, key: SR1, file: P) -> Result<()>
 where
-    T: S3 + Send + Clone,
+    T: S3 + Sync + Send + Clone,
     P: AsRef<Path>,
     SR0: AsRef<str>,
     SR1: AsRef<str>,
@@ -92,7 +92,7 @@ pub async fn sync<T, SR0, SR1>(
     excludes: Option<&[SR1]>,
 ) -> Result<()>
 where
-    T: S3 + Send + Clone,
+    T: S3 + Sync + Send + Clone,
     SR0: AsRef<str>,
     SR1: AsRef<str>,
 {

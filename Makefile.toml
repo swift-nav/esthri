@@ -44,7 +44,7 @@ cwd = "src/esthri"
 command = "cargo"
 args = [
         "test",
-        "--features=${TLS_PROVIDER},http_server,cli",
+        "--features=${TLS_PROVIDER},http_server,compression,cli",
         "--no-default-features",
         "@@remove-empty(BUILD_FLAVOR)",
         "--",
