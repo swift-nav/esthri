@@ -694,7 +694,7 @@ fn create_download_readers_stream<'a, ClientT, DownloaderT, ChunkT>(
 ) -> impl Stream<Item = BoxFuture<'a, Result<ChunkT>>> + 'a
 where
     ClientT: S3 + Sync + Send + Clone + 'a,
-    ChunkT: DownloaderChunk,
+    ChunkT: DownloaderChunk + Send + Unpin,
     DownloaderT: Downloader<Chunk = ChunkT> + 'a,
 {
     let state = (downloader, s3);
