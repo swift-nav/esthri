@@ -63,7 +63,7 @@ mod ops;
 
 pub use ops::download::download;
 pub use ops::download::download_decompressed;
-pub use ops::download::download_streaming;
+pub(crate) use ops::download::download_streaming;
 
 const EXPECT_GLOBAL_DATA: &str = "failed to lock global data";
 
@@ -1210,6 +1210,7 @@ where
     ClientT: S3 + Sync + Send + Clone,
     StreamT: Stream<Item = StdResult<MapEtagResult, JoinError>>,
 {
+    use ops::download::download_with_dir;
     input_stream
         .map(move |entry| {
             (
@@ -1230,27 +1231,15 @@ where
                             "etag mismatch: {}, local etag={}, remote etag={}",
                             path, local_etag, metadata.e_tag
                         );
-                        ops::download::download_with_dir(
-                            &s3,
-                            &bucket,
-                            &key,
-                            &metadata.s3_suffix,
-                            &directory,
-                        )
-                        .await?;
+                        download_with_dir(&s3, &bucket, &key, &metadata.s3_suffix, &directory)
+                            .await?;
                     }
                 }
                 Err(err) => match err {
                     Error::ETagNotPresent => {
                         debug!("file did not exist locally: {}", path);
-                        ops::download::download_with_dir(
-                            &s3,
-                            &bucket,
-                            &key,
-                            &metadata.s3_suffix,
-                            &directory,
-                        )
-                        .await?;
+                        download_with_dir(&s3, &bucket, &key, &metadata.s3_suffix, &directory)
+                            .await?;
                     }
                     _ => {
                         warn!("s3 etag error: {}", err);

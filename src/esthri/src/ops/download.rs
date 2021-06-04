@@ -448,7 +448,7 @@ where
     Ok(())
 }
 
-pub async fn download_streaming<T>(
+pub(crate) async fn download_streaming<T>(
     s3: &T,
     bucket: impl AsRef<str>,
     key: impl AsRef<str>,
