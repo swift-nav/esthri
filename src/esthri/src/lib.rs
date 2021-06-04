@@ -32,9 +32,7 @@ use hyper::client::connect::HttpConnector;
 use log::*;
 use log_derive::logfn;
 use once_cell::sync::Lazy;
-use tokio::{
-    task::{self, JoinError, JoinHandle},
-};
+use tokio::task::{self, JoinError, JoinHandle};
 use walkdir::WalkDir;
 
 #[cfg(feature = "compression")]
@@ -1232,15 +1230,27 @@ where
                             "etag mismatch: {}, local etag={}, remote etag={}",
                             path, local_etag, metadata.e_tag
                         );
-                        ops::download::download_with_dir(&s3, &bucket, &key, &metadata.s3_suffix, &directory)
-                            .await?;
+                        ops::download::download_with_dir(
+                            &s3,
+                            &bucket,
+                            &key,
+                            &metadata.s3_suffix,
+                            &directory,
+                        )
+                        .await?;
                     }
                 }
                 Err(err) => match err {
                     Error::ETagNotPresent => {
                         debug!("file did not exist locally: {}", path);
-                        ops::download::download_with_dir(&s3, &bucket, &key, &metadata.s3_suffix, &directory)
-                            .await?;
+                        ops::download::download_with_dir(
+                            &s3,
+                            &bucket,
+                            &key,
+                            &metadata.s3_suffix,
+                            &directory,
+                        )
+                        .await?;
                     }
                     _ => {
                         warn!("s3 etag error: {}", err);

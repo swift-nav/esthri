@@ -10,18 +10,16 @@ use futures::future::BoxFuture;
 use futures::{stream, Future, Stream, StreamExt, TryStreamExt};
 use log::info;
 use log_derive::logfn;
-use tokio::{
-    io::{AsyncRead, AsyncReadExt},
-};
+use tokio::io::{AsyncRead, AsyncReadExt};
 
 #[cfg(feature = "compression")]
 use flate2::write::GzDecoder;
 
 use crate::config::Config;
 use crate::errors::{Error, Result};
+use crate::rusoto::*;
 use crate::types::ReadState;
 use crate::{handle_dispatch_error, head_object_request};
-use crate::rusoto::*;
 
 type BoxedWrite = Arc<Mutex<Box<dyn Write + Unpin + Send + Sync>>>;
 
@@ -426,7 +424,7 @@ where
     goo.body.ok_or(Error::GetObjectOutputBodyNone)
 }
 
-pub (in crate) async fn download_with_dir<T>(
+pub(in crate) async fn download_with_dir<T>(
     s3: &T,
     bucket: &str,
     s3_prefix: &str,
