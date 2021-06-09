@@ -2,9 +2,9 @@
 
 use std::io::Cursor;
 
-use esthri::ObjectInfo;
 use esthri::blocking;
 use esthri::upload;
+use esthri::ObjectInfo;
 
 #[test]
 fn test_upload() {
@@ -24,7 +24,8 @@ fn test_upload_compressed() {
     let filepath = format!("tests/data/{}", filename);
     let s3_key = format!("test_upload/{}.gz", filename);
 
-    let res = blocking::upload_compressed(s3client.as_ref(), crate::TEST_BUCKET, &s3_key, &filepath);
+    let res =
+        blocking::upload_compressed(s3client.as_ref(), crate::TEST_BUCKET, &s3_key, &filepath);
     assert!(res.is_ok());
 
     let res = blocking::head_object(s3client.as_ref(), crate::TEST_BUCKET, &s3_key);

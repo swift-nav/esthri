@@ -55,7 +55,8 @@ fn test_download_decompressed() {
     let filename = "27-185232-msg.csv";
     let s3_key = format!("test_download/{}.gz", filename);
 
-    let res = blocking::download_decompressed(s3client.as_ref(), crate::TEST_BUCKET, &s3_key, &filename);
+    let res =
+        blocking::download_decompressed(s3client.as_ref(), crate::TEST_BUCKET, &s3_key, &filename);
     assert!(res.is_ok());
 
     let etag = esthri::s3_compute_etag(filename).unwrap();
