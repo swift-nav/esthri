@@ -267,11 +267,13 @@ impl Downloader for DownloadCompressed {
     }
 
     fn concurrent_downloader_tasks(&self) -> usize {
-        2
+        Config::global().concurrent_compressed_downloader_tasks()
     }
 
     fn concurrent_writer_tasks(&self) -> usize {
-        1
+        1 /* Data written in compressed form must be processed serially, this
+          can be greater than 1, but the lock around the decompressor (which
+          implements a the `Write` triat) will prevent parallelism. */
     }
 }
 
