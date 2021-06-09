@@ -58,6 +58,19 @@ where
 }
 
 #[tokio::main]
+pub async fn upload_compressed<T>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+    file: impl AsRef<Path>,
+) -> Result<()>
+where
+    T: S3 + Send + Clone,
+{
+    super::upload_compressed(s3, bucket, key, file).await
+}
+
+#[tokio::main]
 pub async fn upload_from_reader<T>(
     s3: &T,
     bucket: impl AsRef<str>,
@@ -82,6 +95,19 @@ where
     T: S3 + Sync + Send + Clone,
 {
     super::download(s3, bucket, key, file).await
+}
+
+#[tokio::main]
+pub async fn download_decompressed<T>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+    file: impl AsRef<Path>,
+) -> Result<()>
+where
+    T: S3 + Sync + Send + Clone,
+{
+    super::download_decompressed(s3, bucket, key, file).await
 }
 
 #[tokio::main]
