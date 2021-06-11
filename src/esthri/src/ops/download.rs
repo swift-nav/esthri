@@ -33,7 +33,9 @@ use crate::rusoto::*;
 use crate::types::ReadState;
 use crate::{handle_dispatch_error, head_object_request};
 
-type BoxedWrite = Arc<Mutex<Box<dyn Write + Unpin + Send + Sync>>>;
+/// Unique (locked) pointer to a type that implements the [std::io::Write] trait used here to hold a
+/// pointer to an object that implements gzip decompression transparently.
+type LockedBoxedWrite = Arc<Mutex<Box<dyn Write + Unpin + Send + Sync>>>;
 
 async fn get_object_request<T>(
     s3: &T,
@@ -45,6 +47,27 @@ where
     handle_dispatch_error(|| s3.get_object(gor.clone())).await
 }
 
+/// Reads from a source until an exact number of bytes are returned.
+///
+/// The object must not change size during the read operation.
+///
+/// The `bucket` and `key` parameters are used to validate that the object isn't change size during
+/// the read.
+///
+/// Also see [ReadState].
+///
+/// # Arguments
+///
+/// * `s3` - The s3 interface
+/// * `bucket` - The bucket to download from
+/// * `key` - The key of the object to read from
+/// * `reader` - A reader that will returns bytes from the specified object
+/// * `range` - The range that's being read from, also stores the total size of the object
+///
+/// # Errors
+///
+/// - [Error::GetObjectInvalidKey]
+/// - [Error::GetObjectInvalidRead]
 async fn read_exact<ClientT, ReaderT>(
     s3: &ClientT,
     bucket: String,
@@ -81,17 +104,22 @@ where
     }
 }
 
+/// Transforms a [ByteStream] into an [AsyncRead] object suitable for use in a future.
 fn create_reader(stream: ByteStream) -> Pin<Box<dyn AsyncRead + Send + Sync>> {
     let async_reader = stream.into_async_read();
     let buf_reader = tokio::io::BufReader::new(async_reader);
     Box::pin(buf_reader)
 }
 
+/// Represents one future returned by an implementor of the [Downloader] trait, and the next state
+/// (or iteration) of the downloader.
 type DownloaderResult<'a, ClientT, ChunkT, SelfT> =
     (BoxFuture<'a, Result<ChunkT>>, (SelfT, ClientT));
 
-trait Downloader {
-    type Chunk: DownloaderChunk + Sized + Unpin + Send;
+/// Implementors of this trait return a stream of futures and "themelves" in order to be easily
+/// transformed into a stream object (which returns a stream of futures).  These futures can then
+/// be passed to an executor or buffered in order to be run conrrently.
+trait Downloader { type Chunk: DownloaderChunk + Sized + Unpin + Send;
 
     fn create_future<'a, T>(self, client: T) -> Option<DownloaderResult<'a, T, Self::Chunk, Self>>
     where
@@ -103,10 +131,13 @@ trait Downloader {
     fn concurrent_writer_tasks(&self) -> usize;
 }
 
+/// Represents a download chunk that's waiting to be written.
 trait DownloaderChunk {
     fn write_chunk(self) -> Result<()>;
 }
 
+/// `DownloadMultipleChunk` uses multiple readers and writers concurrently to download uncompressed
+/// files.
 struct DownloadMultipleChunk {
     file: File,
     offset: u64,
@@ -197,14 +228,16 @@ impl Downloader for DownloadMultiple {
     }
 }
 
+/// `DownloadCompressedChunk` uses multiple readers and 1 writer concurrently to download compressed
+/// files and uncompress them transparently.
 struct DownloadCompressedChunk {
-    writer: BoxedWrite,
+    writer: LockedBoxedWrite,
     buffer: Vec<u8>,
     length: usize,
 }
 
 impl DownloadCompressedChunk {
-    fn new(writer: BoxedWrite, buffer: Vec<u8>, length: usize) -> Self {
+    fn new(writer: LockedBoxedWrite, buffer: Vec<u8>, length: usize) -> Self {
         Self {
             writer,
             buffer,
@@ -222,7 +255,7 @@ impl DownloaderChunk for DownloadCompressedChunk {
 }
 
 struct DownloadCompressed {
-    file: BoxedWrite,
+    file: LockedBoxedWrite,
     bucket: String,
     key: String,
     read_state: ReadState,
@@ -231,7 +264,7 @@ struct DownloadCompressed {
 
 impl DownloadCompressed {
     fn new(
-        file: BoxedWrite,
+        file: LockedBoxedWrite,
         bucket: impl Into<String>,
         key: impl Into<String>,
         total_size: u64,
@@ -289,6 +322,7 @@ impl Downloader for DownloadCompressed {
     }
 }
 
+/// Transforms a [Downloader] into a stream of futures.
 fn create_download_readers_stream<'a, ClientT, DownloaderT, ChunkT>(
     s3: ClientT,
     downloader: DownloaderT,
@@ -334,6 +368,7 @@ fn write_all_at(writer: File, file_offset: u64, buffer: Vec<u8>, length: usize) 
     }
 }
 
+/// Maps read chunks from a [Downloader] implementor to a task that writes the chunk.
 fn map_download_readers_to_writer<'a, StreamT, ChunkT>(
     chunk_stream: StreamT,
 ) -> impl Stream<Item = impl Future<Output = Result<()>> + 'a> + 'a
@@ -344,6 +379,9 @@ where
     chunk_stream.map(|chunk: Result<ChunkT>| async move { chunk?.write_chunk() })
 }
 
+/// Primary download entrypoint, which constructs either a [DownloadMultipleChunk] or a
+/// [DownloadCompressedChunk] instance and configures a set of concurrent tasks appropriately, then
+/// runs those tasks to completion.
 async fn download_helper<T>(
     s3: &T,
     bucket: impl AsRef<str>,
