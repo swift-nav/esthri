@@ -119,7 +119,8 @@ type DownloaderResult<'a, ClientT, ChunkT, SelfT> =
 /// Implementors of this trait return a stream of futures and "themelves" in order to be easily
 /// transformed into a stream object (which returns a stream of futures).  These futures can then
 /// be passed to an executor or buffered in order to be run conrrently.
-trait Downloader { type Chunk: DownloaderChunk + Sized + Unpin + Send;
+trait Downloader {
+    type Chunk: DownloaderChunk + Sized + Unpin + Send;
 
     fn create_future<'a, T>(self, client: T) -> Option<DownloaderResult<'a, T, Self::Chunk, Self>>
     where
