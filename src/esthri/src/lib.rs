@@ -14,11 +14,6 @@
 #![recursion_limit = "256"]
 extern crate regex;
 
-use std::fs;
-use std::fs::File;
-use std::io::prelude::*;
-use std::io::BufReader;
-use std::io::SeekFrom;
 use std::marker::Unpin;
 use std::path::{Path, PathBuf};
 use std::result::Result as StdResult;
@@ -51,6 +46,15 @@ pub mod types;
 
 pub mod rusoto;
 
+/* blocking I/O */
+mod bio {
+    pub(super) use std::fs;
+    pub(super) use std::fs::File;
+    pub(super) use std::io::prelude::*;
+    pub(super) use std::io::BufReader;
+    pub(super) use std::io::SeekFrom;
+}
+
 use crate::retry::handle_dispatch_error;
 use crate::rusoto::*;
 
@@ -66,6 +70,8 @@ pub use ops::download::download_decompressed;
 pub(crate) use ops::download::download_streaming;
 
 const EXPECT_GLOBAL_DATA: &str = "failed to lock global data";
+
+const EXPECT_SPAWN_BLOCKING: &str = "spawned task failed";
 
 const FORWARD_SLASH: char = '/';
 
@@ -126,51 +132,63 @@ where
     Ok(())
 }
 
+fn compress_to_tempfile(
+    file: bio::File,
+    path: PathBuf,
+    size: u64,
+) -> impl Future<Output = Result<(bio::File, u64)>> {
+    use bio::*;
+    async move {
+        tokio::task::spawn_blocking(move || {
+            debug!("old file size: {}", size);
+            debug!("compressing: {}", path.display());
+            let mut reader = GzEncoder::new(BufReader::new(file), Compression::default());
+            let mut compressed = tempfile::tempfile()?;
+            std::io::copy(&mut reader, &mut compressed)?;
+            compressed.flush()?;
+            compressed.seek(SeekFrom::Start(0))?;
+            let size = compressed.metadata()?.len();
+            debug!("new file size: {}", size);
+            Ok((compressed, size))
+        })
+        .await
+        .expect(EXPECT_SPAWN_BLOCKING)
+    }
+}
+
 async fn upload_helper<T>(
     s3: &T,
     bucket: impl AsRef<str>,
     key: impl AsRef<str>,
-    file: impl AsRef<Path>,
+    path: impl AsRef<Path>,
     compressed: bool,
 ) -> Result<()>
 where
     T: S3 + Send + Clone,
 {
-    let (bucket, key, file) = (bucket.as_ref(), key.as_ref(), file.as_ref().to_owned());
+    let (bucket, key, path) = (bucket.as_ref(), key.as_ref(), path.as_ref().to_owned());
 
-    if file.exists() {
-        let stat = fs::metadata(&file)?;
-        let file_size = stat.len();
-        let f = File::open(&file)?;
+    if path.exists() {
+        let stat = bio::fs::metadata(&path)?;
+        let size = stat.len();
+        let file = bio::File::open(&path)?;
         if compressed {
             #[cfg(feature = "compression")]
             {
-                let compress_task = tokio::task::spawn_blocking(move || {
-                    debug!("old file_size: {}", file_size);
-                    debug!("compressing: {}", file.display());
-                    let mut reader = GzEncoder::new(BufReader::new(f), Compression::default());
-                    let mut temp_compressed = tempfile::tempfile()?;
-                    std::io::copy(&mut reader, &mut temp_compressed)?;
-                    temp_compressed.flush()?;
-                    temp_compressed.seek(SeekFrom::Start(0))?;
-                    let file_size = temp_compressed.metadata()?.len();
-                    debug!("new file_size: {}", file_size);
-                    Ok((temp_compressed, file_size)) as Result<(File, u64)>
-                });
-                let (mut temp_compressed, file_size) = compress_task.await.unwrap()?;
-                upload_from_reader(s3, bucket, key, &mut temp_compressed, file_size).await
+                let (compressed, size) = compress_to_tempfile(file, path.clone(), size).await?;
+                upload_from_reader(s3, bucket, key, compressed, size).await
             }
             #[cfg(not(feature = "compression"))]
             {
                 panic!("compression feature not enabled");
             }
         } else {
-            debug!("file_size: {}", file_size);
-            let mut reader = BufReader::new(f);
-            upload_from_reader(s3, bucket, key, &mut reader, file_size).await
+            debug!("upload: file size: {}", size);
+            let reader = bio::BufReader::new(file);
+            upload_from_reader(s3, bucket, key, reader, size).await
         }
     } else {
-        Err(Error::InvalidSourceFile(file))
+        Err(Error::InvalidSourceFile(path))
     }
 }
 
@@ -217,31 +235,49 @@ where
     upload_helper(s3, bucket, key, file, compressed).await
 }
 
-async fn create_file_chunk_stream<R: Read>(
-    mut reader: R,
+async fn create_file_chunk_stream<R>(
+    reader: R,
     file_size: u64,
-) -> impl Stream<Item = Result<(i64, Vec<u8>)>> {
+) -> impl Stream<Item = Result<(i64, Vec<u8>)>>
+where
+    R: bio::Read + Send + 'static,
+{
     let upload_part_size = Config::global().upload_part_size();
-    async_stream::stream! {
-        let mut remaining = file_size;
-        let mut part_number: i64 = 1;
-        while remaining != 0 {
-            let upload_part_size = if remaining >= upload_part_size {
-                upload_part_size
+    let init_state = (file_size, /* part_number = */ 1, Some(reader));
+    Box::pin(stream::unfold(
+        init_state,
+        move |(remaining, part_number, reader)| async move {
+            let done_state = (0, 0, None);
+            if remaining == 0 {
+                None
             } else {
-                remaining
-            };
-            let mut buf = vec![0u8; upload_part_size as usize];
-            if reader.read(&mut buf)? == 0 {
-                yield Err(Error::ReadZero);
-                return;
-            } else {
-                yield Ok((part_number, buf));
-                remaining -= upload_part_size;
-                part_number += 1;
+                let upload_part_size = u64::min(remaining, upload_part_size);
+                let mut buf = vec![0u8; upload_part_size as usize];
+                let result: Result<(Vec<u8>, usize, R)> = task::spawn_blocking(move || {
+                    let mut reader = reader.unwrap();
+                    let read_size = reader.read(&mut buf)?;
+                    Ok((buf, read_size, reader))
+                })
+                .await
+                .expect(EXPECT_SPAWN_BLOCKING);
+                match result {
+                    Ok((buf, read_size, reader)) => {
+                        if read_size == 0 {
+                            let err = Err(Error::ReadZero);
+                            Some((err, done_state))
+                        } else {
+                            let result = Ok((part_number, buf));
+                            Some((
+                                result,
+                                (remaining - upload_part_size, part_number + 1, Some(reader)),
+                            ))
+                        }
+                    }
+                    Err(err) => Some((Err(err), done_state)),
+                }
             }
-        }
-    }
+        },
+    ))
 }
 
 async fn create_chunk_upload_stream<StreamT, ClientT>(
@@ -305,7 +341,7 @@ pub async fn upload_from_reader<T, R>(
 ) -> Result<()>
 where
     T: S3 + Send + Clone,
-    R: Read,
+    R: bio::Read + Send + 'static,
 {
     let upload_part_size = Config::global().upload_part_size();
     let (bucket, key) = (bucket.as_ref(), key.as_ref());
@@ -381,15 +417,19 @@ where
             global_data.upload_id = None;
         }
     } else {
-        let mut buf = vec![0u8; file_size as usize];
-        let read_size = reader.read(&mut buf)?;
-
-        if read_size == 0 && file_size != 0 {
-            return Err(Error::ReadZero);
-        }
-
+        let buffer = task::spawn_blocking(move || {
+            let mut buffer = vec![0u8; file_size as usize];
+            let read_size = reader.read(&mut buffer)?;
+            if read_size == 0 && file_size != 0 {
+                Err(Error::ReadZero)
+            } else {
+                Ok(buffer)
+            }
+        })
+        .await
+        .expect(EXPECT_SPAWN_BLOCKING)?;
         handle_dispatch_error(|| async {
-            let body: StreamingBody = buf.clone().into();
+            let body: StreamingBody = buffer.clone().into();
 
             let por = PutObjectRequest {
                 bucket: bucket.into(),
@@ -674,11 +714,11 @@ pub fn setup_upload_termination_handler() {
 }
 
 pub fn s3_compute_etag(path: impl AsRef<Path>) -> Result<String> {
+    use bio::*;
     let path = path.as_ref();
     if !path.exists() {
         return Err(Error::ETagNotPresent);
     }
-
     let f = File::open(path)?;
     let mut reader = BufReader::new(f);
     let mut hash = Md5::new();
@@ -686,9 +726,7 @@ pub fn s3_compute_etag(path: impl AsRef<Path>) -> Result<String> {
     let file_size = stat.len();
     let mut digests: Vec<[u8; 16]> = vec![];
     let mut remaining = file_size;
-
     let upload_part_size = Config::global().upload_part_size();
-
     while remaining != 0 {
         let upload_part_size: usize = (if remaining >= upload_part_size {
             upload_part_size
@@ -704,7 +742,6 @@ pub fn s3_compute_etag(path: impl AsRef<Path>) -> Result<String> {
         digests.push(hash_bytes);
         remaining -= upload_part_size as u64;
     }
-
     if digests.is_empty() {
         let mut hash_bytes = [0u8; 16];
         hash.result(&mut hash_bytes);

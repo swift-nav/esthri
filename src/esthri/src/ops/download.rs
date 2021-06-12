@@ -10,9 +10,6 @@
 * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
 */
 
-use std::fs::File;
-use std::io::prelude::*;
-use std::io::ErrorKind;
 use std::marker::Unpin;
 use std::path::Path;
 use std::pin::Pin;
@@ -27,6 +24,12 @@ use tokio::io::{AsyncRead, AsyncReadExt};
 #[cfg(feature = "compression")]
 use flate2::write::GzDecoder;
 
+mod bio {
+    pub(super) use std::fs::File;
+    pub(super) use std::io::prelude::*;
+    pub(super) use std::io::ErrorKind;
+}
+
 use crate::config::Config;
 use crate::errors::{Error, Result};
 use crate::rusoto::*;
@@ -35,7 +38,7 @@ use crate::{handle_dispatch_error, head_object_request};
 
 /// Unique (locked) pointer to a type that implements the [std::io::Write] trait used here to hold a
 /// pointer to an object that implements gzip decompression transparently.
-type LockedBoxedWrite = Arc<Mutex<Box<dyn Write + Unpin + Send + Sync>>>;
+type LockedBoxedWrite = Arc<Mutex<Box<dyn bio::Write + Unpin + Send + Sync>>>;
 
 async fn get_object_request<T>(
     s3: &T,
@@ -90,7 +93,7 @@ where
             break Err(Error::GetObjectSizeChanged);
         }
         if let Err(e) = result {
-            if e.kind() == ErrorKind::Interrupted {
+            if e.kind() == bio::ErrorKind::Interrupted {
                 continue;
             }
         } else {
@@ -134,20 +137,21 @@ trait Downloader {
 
 /// Represents a download chunk that's waiting to be written.
 trait DownloaderChunk {
-    fn write_chunk(self) -> Result<()>;
+    /// Initiate a (blocking) write of a chunk
+    fn bio_write_chunk(self) -> Result<()>;
 }
 
 /// `DownloadMultipleChunk` uses multiple readers and writers concurrently to download uncompressed
 /// files.
 struct DownloadMultipleChunk {
-    file: File,
+    file: bio::File,
     offset: u64,
     buffer: Vec<u8>,
     length: usize,
 }
 
 impl DownloadMultipleChunk {
-    fn new(file: File, offset: u64, buffer: Vec<u8>, length: usize) -> Self {
+    fn new(file: bio::File, offset: u64, buffer: Vec<u8>, length: usize) -> Self {
         Self {
             file,
             offset,
@@ -158,13 +162,13 @@ impl DownloadMultipleChunk {
 }
 
 impl DownloaderChunk for DownloadMultipleChunk {
-    fn write_chunk(self) -> Result<()> {
+    fn bio_write_chunk(self) -> Result<()> {
         write_all_at(self.file, self.offset, self.buffer, self.length)
     }
 }
 
 struct DownloadMultiple {
-    file: File,
+    file: bio::File,
     bucket: String,
     key: String,
     read_state: ReadState,
@@ -172,7 +176,12 @@ struct DownloadMultiple {
 }
 
 impl DownloadMultiple {
-    fn new(file: File, bucket: impl Into<String>, key: impl Into<String>, total_size: u64) -> Self {
+    fn new(
+        file: bio::File,
+        bucket: impl Into<String>,
+        key: impl Into<String>,
+        total_size: u64,
+    ) -> Self {
         let download_buffer_size = Config::global().download_buffer_size();
         let read_state = ReadState::new(download_buffer_size, total_size);
         Self {
@@ -248,7 +257,7 @@ impl DownloadCompressedChunk {
 }
 
 impl DownloaderChunk for DownloadCompressedChunk {
-    fn write_chunk(self) -> Result<()> {
+    fn bio_write_chunk(self) -> Result<()> {
         let mut writer = self.writer.lock().unwrap();
         let writer = writer.as_mut();
         write_all(writer, self.buffer, self.length)
@@ -340,11 +349,11 @@ where
     }))
 }
 
-fn write_all(writer: &mut dyn Write, buffer: Vec<u8>, length: usize) -> Result<()> {
+fn write_all(writer: &mut dyn bio::Write, buffer: Vec<u8>, length: usize) -> Result<()> {
     writer.write_all(&buffer[..length]).map_err(Error::from)
 }
 
-fn write_all_at(writer: File, file_offset: u64, buffer: Vec<u8>, length: usize) -> Result<()> {
+fn write_all_at(writer: bio::File, file_offset: u64, buffer: Vec<u8>, length: usize) -> Result<()> {
     #[cfg(unix)]
     {
         use std::os::unix::prelude::FileExt;
@@ -378,7 +387,7 @@ where
     ChunkT: DownloaderChunk + Send + 'static,
 {
     chunk_stream
-        .map(move |chunk| tokio::task::spawn_blocking(move || chunk?.write_chunk()))
+        .map(move |chunk| tokio::task::spawn_blocking(move || chunk?.bio_write_chunk()))
         .map(move |join_handle| async move { join_handle.await? })
 }
 
@@ -433,13 +442,13 @@ where
     }
 
     if decompress {
-        let file_output: Box<dyn Write + Send + Sync + Unpin> =
-            Box::new(GzDecoder::new(File::create(file)?));
+        let file_output: Box<dyn bio::Write + Send + Sync + Unpin> =
+            Box::new(GzDecoder::new(bio::File::create(file)?));
         let file_output = Arc::new(Mutex::new(file_output));
         let downloader = DownloadCompressed::new(file_output, bucket, key, total_size);
         run_downloader(s3.clone(), downloader, decompress).await
     } else {
-        let file_output = File::create(file)?;
+        let file_output = bio::File::create(file)?;
         let downloader = DownloadMultiple::new(file_output, bucket, key, total_size);
         run_downloader(s3.clone(), downloader, decompress).await
     }

@@ -71,20 +71,6 @@ where
 }
 
 #[tokio::main]
-pub async fn upload_from_reader<T>(
-    s3: &T,
-    bucket: impl AsRef<str>,
-    key: impl AsRef<str>,
-    reader: &mut dyn Read,
-    file_size: u64,
-) -> Result<()>
-where
-    T: S3 + Send + Clone,
-{
-    super::upload_from_reader(s3, bucket, key, reader, file_size).await
-}
-
-#[tokio::main]
 pub async fn download<T>(
     s3: &T,
     bucket: impl AsRef<str>,
