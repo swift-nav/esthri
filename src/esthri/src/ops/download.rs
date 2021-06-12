@@ -377,15 +377,9 @@ where
     StreamT: Stream<Item = Result<ChunkT>> + 'a,
     ChunkT: DownloaderChunk + Send + 'static,
 {
-    chunk_stream.map(move |chunk| {
-        tokio::task::spawn_blocking(move || {
-            chunk?.write_chunk()
-        })
-    }).map(move |join_handle| {
-        async move {
-            join_handle.await?
-        }
-    })
+    chunk_stream
+        .map(move |chunk| tokio::task::spawn_blocking(move || chunk?.write_chunk()))
+        .map(move |join_handle| async move { join_handle.await? })
 }
 
 /// Primary download entrypoint, which constructs either a [DownloadMultipleChunk] or a

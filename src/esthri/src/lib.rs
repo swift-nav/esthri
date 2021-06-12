@@ -170,7 +170,7 @@ where
             upload_from_reader(s3, bucket, key, &mut reader, file_size).await
         }
     } else {
-        Err(Error::InvalidSourceFile(file.into()))
+        Err(Error::InvalidSourceFile(file))
     }
 }
 
