@@ -136,24 +136,28 @@ async fn upload_helper<T>(
 where
     T: S3 + Send + Clone,
 {
-    let (bucket, key, file) = (bucket.as_ref(), key.as_ref(), file.as_ref());
+    let (bucket, key, file) = (bucket.as_ref(), key.as_ref(), file.as_ref().to_owned());
 
     if file.exists() {
         let stat = fs::metadata(&file)?;
         let file_size = stat.len();
-        let f = File::open(file)?;
+        let f = File::open(&file)?;
         if compressed {
             #[cfg(feature = "compression")]
             {
-                debug!("old file_size: {}", file_size);
-                debug!("compressing: {}", file.display());
-                let mut reader = GzEncoder::new(BufReader::new(f), Compression::default());
-                let mut temp_compressed = tempfile::tempfile()?;
-                std::io::copy(&mut reader, &mut temp_compressed)?;
-                temp_compressed.flush()?;
-                temp_compressed.seek(SeekFrom::Start(0))?;
-                let file_size = temp_compressed.metadata()?.len();
-                debug!("new file_size: {}", file_size);
+                let compress_task = tokio::task::spawn_blocking(move || {
+                    debug!("old file_size: {}", file_size);
+                    debug!("compressing: {}", file.display());
+                    let mut reader = GzEncoder::new(BufReader::new(f), Compression::default());
+                    let mut temp_compressed = tempfile::tempfile()?;
+                    std::io::copy(&mut reader, &mut temp_compressed)?;
+                    temp_compressed.flush()?;
+                    temp_compressed.seek(SeekFrom::Start(0))?;
+                    let file_size = temp_compressed.metadata()?.len();
+                    debug!("new file_size: {}", file_size);
+                    Ok(temp_compressed) as Result<File>
+                });
+                let mut temp_compressed = compress_task.await.unwrap()?;
                 upload_from_reader(s3, bucket, key, &mut temp_compressed, file_size).await
             }
             #[cfg(not(feature = "compression"))]

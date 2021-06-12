@@ -120,7 +120,7 @@ type DownloaderResult<'a, ClientT, ChunkT, SelfT> =
 /// transformed into a stream object (which returns a stream of futures).  These futures can then
 /// be passed to an executor or buffered in order to be run conrrently.
 trait Downloader {
-    type Chunk: DownloaderChunk + Sized + Unpin + Send;
+    type Chunk: DownloaderChunk + Sized + Unpin + Send + 'static;
 
     fn create_future<'a, T>(self, client: T) -> Option<DownloaderResult<'a, T, Self::Chunk, Self>>
     where
@@ -375,9 +375,17 @@ fn map_download_readers_to_writer<'a, StreamT, ChunkT>(
 ) -> impl Stream<Item = impl Future<Output = Result<()>> + 'a> + 'a
 where
     StreamT: Stream<Item = Result<ChunkT>> + 'a,
-    ChunkT: DownloaderChunk + 'a,
+    ChunkT: DownloaderChunk + Send + 'static,
 {
-    chunk_stream.map(|chunk: Result<ChunkT>| async move { chunk?.write_chunk() })
+    chunk_stream.map(move |chunk| {
+        tokio::task::spawn_blocking(move || {
+            chunk?.write_chunk()
+        })
+    }).map(move |join_handle| {
+        async move {
+            join_handle.await?
+        }
+    })
 }
 
 /// Primary download entrypoint, which constructs either a [DownloadMultipleChunk] or a
