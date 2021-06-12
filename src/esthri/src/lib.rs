@@ -155,9 +155,9 @@ where
                     temp_compressed.seek(SeekFrom::Start(0))?;
                     let file_size = temp_compressed.metadata()?.len();
                     debug!("new file_size: {}", file_size);
-                    Ok(temp_compressed) as Result<File>
+                    Ok((temp_compressed, file_size)) as Result<(File, u64)>
                 });
-                let mut temp_compressed = compress_task.await.unwrap()?;
+                let (mut temp_compressed, file_size) = compress_task.await.unwrap()?;
                 upload_from_reader(s3, bucket, key, &mut temp_compressed, file_size).await
             }
             #[cfg(not(feature = "compression"))]
