@@ -47,8 +47,10 @@ enum Command {
         /// Should the file be compressed during upload
         #[structopt(long)]
         compress: bool,
+        /// The target bucket (example: my-bucket)
         #[structopt(long)]
         bucket: String,
+        /// The key name of the object (example: a/key/name.bin)
         #[structopt(long)]
         key: String,
         /// The path of the local file to read
@@ -59,8 +61,10 @@ enum Command {
         /// Should the file be decompressed during download
         #[structopt(long)]
         decompress: bool,
+        /// The target bucket (example: my-bucket)
         #[structopt(long)]
         bucket: String,
+        /// The key name of the object (example: a/key/name.bin)
         #[structopt(long)]
         key: String,
         /// The path of the local file to write
@@ -68,10 +72,10 @@ enum Command {
     },
     /// Manually abort a multipart upload
     Abort {
-        /// The bucket for the multipart upload
+        /// The bucket of the multipart upload (example: my-bucket)
         #[structopt(long)]
         bucket: String,
-        /// The key for the multipart upload
+        /// The key of the multipart upload (example: a/key/name.bin)
         #[structopt(long)]
         key: String,
         /// The upload_id for the multipart upload
@@ -82,31 +86,34 @@ enum Command {
     /// Sync a directory with S3
     #[structopt(name = "sync")]
     SyncCmd {
+        /// Source of the sync (example: s3://my-bucket/a/prefix/src)
         #[structopt(long)]
         source: SyncParam,
+        /// Destination of the sync (example: s3://my-bucket/a/prefix/dst)
         #[structopt(long)]
         destination: SyncParam,
+        /// Optional include glob pattern (see `man 3 glob`)
         #[structopt(long)]
         include: Option<Vec<String>>,
-        /// Optional exclude glob pattern (see man 3 glob)
+        /// Optional exclude glob pattern (see `man 3 glob`)
         #[structopt(long)]
         exclude: Option<Vec<String>>,
     },
     /// Retreive the ETag for a remote object
     HeadObject {
-        /// The bucket to target
+        /// The bucket to target (example: my-bucket)
         #[structopt(long)]
         bucket: String,
-        /// The key to target
+        /// The key to target (example: a/key/name.bin)
         #[structopt(long)]
         key: String,
     },
     /// List remote objects in S3
     ListObjects {
-        /// The bucket to target
+        /// The bucket to target (example: my-bucket)
         #[structopt(long)]
         bucket: String,
-        /// The key to target
+        /// The key to target (example: a/key/name.bin)
         #[structopt(long)]
         key: String,
     },
@@ -115,7 +122,7 @@ enum Command {
     ///
     /// This also supports serving dynamic archives of bucket contents
     Serve {
-        /// The bucket to serve over HTTP
+        /// The bucket to serve over HTTP (example: my-bucket)
         #[structopt(long)]
         bucket: String,
         /// The listening address for the server
