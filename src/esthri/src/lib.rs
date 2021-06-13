@@ -46,7 +46,7 @@ pub mod types;
 
 pub mod rusoto;
 
-/* blocking I/O */
+/// Internal module used to call out operations that may block.
 mod bio {
     pub(super) use std::fs;
     pub(super) use std::fs::File;

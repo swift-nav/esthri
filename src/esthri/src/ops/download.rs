@@ -24,6 +24,7 @@ use tokio::io::{AsyncRead, AsyncReadExt};
 #[cfg(feature = "compression")]
 use flate2::write::GzDecoder;
 
+/// Internal module used to call out operations that may block.
 mod bio {
     pub(super) use std::fs::File;
     pub(super) use std::io::prelude::*;
