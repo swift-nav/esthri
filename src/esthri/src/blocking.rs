@@ -118,11 +118,12 @@ pub async fn sync<T>(
     destination: SyncParam,
     includes: Option<&[impl AsRef<str>]>,
     excludes: Option<&[impl AsRef<str>]>,
+    compressed: bool,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
 {
-    super::sync(s3, source, destination, includes, excludes).await
+    super::sync(s3, source, destination, includes, excludes, compressed).await
 }
 
 #[tokio::main]
@@ -135,4 +136,9 @@ where
     T: S3 + Send,
 {
     super::list_objects(s3, bucket, key).await
+}
+
+#[tokio::main]
+pub async fn compute_etag(path: impl AsRef<Path>) -> Result<String> {
+    super::compute_etag(path).await
 }

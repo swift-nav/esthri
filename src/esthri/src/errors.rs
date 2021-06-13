@@ -21,6 +21,7 @@ use rusoto_s3::{
     CreateMultipartUploadError, GetObjectError, HeadObjectError, ListObjectsV2Error,
     PutObjectError, UploadPartError,
 };
+use tempfile::PersistError;
 use tokio::task::JoinError;
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -104,6 +105,12 @@ pub enum Error {
 
     #[error(transparent)]
     JoinError(#[from] JoinError),
+
+    #[error("sync: compression is only valid for upload")]
+    InvalidSyncCompress,
+
+    #[error(transparent)]
+    PersistError(#[from] PersistError),
 }
 
 impl From<std::convert::Infallible> for Error {

@@ -59,6 +59,6 @@ fn test_download_decompressed() {
         blocking::download_decompressed(s3client.as_ref(), crate::TEST_BUCKET, &s3_key, &filename);
     assert!(res.is_ok());
 
-    let etag = esthri::s3_compute_etag(filename).unwrap();
+    let etag = blocking::compute_etag(filename).unwrap();
     assert_eq!(etag, "\"6dbb4258fa16030c2daf6f1eac93dddd-8\"");
 }

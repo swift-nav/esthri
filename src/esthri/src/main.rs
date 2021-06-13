@@ -26,9 +26,9 @@ use hyper::Client;
 use tokio::runtime::Builder;
 
 #[logfn(err = "ERROR")]
-fn log_etag(path: &str) -> Result<String> {
+async fn log_etag(path: &str) -> Result<String> {
     info!("s3etag: path={}", path);
-    let etag = s3_compute_etag(path)?;
+    let etag = compute_etag(path).await?;
     debug!("s3etag: file={}, etag={}", path, etag);
     Ok(etag)
 }
@@ -98,6 +98,9 @@ enum Command {
         /// Optional exclude glob pattern (see `man 3 glob`)
         #[structopt(long)]
         exclude: Option<Vec<String>>,
+        /// Enable compression, only valid on upload
+        #[structopt(long)]
+        compress: bool,
     },
     /// Retreive the ETag for a remote object
     HeadObject {
@@ -191,7 +194,7 @@ async fn async_main() -> Result<()> {
         }
 
         S3Etag { file } => {
-            log_etag(&file)?;
+            log_etag(&file).await?;
         }
 
         SyncCmd {
@@ -199,16 +202,22 @@ async fn async_main() -> Result<()> {
             destination,
             include,
             exclude,
+            compress,
         } => {
-            setup_upload_termination_handler();
-            sync(
-                &s3,
-                source,
-                destination,
-                include.as_deref(),
-                exclude.as_deref(),
-            )
-            .await?;
+            if compress && !(source.is_local() && destination.is_bucket()) {
+                return Err(errors::Error::InvalidSyncCompress);
+            } else {
+                setup_upload_termination_handler();
+                sync(
+                    &s3,
+                    source,
+                    destination,
+                    include.as_deref(),
+                    exclude.as_deref(),
+                    compress,
+                )
+                .await?;
+            }
         }
 
         HeadObject { bucket, key } => {

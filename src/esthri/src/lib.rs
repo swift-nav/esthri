@@ -15,15 +15,20 @@
 extern crate regex;
 
 use std::marker::Unpin;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crypto::digest::Digest;
 use crypto::md5::Md5;
-use futures::{stream, TryStream, TryStreamExt};
+
+#[cfg(feature = "compression")]
+use flate2::{read::GzEncoder, Compression};
+
+use futures::{stream, Future, TryStream, TryStreamExt};
 
 use hyper::client::connect::HttpConnector;
-use log::{warn, info};
+use log::{debug, info, warn};
 use log_derive::logfn;
+use tokio::task;
 
 #[cfg(feature = "blocking")]
 pub mod blocking;
@@ -42,6 +47,8 @@ mod bio {
     pub(super) use std::fs::File;
     pub(super) use std::io::prelude::*;
     pub(super) use std::io::BufReader;
+    pub(super) use std::io::SeekFrom;
+    pub(super) use tempfile::NamedTempFile;
 }
 
 pub use crate::errors::{Error, Result};
@@ -67,6 +74,8 @@ pub use ops::sync::sync;
 
 pub const INCLUDE_EMPTY: Option<&[&str]> = None;
 pub const EXCLUDE_EMPTY: Option<&[&str]> = None;
+
+const EXPECT_SPAWN_BLOCKING: &str = "spawned task failed";
 
 #[logfn(err = "ERROR")]
 pub async fn head_object<T>(
@@ -217,53 +226,66 @@ where
     ))
 }
 
-pub fn s3_compute_etag(path: impl AsRef<Path>) -> Result<String> {
-    use bio::*;
+pub async fn compute_etag(path: impl AsRef<Path>) -> Result<String> {
     let path = path.as_ref();
     if !path.exists() {
         return Err(Error::ETagNotPresent);
     }
-    let f = File::open(path)?;
-    let mut reader = BufReader::new(f);
-    let mut hash = Md5::new();
-    let stat = fs::metadata(&path)?;
+    let f = bio::File::open(path)?;
+    let stat = bio::fs::metadata(&path)?;
     let file_size = stat.len();
-    let mut digests: Vec<[u8; 16]> = vec![];
-    let mut remaining = file_size;
-    let upload_part_size = Config::global().upload_part_size();
-    while remaining != 0 {
-        let upload_part_size: usize = (if remaining >= upload_part_size {
-            upload_part_size
-        } else {
-            remaining
-        }) as usize;
-        hash.reset();
-        let mut blob = vec![0u8; upload_part_size];
-        reader.read_exact(&mut blob)?;
-        hash.input(&blob);
-        let mut hash_bytes = [0u8; 16];
-        hash.result(&mut hash_bytes);
-        digests.push(hash_bytes);
-        remaining -= upload_part_size as u64;
-    }
-    if digests.is_empty() {
-        let mut hash_bytes = [0u8; 16];
-        hash.result(&mut hash_bytes);
-        let hex_digest = hex::encode(hash_bytes);
-        Ok(format!("\"{}\"", hex_digest))
-    } else if digests.len() == 1 && file_size < upload_part_size {
-        let hex_digest = hex::encode(digests[0]);
-        Ok(format!("\"{}\"", hex_digest))
-    } else {
-        let count = digests.len();
-        let mut etag_hash = Md5::new();
-        for digest_bytes in digests {
-            etag_hash.input(&digest_bytes);
-        }
-        let mut final_hash = [0u8; 16];
-        etag_hash.result(&mut final_hash);
-        let hex_digest = hex::encode(final_hash);
-        Ok(format!("\"{}-{}\"", hex_digest, count))
+    compute_etag_from_reader(f, file_size).await
+}
+
+pub fn compute_etag_from_reader<T>(reader: T, length: u64) -> impl Future<Output = Result<String>>
+where
+    T: bio::Read + Send + 'static,
+{
+    use bio::*;
+    async move {
+        task::spawn_blocking(move || {
+            let mut reader = BufReader::new(reader);
+            let mut hash = Md5::new();
+            let mut digests: Vec<[u8; 16]> = vec![];
+            let mut remaining = length;
+            let upload_part_size = Config::global().upload_part_size();
+            while remaining != 0 {
+                let upload_part_size: usize = (if remaining >= upload_part_size {
+                    upload_part_size
+                } else {
+                    remaining
+                }) as usize;
+                hash.reset();
+                let mut blob = vec![0u8; upload_part_size];
+                reader.read_exact(&mut blob)?;
+                hash.input(&blob);
+                let mut hash_bytes = [0u8; 16];
+                hash.result(&mut hash_bytes);
+                digests.push(hash_bytes);
+                remaining -= upload_part_size as u64;
+            }
+            if digests.is_empty() {
+                let mut hash_bytes = [0u8; 16];
+                hash.result(&mut hash_bytes);
+                let hex_digest = hex::encode(hash_bytes);
+                Ok(format!("\"{}\"", hex_digest))
+            } else if digests.len() == 1 && length < upload_part_size {
+                let hex_digest = hex::encode(digests[0]);
+                Ok(format!("\"{}\"", hex_digest))
+            } else {
+                let count = digests.len();
+                let mut etag_hash = Md5::new();
+                for digest_bytes in digests {
+                    etag_hash.input(&digest_bytes);
+                }
+                let mut final_hash = [0u8; 16];
+                etag_hash.result(&mut final_hash);
+                let hex_digest = hex::encode(final_hash);
+                Ok(format!("\"{}-{}\"", hex_digest, count))
+            }
+        })
+        .await
+        .expect(EXPECT_SPAWN_BLOCKING)
     }
 }
 
@@ -425,4 +447,46 @@ pub fn new_https_connector() -> HttpsConnector<HttpConnector> {
 #[cfg(feature = "nativetls")]
 pub fn new_https_connector() -> HttpsConnector<HttpConnector> {
     HttpsConnector::new()
+}
+
+#[cfg(feature = "compression")]
+pub(crate) fn compress_to_tempfile(
+    file: bio::File,
+    path: impl AsRef<Path>,
+) -> impl Future<Output = Result<(bio::NamedTempFile, u64)>> {
+    use bio::*;
+    let path = path.as_ref().to_path_buf();
+    async move {
+        task::spawn_blocking(move || {
+            let size = path.metadata()?.len();
+            debug!("old file size: {}", size);
+            debug!("compressing: {}", path.display());
+            let mut reader = GzEncoder::new(BufReader::new(file), Compression::default());
+            let mut compressed = tempfile::NamedTempFile::new()?;
+            std::io::copy(&mut reader, &mut compressed)?;
+            compressed.flush()?;
+            compressed.seek(SeekFrom::Start(0))?;
+            let size = compressed.path().metadata()?.len();
+            debug!("new file size: {}", size);
+            Ok((compressed, size))
+        })
+        .await
+        .expect(EXPECT_SPAWN_BLOCKING)
+    }
+}
+
+#[cfg(feature = "compression")]
+pub(crate) async fn compress_and_replace(path: impl AsRef<Path>) -> Result<PathBuf> {
+    use std::str::FromStr;
+    let path = path.as_ref();
+    let file = bio::File::open(&path)?;
+    debug!("compressing (and renaming): {}", path.display());
+    let (temp_file, _size) = compress_to_tempfile(file, path).await?;
+    let (_temp_file, temp_path) = temp_file.keep()?;
+    let file_gz = format!("{}.gz", path.display());
+    let file_gz = PathBuf::from_str(&file_gz)?;
+    debug!("renaming {} to {}", path.display(), file_gz.display());
+    bio::fs::rename(temp_path, &file_gz)?;
+    bio::fs::remove_file(path)?;
+    Ok(file_gz)
 }

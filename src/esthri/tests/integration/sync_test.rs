@@ -23,6 +23,7 @@ fn test_sync_down() {
         destination,
         includes.as_deref(),
         excludes.as_deref(),
+        false,
     );
     assert!(res.is_ok(), "s3_sync result: {:?}", res);
 }
@@ -44,6 +45,7 @@ async fn test_sync_down_async() {
         destination,
         includes.as_deref(),
         excludes.as_deref(),
+        false,
     )
     .await;
     assert!(res.is_ok(), "s3_sync result: {:?}", res);
@@ -64,6 +66,7 @@ fn test_sync_down_fail() {
         destination,
         INCLUDE_EMPTY,
         EXCLUDE_EMPTY,
+        false,
     );
     assert!(res.is_err());
 }
@@ -83,6 +86,7 @@ fn test_sync_up_fail() {
         destination,
         INCLUDE_EMPTY,
         EXCLUDE_EMPTY,
+        false,
     );
     assert!(res.is_err());
 }
@@ -104,6 +108,7 @@ fn test_sync_up() {
         destination,
         includes.as_deref(),
         excludes.as_deref(),
+        false,
     );
     assert!(res.is_ok());
 }
@@ -125,6 +130,7 @@ async fn test_sync_up_async() {
         destination,
         includes.as_deref(),
         excludes.as_deref(),
+        false,
     )
     .await;
     assert!(res.is_ok());
@@ -145,6 +151,7 @@ fn test_sync_up_default() {
         destination,
         INCLUDE_EMPTY,
         EXCLUDE_EMPTY,
+        false,
     );
     assert!(res.is_ok());
 
@@ -191,6 +198,7 @@ fn test_sync_down_default() {
         destination,
         INCLUDE_EMPTY,
         EXCLUDE_EMPTY,
+        false,
     );
     assert!(res.is_ok());
 
@@ -222,6 +230,7 @@ async fn test_sync_across() {
         destination,
         includes.as_deref(),
         excludes.as_deref(),
+        false,
     )
     .await;
     assert!(res.is_ok(), "s3_sync result: {:?}", res);

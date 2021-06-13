@@ -10,7 +10,7 @@
 * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
 */
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Mutex;
 
 use futures::{stream, Future, Stream, StreamExt, TryStreamExt};
@@ -20,16 +20,14 @@ use log_derive::logfn;
 use once_cell::sync::Lazy;
 use tokio::task;
 
-#[cfg(feature = "compression")]
-use flate2::{read::GzEncoder, Compression};
-
 use crate::{
     blocking,
     config::Config,
     errors::{Error, Result},
     handle_dispatch_error,
     rusoto::*,
-    types::GlobalData
+    types::GlobalData,
+    EXPECT_SPAWN_BLOCKING,
 };
 
 /// Internal module used to call out operations that may block.
@@ -38,11 +36,9 @@ mod bio {
     pub(super) use std::fs::File;
     pub(super) use std::io::prelude::*;
     pub(super) use std::io::BufReader;
-    pub(super) use std::io::SeekFrom;
 }
 
 const EXPECT_GLOBAL_DATA: &str = "failed to lock global data";
-const EXPECT_SPAWN_BLOCKING: &str = "spawned task failed";
 
 static GLOBAL_DATA: Lazy<Mutex<GlobalData>> = Lazy::new(|| {
     Mutex::new(GlobalData {
@@ -84,30 +80,6 @@ where
     Ok(())
 }
 
-fn compress_to_tempfile(
-    file: bio::File,
-    path: PathBuf,
-    size: u64,
-) -> impl Future<Output = Result<(bio::File, u64)>> {
-    use bio::*;
-    async move {
-        task::spawn_blocking(move || {
-            debug!("old file size: {}", size);
-            debug!("compressing: {}", path.display());
-            let mut reader = GzEncoder::new(BufReader::new(file), Compression::default());
-            let mut compressed = tempfile::tempfile()?;
-            std::io::copy(&mut reader, &mut compressed)?;
-            compressed.flush()?;
-            compressed.seek(SeekFrom::Start(0))?;
-            let size = compressed.metadata()?.len();
-            debug!("new file size: {}", size);
-            Ok((compressed, size))
-        })
-        .await
-        .expect(EXPECT_SPAWN_BLOCKING)
-    }
-}
-
 async fn upload_helper<T>(
     s3: &T,
     bucket: impl AsRef<str>,
@@ -118,16 +90,15 @@ async fn upload_helper<T>(
 where
     T: S3 + Send + Clone,
 {
+    use crate::compress_to_tempfile;
     let (bucket, key, path) = (bucket.as_ref(), key.as_ref(), path.as_ref().to_owned());
-
     if path.exists() {
         let stat = bio::fs::metadata(&path)?;
-        let size = stat.len();
         let file = bio::File::open(&path)?;
         if compressed {
             #[cfg(feature = "compression")]
             {
-                let (compressed, size) = compress_to_tempfile(file, path.clone(), size).await?;
+                let (compressed, size) = compress_to_tempfile(file, path.clone()).await?;
                 upload_from_reader(s3, bucket, key, compressed, size).await
             }
             #[cfg(not(feature = "compression"))]
@@ -135,6 +106,7 @@ where
                 panic!("compression feature not enabled");
             }
         } else {
+            let size = stat.len();
             debug!("upload: file size: {}", size);
             let reader = bio::BufReader::new(file);
             upload_from_reader(s3, bucket, key, reader, size).await
