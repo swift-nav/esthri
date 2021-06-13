@@ -51,6 +51,24 @@ async fn test_upload_async() {
 }
 
 #[test]
+fn test_upload_reader() {
+    let s3client = crate::get_s3client();
+    let filename = "test_reader_upload.bin";
+    let filepath = format!("test_upload_reader/{}", filename);
+    let contents = "file contents";
+    let reader = Cursor::new(contents);
+
+    let res = blocking::upload_from_reader(
+        s3client.as_ref(),
+        crate::TEST_BUCKET,
+        &filepath,
+        reader,
+        contents.len() as u64,
+    );
+    assert!(res.is_ok());
+}
+
+#[test]
 fn test_upload_zero_size() {
     let s3client = crate::get_s3client();
     let filename = "test0b.bin";

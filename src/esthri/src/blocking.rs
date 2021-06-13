@@ -58,6 +58,21 @@ where
 }
 
 #[tokio::main]
+pub async fn upload_from_reader<T, R>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+    reader: R,
+    file_size: u64,
+) -> Result<()>
+where
+    T: S3 + Send + Clone,
+    R: Read + Send + 'static,
+{
+    super::upload_from_reader(s3, bucket, key, reader, file_size).await
+}
+
+#[tokio::main]
 pub async fn upload_compressed<T>(
     s3: &T,
     bucket: impl AsRef<str>,
