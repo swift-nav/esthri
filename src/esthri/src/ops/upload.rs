@@ -1,3 +1,15 @@
+/*
+* Copyright (C) 2021 Swift Navigation Inc.
+* Contact: Swift Navigation <dev@swiftnav.com>
+*
+* This source is subject to the license found in the file 'LICENSE' which must
+* be be distributed together with this source. All other rights reserved.
+*
+* THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND,
+* EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
+* WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
+*/
+
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -11,12 +23,14 @@ use tokio::task;
 #[cfg(feature = "compression")]
 use flate2::{read::GzEncoder, Compression};
 
-use crate::blocking;
-use crate::config::Config;
-use crate::errors::{Error, Result};
-use crate::handle_dispatch_error;
-use crate::rusoto::*;
-use crate::types::GlobalData;
+use crate::{
+    blocking,
+    config::Config,
+    errors::{Error, Result},
+    handle_dispatch_error,
+    rusoto::*,
+    types::GlobalData
+};
 
 /// Internal module used to call out operations that may block.
 mod bio {
