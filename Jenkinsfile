@@ -33,10 +33,22 @@ pipeline {
             sh("cargo make --profile release build")
           }
         }
+        stage('Build library (rustls)') {
+          agent { dockerfile { reuseNode true } }
+          steps {
+            sh("cargo make --profile release build-lib")
+          }
+        }
         stage('Build (nativetls)') {
           agent { dockerfile { reuseNode true } }
           steps {
             sh("cargo make --profile release+nativetls build")
+          }
+        }
+        stage('Build library (nativetls)') {
+          agent { dockerfile { reuseNode true } }
+          steps {
+            sh("cargo make --profile release+nativetls build-lib")
           }
         }
         stage('Test (rustls)') {

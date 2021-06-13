@@ -38,6 +38,17 @@ args = [
         ]
 cwd = "src/esthri"
 
+[tasks.build-lib]
+command = "cargo"
+args = [
+        "build",
+        "--features=${TLS_PROVIDER},aggressive_lint",
+        "--no-default-features",
+        "@@remove-empty(BUILD_FLAVOR)",
+        "@@remove-empty(TARGET)"
+        ]
+cwd = "src/esthri"
+
 [tasks.test]
 env = { RUST_LOG = "esthri=debug", RUST_BACKTRACE = "1" }
 cwd = "src/esthri"

@@ -15,7 +15,7 @@
 extern crate regex;
 
 use std::marker::Unpin;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crypto::digest::Digest;
 use crypto::md5::Md5;
@@ -26,7 +26,7 @@ use flate2::{read::GzEncoder, Compression};
 use futures::{stream, Future, TryStream, TryStreamExt};
 
 use hyper::client::connect::HttpConnector;
-use log::{debug, info, warn};
+use log::{info, warn};
 use log_derive::logfn;
 use tokio::task;
 
@@ -47,7 +47,9 @@ mod bio {
     pub(super) use std::fs::File;
     pub(super) use std::io::prelude::*;
     pub(super) use std::io::BufReader;
+    #[cfg(feature = "compression")]
     pub(super) use std::io::SeekFrom;
+    #[cfg(feature = "compression")]
     pub(super) use tempfile::NamedTempFile;
 }
 
@@ -63,12 +65,19 @@ pub use crate::types::{ObjectInfo, S3ListingItem, S3Object, SyncParam};
 
 mod ops;
 
+pub use ops::download::download;
+
+#[cfg(feature = "compression")]
+pub use ops::download::download_decompressed;
+#[cfg(feature = "compression")]
+pub use ops::upload::upload_compressed;
+
+#[cfg(feature = "http_server")]
 pub(crate) use ops::download::download_streaming;
-pub use ops::download::{download, download_decompressed};
 
 #[cfg(feature = "cli")]
 pub use ops::upload::setup_upload_termination_handler;
-pub use ops::upload::{abort_upload, upload, upload_compressed, upload_from_reader};
+pub use ops::upload::{abort_upload, upload, upload_from_reader};
 
 pub use ops::sync::sync;
 
@@ -462,7 +471,7 @@ pub(crate) fn compress_to_tempfile(
             debug!("old file size: {}", size);
             debug!("compressing: {}", path.display());
             let mut reader = GzEncoder::new(BufReader::new(file), Compression::default());
-            let mut compressed = tempfile::NamedTempFile::new()?;
+            let mut compressed = NamedTempFile::new()?;
             std::io::copy(&mut reader, &mut compressed)?;
             compressed.flush()?;
             compressed.seek(SeekFrom::Start(0))?;
@@ -476,16 +485,16 @@ pub(crate) fn compress_to_tempfile(
 }
 
 #[cfg(feature = "compression")]
-pub(crate) async fn compress_and_replace(path: impl AsRef<Path>) -> Result<PathBuf> {
+pub(crate) async fn compress_and_replace(path: impl AsRef<Path>) -> Result<std::path::PathBuf> {
     use std::str::FromStr;
     let path = path.as_ref();
     let file = bio::File::open(&path)?;
-    debug!("compressing (and renaming): {}", path.display());
+    log::debug!("compressing (and renaming): {}", path.display());
     let (temp_file, _size) = compress_to_tempfile(file, path).await?;
     let (_temp_file, temp_path) = temp_file.keep()?;
     let file_gz = format!("{}.gz", path.display());
     let file_gz = PathBuf::from_str(&file_gz)?;
-    debug!("renaming {} to {}", path.display(), file_gz.display());
+    log::debug!("renaming {} to {}", path.display(), file_gz.display());
     bio::fs::rename(temp_path, &file_gz)?;
     bio::fs::remove_file(path)?;
     Ok(file_gz)

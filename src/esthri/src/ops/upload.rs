@@ -15,13 +15,12 @@ use std::sync::Mutex;
 
 use futures::{stream, Future, Stream, StreamExt, TryStreamExt};
 
-use log::{debug, error, info, warn};
+use log::{debug, info, warn};
 use log_derive::logfn;
 use once_cell::sync::Lazy;
 use tokio::task;
 
 use crate::{
-    blocking,
     config::Config,
     errors::{Error, Result},
     handle_dispatch_error,
@@ -90,7 +89,6 @@ async fn upload_helper<T>(
 where
     T: S3 + Send + Clone,
 {
-    use crate::compress_to_tempfile;
     let (bucket, key, path) = (bucket.as_ref(), key.as_ref(), path.as_ref().to_owned());
     if path.exists() {
         let stat = bio::fs::metadata(&path)?;
@@ -98,6 +96,7 @@ where
         if compressed {
             #[cfg(feature = "compression")]
             {
+                use crate::compress_to_tempfile;
                 let (compressed, size) = compress_to_tempfile(file, path.clone()).await?;
                 upload_from_reader(s3, bucket, key, compressed, size).await
             }
@@ -391,9 +390,9 @@ pub fn setup_upload_termination_handler() {
                     info!("\ncancelling...");
                     let region = Region::default();
                     let s3 = S3Client::new(region);
-                    let res = blocking::abort_upload(&s3, &bucket, &key, &upload_id);
+                    let res = crate::blocking::abort_upload(&s3, &bucket, &key, &upload_id);
                     if let Err(e) = res {
-                        error!("cancelling failed: {}", e);
+                        log::error!("cancelling failed: {}", e);
                     }
                 }
             }

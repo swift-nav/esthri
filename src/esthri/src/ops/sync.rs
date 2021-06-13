@@ -213,7 +213,6 @@ fn map_paths_to_etags<StreamT>(
 where
     StreamT: Stream<Item = Result<(String, Option<ListingMetadata>)>>,
 {
-    use crate::compress_and_replace;
     use std::str::FromStr;
     input_stream.map(move |params| async move {
         let (path, metadata) = params?;
@@ -226,7 +225,7 @@ where
                     (path, local_etag)
                 } else {
                     info!("compressing and replacing: {}", path.display());
-                    let path = compress_and_replace(path).await?;
+                    let path = crate::compress_and_replace(path).await?;
                     let local_etag = compute_etag(&path).await;
                     (path, local_etag)
                 }
