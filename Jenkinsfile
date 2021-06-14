@@ -39,10 +39,10 @@ pipeline {
             sh("cargo make --profile release build-lib")
           }
         }
-        stage('Build CLI with minimum features (nativetls)') {
+        stage('Build CLI with minimum features (rustls)') {
           agent { dockerfile { reuseNode true } }
           steps {
-            sh("cargo make --profile release+nativetls build-min-cli")
+            sh("cargo make --profile release build-min-cli")
           }
         }
         stage('Build (nativetls)') {
