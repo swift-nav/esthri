@@ -233,8 +233,8 @@ async fn async_main() -> Result<()> {
             ref exclude,
             ..
         } => {
+            #[cfg(feature = "compression")]
             let compress;
-
             #[cfg(feature = "compression")]
             {
                 compress = matches!(cli.cmd, Sync { compress: true, .. });
@@ -242,10 +242,6 @@ async fn async_main() -> Result<()> {
                 if compress && !(source.is_local() && destination.is_bucket()) {
                     return Err(errors::Error::InvalidSyncCompress);
                 }
-            }
-            #[cfg(not(feature = "compression"))]
-            {
-                compress = false;
             }
 
             setup_upload_termination_handler();
@@ -256,6 +252,7 @@ async fn async_main() -> Result<()> {
                 destination.clone(),
                 include.as_deref(),
                 exclude.as_deref(),
+                #[cfg(feature = "compression")]
                 compress,
             )
             .await?;
