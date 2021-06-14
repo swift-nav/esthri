@@ -1,0 +1,73 @@
+/*
+ * Copyright (C) 2020 Swift Navigation Inc.
+ * Contact: Swift Navigation <dev@swiftnav.com>
+ *
+ * This source is subject to the license found in the file 'LICENSE' which must
+ * be be distributed together with this source. All other rights reserved.
+ *
+ * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND,
+ * EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
+ */
+
+#![cfg_attr(feature = "aggressive_lint", deny(warnings))]
+
+use std::path::{Path, PathBuf};
+use std::str::FromStr;
+
+use flate2::{read::GzEncoder, Compression};
+use futures::Future;
+use log::debug;
+use tokio::task;
+
+use super::{Result, EXPECT_SPAWN_BLOCKING};
+
+/// Internal module used to call out operations that may block.
+mod bio {
+    pub(super) use std::fs;
+    pub(super) use std::fs::File;
+    pub(super) use std::io::prelude::*;
+    pub(super) use std::io::BufReader;
+    pub(super) use std::io::SeekFrom;
+    pub(super) use tempfile::NamedTempFile;
+}
+
+pub(crate) fn compress_to_tempfile(
+    file: bio::File,
+    path: impl AsRef<Path>,
+) -> impl Future<Output = Result<(bio::NamedTempFile, u64)>> {
+    use bio::*;
+    let path = path.as_ref().to_path_buf();
+    async move {
+        task::spawn_blocking(move || {
+            let size = path.metadata()?.len();
+            debug!("old file size: {}", size);
+            debug!("compressing: {}", path.display());
+            let mut reader = GzEncoder::new(BufReader::new(file), Compression::default());
+            let mut compressed = NamedTempFile::new()?;
+            std::io::copy(&mut reader, &mut compressed)?;
+            compressed.flush()?;
+            compressed.seek(SeekFrom::Start(0))?;
+            let size = compressed.path().metadata()?.len();
+            debug!("new file size: {}", size);
+            Ok((compressed, size))
+        })
+        .await
+        .expect(EXPECT_SPAWN_BLOCKING)
+    }
+}
+
+pub async fn compress_and_replace(path: impl AsRef<Path>) -> Result<PathBuf> {
+    use bio::*;
+    let path = path.as_ref();
+    let file = File::open(&path)?;
+    debug!("compressing (and renaming): {}", path.display());
+    let (temp_file, _size) = compress_to_tempfile(file, path).await?;
+    let (_temp_file, temp_path) = temp_file.keep()?;
+    let file_gz = format!("{}.gz", path.display());
+    let file_gz = PathBuf::from_str(&file_gz)?;
+    debug!("renaming {} to {}", path.display(), file_gz.display());
+    fs::rename(temp_path, &file_gz)?;
+    fs::remove_file(path)?;
+    Ok(file_gz)
+}
