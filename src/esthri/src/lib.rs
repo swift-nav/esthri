@@ -464,6 +464,7 @@ pub(crate) fn compress_to_tempfile(
     path: impl AsRef<Path>,
 ) -> impl Future<Output = Result<(bio::NamedTempFile, u64)>> {
     use bio::*;
+    use log::debug;
     let path = path.as_ref().to_path_buf();
     async move {
         task::spawn_blocking(move || {
@@ -486,6 +487,7 @@ pub(crate) fn compress_to_tempfile(
 
 #[cfg(feature = "compression")]
 pub(crate) async fn compress_and_replace(path: impl AsRef<Path>) -> Result<std::path::PathBuf> {
+    use std::path::PathBuf;
     use std::str::FromStr;
     let path = path.as_ref();
     let file = bio::File::open(&path)?;
