@@ -14,11 +14,6 @@
 #![recursion_limit = "256"]
 extern crate regex;
 
-use std::fs;
-use std::fs::File;
-use std::io::prelude::*;
-use std::io::BufReader;
-use std::io::ErrorKind;
 use std::marker::Unpin;
 use std::path::{Path, PathBuf};
 use std::result::Result as StdResult;
@@ -32,11 +27,11 @@ use hyper::client::connect::HttpConnector;
 use log::*;
 use log_derive::logfn;
 use once_cell::sync::Lazy;
-use tokio::{
-    io::AsyncReadExt,
-    task::{self, JoinError, JoinHandle},
-};
+use tokio::task::{self, JoinError, JoinHandle};
 use walkdir::WalkDir;
+
+#[cfg(feature = "compression")]
+use flate2::{read::GzEncoder, Compression};
 
 pub use crate::errors::{Error, Result};
 
@@ -51,14 +46,32 @@ pub mod types;
 
 pub mod rusoto;
 
+/// Internal module used to call out operations that may block.
+mod bio {
+    pub(super) use std::fs;
+    pub(super) use std::fs::File;
+    pub(super) use std::io::prelude::*;
+    pub(super) use std::io::BufReader;
+    pub(super) use std::io::SeekFrom;
+}
+
 use crate::retry::handle_dispatch_error;
 use crate::rusoto::*;
 
 use crate::config::Config;
-use crate::types::{GlobalData, ListingMetadata, MapEtagResult, ReadSize, S3Listing};
+use crate::types::{GlobalData, ListingMetadata, MapEtagResult, S3Listing};
+
 pub use crate::types::{ObjectInfo, S3ListingItem, S3Object, SyncParam};
 
+mod ops;
+
+pub use ops::download::download;
+pub use ops::download::download_decompressed;
+pub(crate) use ops::download::download_streaming;
+
 const EXPECT_GLOBAL_DATA: &str = "failed to lock global data";
+
+const EXPECT_SPAWN_BLOCKING: &str = "spawned task failed";
 
 const FORWARD_SLASH: char = '/';
 
@@ -74,11 +87,13 @@ pub const INCLUDE_EMPTY: Option<&[&str]> = None;
 pub const EXCLUDE_EMPTY: Option<&[&str]> = None;
 
 #[logfn(err = "ERROR")]
-pub async fn head_object<T, SR0, SR1>(s3: &T, bucket: SR0, key: SR1) -> Result<Option<ObjectInfo>>
+pub async fn head_object<T>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+) -> Result<Option<ObjectInfo>>
 where
     T: S3 + Send,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
 {
     let (bucket, key) = (bucket.as_ref(), key.as_ref());
     info!("head-object: bucket={}, key={}", bucket, key);
@@ -86,17 +101,14 @@ where
 }
 
 #[logfn(err = "ERROR")]
-pub async fn abort_upload<T, SR0, SR1, SR2>(
+pub async fn abort_upload<T>(
     s3: &T,
-    bucket: SR0,
-    key: SR1,
-    upload_id: SR2,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+    upload_id: impl AsRef<str>,
 ) -> Result<()>
 where
     T: S3 + Send,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
-    SR2: AsRef<str>,
 {
     let (bucket, key, upload_id) = (bucket.as_ref(), key.as_ref(), upload_id.as_ref());
 
@@ -120,76 +132,164 @@ where
     Ok(())
 }
 
-pub async fn upload<T, P, SR0, SR1>(s3: &T, bucket: SR0, key: SR1, file: P) -> Result<()>
+fn compress_to_tempfile(
+    file: bio::File,
+    path: PathBuf,
+    size: u64,
+) -> impl Future<Output = Result<(bio::File, u64)>> {
+    use bio::*;
+    async move {
+        tokio::task::spawn_blocking(move || {
+            debug!("old file size: {}", size);
+            debug!("compressing: {}", path.display());
+            let mut reader = GzEncoder::new(BufReader::new(file), Compression::default());
+            let mut compressed = tempfile::tempfile()?;
+            std::io::copy(&mut reader, &mut compressed)?;
+            compressed.flush()?;
+            compressed.seek(SeekFrom::Start(0))?;
+            let size = compressed.metadata()?.len();
+            debug!("new file size: {}", size);
+            Ok((compressed, size))
+        })
+        .await
+        .expect(EXPECT_SPAWN_BLOCKING)
+    }
+}
+
+async fn upload_helper<T>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+    path: impl AsRef<Path>,
+    compressed: bool,
+) -> Result<()>
 where
     T: S3 + Send + Clone,
-    P: AsRef<Path>,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
 {
-    let (bucket, key, file) = (bucket.as_ref(), key.as_ref(), file.as_ref());
+    let (bucket, key, path) = (bucket.as_ref(), key.as_ref(), path.as_ref().to_owned());
+
+    if path.exists() {
+        let stat = bio::fs::metadata(&path)?;
+        let size = stat.len();
+        let file = bio::File::open(&path)?;
+        if compressed {
+            #[cfg(feature = "compression")]
+            {
+                let (compressed, size) = compress_to_tempfile(file, path.clone(), size).await?;
+                upload_from_reader(s3, bucket, key, compressed, size).await
+            }
+            #[cfg(not(feature = "compression"))]
+            {
+                panic!("compression feature not enabled");
+            }
+        } else {
+            debug!("upload: file size: {}", size);
+            let reader = bio::BufReader::new(file);
+            upload_from_reader(s3, bucket, key, reader, size).await
+        }
+    } else {
+        Err(Error::InvalidSourceFile(path))
+    }
+}
+
+#[logfn(err = "ERROR")]
+pub async fn upload<T>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+    file: impl AsRef<Path>,
+) -> Result<()>
+where
+    T: S3 + Send + Clone,
+{
     info!(
         "put: bucket={}, key={}, file={}",
-        bucket,
-        key,
-        file.display()
+        bucket.as_ref(),
+        key.as_ref(),
+        file.as_ref().display()
     );
 
-    if file.exists() {
-        let stat = fs::metadata(&file)?;
-        let file_size = stat.len();
-
-        debug!("file_size: {}", file_size);
-
-        let f = File::open(file)?;
-        let mut reader = BufReader::new(f);
-
-        upload_from_reader(s3, bucket, key, &mut reader, file_size).await
-    } else {
-        Err(Error::InvalidSourceFile(file.into()))
-    }
+    let compressed = false;
+    upload_helper(s3, bucket, key, file, compressed).await
 }
 
-async fn create_file_chunk_stream<R: Read>(
-    mut reader: R,
+#[cfg(feature = "compression")]
+#[logfn(err = "ERROR")]
+pub async fn upload_compressed<T>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+    file: impl AsRef<Path>,
+) -> Result<()>
+where
+    T: S3 + Send + Clone,
+{
+    info!(
+        "put(compressed): bucket={}, key={}, file={}",
+        bucket.as_ref(),
+        key.as_ref(),
+        file.as_ref().display()
+    );
+
+    let compressed = true;
+    upload_helper(s3, bucket, key, file, compressed).await
+}
+
+async fn create_file_chunk_stream<R>(
+    reader: R,
     file_size: u64,
-) -> impl Stream<Item = Result<(i64, Vec<u8>)>> {
+) -> impl Stream<Item = Result<(i64, Vec<u8>)>>
+where
+    R: bio::Read + Send + 'static,
+{
     let upload_part_size = Config::global().upload_part_size();
-    async_stream::stream! {
-        let mut remaining = file_size;
-        let mut part_number: i64 = 1;
-        while remaining != 0 {
-            let upload_part_size = if remaining >= upload_part_size {
-                upload_part_size
+    let init_state = (file_size, /* part_number = */ 1, Some(reader));
+    Box::pin(stream::unfold(
+        init_state,
+        move |(remaining, part_number, reader)| async move {
+            let done_state = (0, 0, None);
+            if remaining == 0 {
+                None
             } else {
-                remaining
-            };
-            let mut buf = vec![0u8; upload_part_size as usize];
-            if reader.read(&mut buf)? == 0 {
-                yield Err(Error::ReadZero);
-                return;
-            } else {
-                yield Ok((part_number, buf));
-                remaining -= upload_part_size;
-                part_number += 1;
+                let upload_part_size = u64::min(remaining, upload_part_size);
+                let mut buf = vec![0u8; upload_part_size as usize];
+                let result: Result<(Vec<u8>, usize, R)> = task::spawn_blocking(move || {
+                    let mut reader = reader.unwrap();
+                    let read_size = reader.read(&mut buf)?;
+                    Ok((buf, read_size, reader))
+                })
+                .await
+                .expect(EXPECT_SPAWN_BLOCKING);
+                match result {
+                    Ok((buf, read_size, reader)) => {
+                        if read_size == 0 {
+                            let err = Err(Error::ReadZero);
+                            Some((err, done_state))
+                        } else {
+                            let result = Ok((part_number, buf));
+                            Some((
+                                result,
+                                (remaining - upload_part_size, part_number + 1, Some(reader)),
+                            ))
+                        }
+                    }
+                    Err(err) => Some((Err(err), done_state)),
+                }
             }
-        }
-    }
+        },
+    ))
 }
 
-async fn create_chunk_upload_stream<StreamT, ClientT, SR0, SR1, SR2>(
+async fn create_chunk_upload_stream<StreamT, ClientT>(
     source_stream: StreamT,
     s3: ClientT,
-    upload_id: SR0,
-    bucket: SR1,
-    key: SR2,
+    upload_id: impl Into<String> + Clone,
+    bucket: impl Into<String> + Clone,
+    key: impl Into<String> + Clone,
 ) -> impl Stream<Item = impl Future<Output = Result<CompletedPart>>>
 where
     StreamT: Stream<Item = Result<(i64, Vec<u8>)>>,
     ClientT: S3 + Send + Clone,
-    SR0: Clone + Into<String>,
-    SR1: Clone + Into<String>,
-    SR2: Clone + Into<String>,
 {
     source_stream
         .map(move |value| {
@@ -232,18 +332,16 @@ where
 }
 
 #[logfn(err = "ERROR")]
-pub async fn upload_from_reader<T, R, SR0, SR1>(
+pub async fn upload_from_reader<T, R>(
     s3: &T,
-    bucket: SR0,
-    key: SR1,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
     mut reader: R,
     file_size: u64,
 ) -> Result<()>
 where
     T: S3 + Send + Clone,
-    R: Read,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
+    R: bio::Read + Send + 'static,
 {
     let upload_part_size = Config::global().upload_part_size();
     let (bucket, key) = (bucket.as_ref(), key.as_ref());
@@ -319,15 +417,19 @@ where
             global_data.upload_id = None;
         }
     } else {
-        let mut buf = vec![0u8; file_size as usize];
-        let read_size = reader.read(&mut buf)?;
-
-        if read_size == 0 && file_size != 0 {
-            return Err(Error::ReadZero);
-        }
-
+        let buffer = task::spawn_blocking(move || {
+            let mut buffer = vec![0u8; file_size as usize];
+            let read_size = reader.read(&mut buffer)?;
+            if read_size == 0 && file_size != 0 {
+                Err(Error::ReadZero)
+            } else {
+                Ok(buffer)
+            }
+        })
+        .await
+        .expect(EXPECT_SPAWN_BLOCKING)?;
         handle_dispatch_error(|| async {
-            let body: StreamingBody = buf.clone().into();
+            let body: StreamingBody = buffer.clone().into();
 
             let por = PutObjectRequest {
                 bucket: bucket.into(),
@@ -346,232 +448,16 @@ where
     Ok(())
 }
 
-async fn download_streaming_range<T, SR0, SR1>(
-    s3: &T,
-    bucket: SR0,
-    key: SR1,
-    range: Option<ReadSize>,
-) -> Result<ByteStream>
-where
-    T: S3 + Send + Clone,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
-{
-    let (bucket, key) = (bucket.as_ref(), key.as_ref());
-
-    if let Some(range) = range {
-        if range.total() == 0 {
-            let empty = vec![0u8; 0];
-            return Ok(empty.into());
-        }
-    }
-
-    let range = range.map(|r| r.to_string());
-
-    let goo = get_object_request(
-        s3,
-        &GetObjectRequest {
-            bucket: bucket.into(),
-            key: key.into(),
-            range,
-            ..Default::default()
-        },
-    )
-    .await?;
-
-    goo.body.ok_or(Error::GetObjectOutputBodyNone)
-}
-
-pub async fn download_streaming<T, SR0, SR1>(s3: &T, bucket: SR0, key: SR1) -> Result<ByteStream>
-where
-    T: S3 + Send + Clone,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
-{
-    let range = None;
-    download_streaming_range(s3, bucket, key, range).await
-}
-
-async fn read_ignore_interrupted<ClientT, ReaderT>(
-    s3: &ClientT,
-    bucket: String,
-    key: String,
-    mut reader: ReaderT,
-    range: &ReadSize,
-) -> Result<(usize, Vec<u8>)>
-where
-    ClientT: S3 + Send + Clone,
-    ReaderT: AsyncReadExt + Unpin,
-{
-    let read_expected = range.read_size();
-    let s3 = s3.clone();
-    let mut blob = vec![0u8; read_expected as usize];
-    loop {
-        let result = reader.read_exact(&mut blob).await;
-        let stat = head_object_request(&s3, bucket.clone(), key.clone())
-            .await?
-            .ok_or_else(|| Error::GetObjectInvalidKey(key.clone()))?;
-        if stat.size as u64 != range.total() {
-            break Err(Error::GetObjectSizeChanged);
-        }
-        if let Err(e) = result {
-            if e.kind() == ErrorKind::Interrupted {
-                continue;
-            }
-        } else {
-            let read_actual = result?;
-            if read_expected != read_actual {
-                break Err(Error::GetObjectInvalidRead(read_expected, read_actual));
-            } else {
-                break Ok((read_actual, blob));
-            }
-        }
-    }
-}
-
-fn create_download_readers_stream<'a, ClientT, SR0, SR1>(
-    s3: &ClientT,
-    bucket: SR0,
-    key: SR1,
-) -> impl Stream<Item = impl Future<Output = Result<(u64, usize, Vec<u8>)>>> + 'a
-where
-    ClientT: S3 + Send + Clone + 'a,
-    SR0: Into<String>,
-    SR1: Into<String>,
-{
-    let bucket: String = bucket.into();
-    let key: String = key.into();
-    let s3 = s3.clone();
-
-    let create_future = |result: Result<(ClientT, String, String, ReadSize)>| async move {
-        match result {
-            Err(error) => Err(error),
-            Ok((s3, bucket, key, range)) => {
-                let stream =
-                    download_streaming_range(&s3, bucket.clone(), key.clone(), Some(range)).await?;
-                let reader = stream.into_async_read();
-                let (read_size, buffer) =
-                    read_ignore_interrupted(&s3, bucket, key, reader, &range).await?;
-                Ok((range.offset(), read_size, buffer))
-            }
-        }
-    };
-
-    async_stream::stream! {
-        let read_size = Config::global().download_buffer_size();
-        let stat = head_object_request(&s3, bucket.clone(), key.clone()).await;
-        if let Ok(stat) = stat {
-            if let Some(stat) = stat {
-                let mut range = ReadSize::new(read_size, stat.size as u64);
-                let mut read_size = range.read_size();
-                loop {
-                    let s3 = s3.clone();
-                    let bucket = bucket.clone();
-                    let key = key.clone();
-                    yield create_future(Ok((s3, bucket, key, range)));
-                    read_size = range.update(read_size);
-                    if range.complete() {
-                        break;
-                    }
-                }
-            } else {
-                let err = Error::GetObjectInvalidKey(key.clone());
-                yield create_future(Err(err))
-            }
-        } else {
-            yield create_future(Err(stat.err().unwrap()));
-        }
-    }
-}
-
-fn write_all_at(writer: File, file_offset: u64, buffer: Vec<u8>, length: usize) -> Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::prelude::FileExt;
-        writer
-            .write_all_at(&buffer[..length], file_offset)
-            .map_err(Error::from)
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::prelude::FileExt;
-        let (mut file_offset, mut length) = (file_offset, length);
-        let mut buffer_offset = 0;
-        while length > 0 {
-            let write_size = writer
-                .seek_write(&buffer[buffer_offset..length], file_offset)
-                .map_err(Error::from)?;
-            length -= write_size;
-            file_offset += write_size as u64;
-            buffer_offset += write_size;
-        }
-        Ok(())
-    }
-}
-
-fn map_download_readers_to_writer<'a, T>(
-    chunk_stream: T,
-    writer: File,
-) -> impl Stream<Item = impl Future<Output = Result<()>> + 'a> + 'a
-where
-    T: Stream<Item = Result<(u64, usize, Vec<u8>)>> + 'a,
-{
-    chunk_stream
-        .map(move |value| {
-            let writer = writer.try_clone()?;
-            let (file_offset, read_size, buffer) = value?;
-            Ok((writer, file_offset, read_size, buffer))
-        })
-        .map(|value: Result<(File, u64, usize, Vec<u8>)>| async move {
-            let (writer, file_offset, length, buffer) = value?;
-            write_all_at(writer, file_offset, buffer, length)
-        })
-}
-
 #[logfn(err = "ERROR")]
-pub async fn download<T, P, SR0, SR1>(s3: &T, bucket: SR0, key: SR1, file: P) -> Result<()>
-where
-    T: S3 + Send + Clone,
-    P: AsRef<Path>,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
-{
-    let (bucket, key, file) = (bucket.as_ref(), key.as_ref(), file.as_ref());
-
-    info!(
-        "get: bucket={}, key={}, file={}",
-        bucket,
-        key,
-        file.display()
-    );
-
-    let file_output = File::create(file)?;
-
-    let reader_chunk_stream = create_download_readers_stream(s3, bucket, key)
-        .buffer_unordered(Config::global().concurrent_downloader_tasks());
-
-    let reader_result_stream = map_download_readers_to_writer(reader_chunk_stream, file_output);
-
-    reader_result_stream
-        .buffer_unordered(Config::global().concurrent_writer_tasks())
-        .try_collect()
-        .await?;
-
-    Ok(())
-}
-
-#[logfn(err = "ERROR")]
-pub async fn sync<T, SR0, SR1>(
+pub async fn sync<T>(
     s3: &T,
     source: SyncParam,
     destination: SyncParam,
-    includes: Option<&[SR0]>,
-    excludes: Option<&[SR1]>,
+    includes: Option<&[impl AsRef<str>]>,
+    excludes: Option<&[impl AsRef<str>]>,
 ) -> Result<()>
 where
-    T: S3 + Send + Clone,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
+    T: S3 + Sync + Send + Clone,
 {
     let mut glob_excludes: Vec<Pattern> = vec![];
     let mut glob_includes: Vec<Pattern> = vec![];
@@ -662,22 +548,26 @@ where
 }
 
 #[logfn(err = "ERROR")]
-pub async fn list_objects<T, SR0, SR1>(s3: &T, bucket: SR0, key: SR1) -> Result<Vec<String>>
+pub async fn list_objects<T>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+) -> Result<Vec<String>>
 where
     T: S3 + Send,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
 {
     let none: Option<&str> = None;
     list_objects_with_delim(s3, bucket, key, none).await
 }
 
 #[logfn(err = "ERROR")]
-pub async fn list_directory<T, SR0, SR1>(s3: &T, bucket: SR0, dir_path: SR1) -> Result<Vec<String>>
+pub async fn list_directory<T>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    dir_path: impl AsRef<str>,
+) -> Result<Vec<String>>
 where
     T: S3 + Send,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
 {
     list_objects_with_delim(s3, bucket, dir_path, Some("/")).await
 }
@@ -716,15 +606,13 @@ where
     Ok(keys)
 }
 
-pub fn list_objects_stream<'a, T, SR0, SR1>(
+pub fn list_objects_stream<'a, T>(
     s3: &'a T,
-    bucket: SR0,
-    key: SR1,
+    bucket: impl AsRef<str> + 'a,
+    key: impl AsRef<str> + 'a,
 ) -> impl TryStream<Ok = Vec<S3ListingItem>, Error = Error> + Unpin + 'a
 where
     T: S3 + Send,
-    SR0: AsRef<str> + 'a,
-    SR1: AsRef<str> + 'a,
 {
     let no_delim: Option<&str> = None;
     list_objects_stream_with_delim(s3, bucket, key, no_delim)
@@ -742,17 +630,14 @@ where
     list_objects_stream_with_delim(s3, bucket, key, slash_delim)
 }
 
-fn list_objects_stream_with_delim<'a, T, SR0, SR1, SR2>(
-    s3: &'a T,
-    bucket: SR0,
-    key: SR1,
-    delimiter: Option<SR2>,
-) -> impl TryStream<Ok = Vec<S3ListingItem>, Error = Error> + Unpin + 'a
+fn list_objects_stream_with_delim<T>(
+    s3: &'_ T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+    delimiter: Option<impl AsRef<str>>,
+) -> impl TryStream<Ok = Vec<S3ListingItem>, Error = Error> + Unpin + '_
 where
     T: S3 + Send,
-    SR0: AsRef<str> + 'a,
-    SR1: AsRef<str> + 'a,
-    SR2: AsRef<str> + 'a,
 {
     let (bucket, key) = (bucket.as_ref().to_owned(), key.as_ref().to_owned());
 
@@ -828,15 +713,12 @@ pub fn setup_upload_termination_handler() {
     .expect("Error setting Ctrl-C handler");
 }
 
-pub fn s3_compute_etag<P>(path: P) -> Result<String>
-where
-    P: AsRef<Path>,
-{
+pub fn s3_compute_etag(path: impl AsRef<Path>) -> Result<String> {
+    use bio::*;
     let path = path.as_ref();
     if !path.exists() {
         return Err(Error::ETagNotPresent);
     }
-
     let f = File::open(path)?;
     let mut reader = BufReader::new(f);
     let mut hash = Md5::new();
@@ -844,9 +726,7 @@ where
     let file_size = stat.len();
     let mut digests: Vec<[u8; 16]> = vec![];
     let mut remaining = file_size;
-
     let upload_part_size = Config::global().upload_part_size();
-
     while remaining != 0 {
         let upload_part_size: usize = (if remaining >= upload_part_size {
             upload_part_size
@@ -862,7 +742,6 @@ where
         digests.push(hash_bytes);
         remaining -= upload_part_size as u64;
     }
-
     if digests.is_empty() {
         let mut hash_bytes = [0u8; 16];
         hash.result(&mut hash_bytes);
@@ -882,16 +761,6 @@ where
         let hex_digest = hex::encode(final_hash);
         Ok(format!("\"{}-{}\"", hex_digest, count))
     }
-}
-
-async fn get_object_request<T>(
-    s3: &T,
-    gor: &GetObjectRequest,
-) -> std::result::Result<GetObjectOutput, RusotoError<GetObjectError>>
-where
-    T: S3 + Send,
-{
-    handle_dispatch_error(|| s3.get_object(gor.clone())).await
 }
 
 fn process_head_obj_resp(hoo: HeadObjectOutput) -> Result<Option<ObjectInfo>> {
@@ -938,15 +807,13 @@ fn process_head_obj_resp(hoo: HeadObjectOutput) -> Result<Option<ObjectInfo>> {
 }
 
 #[logfn(err = "ERROR")]
-async fn head_object_request<T, SR0, SR1>(
+async fn head_object_request<T>(
     s3: &T,
-    bucket: SR0,
-    key: SR1,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
 ) -> Result<Option<ObjectInfo>>
 where
-    T: S3 + Send,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
+    T: S3,
 {
     let (bucket, key) = (bucket.as_ref(), key.as_ref());
     let mut res = Some(
@@ -1075,30 +942,6 @@ fn process_globs<'a, P: AsRef<Path> + 'a>(
     }
 }
 
-async fn download_with_dir<T, P: AsRef<Path>>(
-    s3: &T,
-    bucket: &str,
-    s3_prefix: &str,
-    s3_suffix: &str,
-    local_dir: P,
-) -> Result<()>
-where
-    T: S3 + Send + Clone,
-{
-    let local_dir = local_dir.as_ref();
-    let dest_path = local_dir.join(s3_suffix);
-
-    let parent_dir = dest_path.parent().ok_or(Error::ParentDirNone)?;
-    fs::create_dir_all(parent_dir)?;
-
-    let key = format!("{}", Path::new(s3_prefix).join(s3_suffix).display());
-    let dest_path = format!("{}", dest_path.display());
-
-    download(s3, bucket, &key, &dest_path).await?;
-
-    Ok(())
-}
-
 fn create_dirent_stream<'a>(
     directory: &'a Path,
     glob_includes: &'a [Pattern],
@@ -1210,17 +1053,16 @@ where
         })
 }
 
-async fn sync_local_to_remote<T, P>(
+async fn sync_local_to_remote<T>(
     s3: &T,
     bucket: &str,
     key: &str,
-    directory: P,
+    directory: impl AsRef<Path>,
     glob_includes: &[Pattern],
     glob_excludes: &[Pattern],
 ) -> Result<()>
 where
     T: S3 + Send + Clone,
-    P: AsRef<Path>,
 {
     let directory = directory.as_ref();
 
@@ -1406,9 +1248,10 @@ fn remote_to_local_sync_tasks<ClientT, StreamT>(
     input_stream: StreamT,
 ) -> impl Stream<Item = impl Future<Output = Result<()>>>
 where
-    ClientT: S3 + Send + Clone,
+    ClientT: S3 + Sync + Send + Clone,
     StreamT: Stream<Item = StdResult<MapEtagResult, JoinError>>,
 {
+    use ops::download::download_with_dir;
     input_stream
         .map(move |entry| {
             (
@@ -1448,16 +1291,16 @@ where
         })
 }
 
-async fn sync_remote_to_local<T, P: AsRef<Path>>(
+async fn sync_remote_to_local<T>(
     s3: &T,
     bucket: &str,
     key: &str,
-    directory: P,
+    directory: impl AsRef<Path>,
     glob_includes: &[Pattern],
     glob_excludes: &[Pattern],
 ) -> Result<()>
 where
-    T: S3 + Send + Clone,
+    T: S3 + Sync + Send + Clone,
 {
     let directory = directory.as_ref();
     if !key.ends_with(FORWARD_SLASH) {

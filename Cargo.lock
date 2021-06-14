@@ -669,6 +669,7 @@ dependencies = [
  "structopt",
  "tar",
  "tempdir",
+ "tempfile",
  "thiserror",
  "tokio",
  "tokio-util",

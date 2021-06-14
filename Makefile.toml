@@ -21,7 +21,7 @@ TLS_PROVIDER = "nativetls"
 command = "cargo"
 args = [
         "check",
-        "--features=${TLS_PROVIDER},http_server,cli",
+        "--features=${TLS_PROVIDER},blocking,cli,compression,http_server",
         "@@remove-empty(BUILD_FLAVOR)",
         "@@remove-empty(TARGET)"
         ]
@@ -31,7 +31,7 @@ cwd = "src/esthri"
 command = "cargo"
 args = [
         "build",
-        "--features=${TLS_PROVIDER},http_server,cli",
+        "--features=${TLS_PROVIDER},blocking,cli,compression,http_server",
         "--no-default-features",
         "@@remove-empty(BUILD_FLAVOR)",
         "@@remove-empty(TARGET)"
@@ -39,12 +39,12 @@ args = [
 cwd = "src/esthri"
 
 [tasks.test]
-env = { "RUST_LOG" = "esthri=debug", "RUST_BACKTRACE" = "1" }
+env = { RUST_LOG = "esthri=debug", RUST_BACKTRACE = "1" }
 cwd = "src/esthri"
 command = "cargo"
 args = [
         "test",
-        "--features=${TLS_PROVIDER},http_server,cli",
+        "--features=${TLS_PROVIDER},blocking,cli,compression,http_server",
         "--no-default-features",
         "@@remove-empty(BUILD_FLAVOR)",
         "--",
@@ -54,4 +54,4 @@ args = [
 [tasks.lint]
 command = "cargo"
 cwd = "src/esthri"
-args = ["clippy", "--no-default-features", "--features=${TLS_PROVIDER},blocking,http_server,cli,aggressive_lint"]
+args = ["clippy", "--no-default-features", "--features=${TLS_PROVIDER},aggressive_lint,blocking,cli,compression,http_server"]

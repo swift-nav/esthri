@@ -1,9 +1,9 @@
-FROM rust:1.47-slim-buster
+FROM rust:1.52-slim-buster
 
 ARG DEBIAN_FRONTEND=noninterative
 
 ARG SCCACHE_BASE=https://github.com/mozilla/sccache/releases/download
-ARG SCCACHE_VER=0.2.13
+ARG SCCACHE_VER=v0.2.15
 ARG SCCACHE_URL=${SCCACHE_BASE}/${SCCACHE_VER}/sccache-${SCCACHE_VER}-x86_64-unknown-linux-musl.tar.gz
 
 ENV SCCACHE_CACHE_SIZE=100G
@@ -11,7 +11,7 @@ ENV SCCACHE_DIR=/opt/sccache
 
 RUN mkdir -p $SCCACHE_DIR
 
-ARG CARGO_MAKE_VER=0.32.7
+ARG CARGO_MAKE_VER=0.33.0
 ARG CARGO_MAKE_DIR=cargo-make-v${CARGO_MAKE_VER}-x86_64-unknown-linux-musl
 ARG CARGO_MAKE_FILE=${CARGO_MAKE_DIR}.zip
 ARG CARGO_MAKE_URL_BASE=https://github.com/sagiegurari/cargo-make/releases/download/

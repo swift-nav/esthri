@@ -20,91 +20,119 @@ use super::Result;
 use super::SyncParam;
 
 #[tokio::main]
-pub async fn head_object<T, SR0, SR1>(s3: &T, bucket: SR0, key: SR1) -> Result<Option<ObjectInfo>>
+pub async fn head_object<T>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+) -> Result<Option<ObjectInfo>>
 where
     T: S3 + Send,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
 {
     super::head_object(s3, bucket, key).await
 }
 
 #[tokio::main]
-pub async fn abort_upload<T, SR0, SR1, SR2>(
+pub async fn abort_upload<T>(
     s3: &T,
-    bucket: SR0,
-    key: SR1,
-    upload_id: SR2,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+    upload_id: impl AsRef<str>,
 ) -> Result<()>
 where
     T: S3 + Send,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
-    SR2: AsRef<str>,
 {
     super::abort_upload(s3, bucket, key, upload_id).await
 }
 
 #[tokio::main]
-pub async fn upload<T, P, SR0, SR1>(s3: &T, bucket: SR0, key: SR1, file: P) -> Result<()>
+pub async fn upload<T>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+    file: impl AsRef<Path>,
+) -> Result<()>
 where
     T: S3 + Send + Clone,
-    P: AsRef<Path>,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
 {
     super::upload(s3, bucket, key, file).await
 }
 
 #[tokio::main]
-pub async fn upload_from_reader<T, SR0, SR1>(
+pub async fn upload_from_reader<T, R>(
     s3: &T,
-    bucket: SR0,
-    key: SR1,
-    reader: &mut dyn Read,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+    reader: R,
     file_size: u64,
 ) -> Result<()>
 where
     T: S3 + Send + Clone,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
+    R: Read + Send + 'static,
 {
     super::upload_from_reader(s3, bucket, key, reader, file_size).await
 }
 
 #[tokio::main]
-pub async fn download<T, P, SR0, SR1>(s3: &T, bucket: SR0, key: SR1, file: P) -> Result<()>
+pub async fn upload_compressed<T>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+    file: impl AsRef<Path>,
+) -> Result<()>
 where
     T: S3 + Send + Clone,
-    P: AsRef<Path>,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
+{
+    super::upload_compressed(s3, bucket, key, file).await
+}
+
+#[tokio::main]
+pub async fn download<T>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+    file: impl AsRef<Path>,
+) -> Result<()>
+where
+    T: S3 + Sync + Send + Clone,
 {
     super::download(s3, bucket, key, file).await
 }
 
 #[tokio::main]
-pub async fn sync<T, SR0, SR1>(
+pub async fn download_decompressed<T>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+    file: impl AsRef<Path>,
+) -> Result<()>
+where
+    T: S3 + Sync + Send + Clone,
+{
+    super::download_decompressed(s3, bucket, key, file).await
+}
+
+#[tokio::main]
+pub async fn sync<T>(
     s3: &T,
     source: SyncParam,
     destination: SyncParam,
-    includes: Option<&[SR0]>,
-    excludes: Option<&[SR1]>,
+    includes: Option<&[impl AsRef<str>]>,
+    excludes: Option<&[impl AsRef<str>]>,
 ) -> Result<()>
 where
-    T: S3 + Send + Clone,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
+    T: S3 + Sync + Send + Clone,
 {
     super::sync(s3, source, destination, includes, excludes).await
 }
 
 #[tokio::main]
-pub async fn list_objects<T, SR0, SR1>(s3: &T, bucket: SR0, key: SR1) -> Result<Vec<String>>
+pub async fn list_objects<T>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+) -> Result<Vec<String>>
 where
     T: S3 + Send,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
 {
     super::list_objects(s3, bucket, key).await
 }
