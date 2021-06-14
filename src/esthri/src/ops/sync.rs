@@ -226,7 +226,7 @@ where
         {
             use crate::compression::compress_and_replace;
             let (path, local_etag) = if compressed {
-                if path.to_string_lossy().ends_with(".gz") {
+                if path.extension().map(|e| e == "gz").unwrap_or(false) {
                     let local_etag = compute_etag(&path).await;
                     (path, local_etag)
                 } else {

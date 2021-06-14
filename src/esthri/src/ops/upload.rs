@@ -91,15 +91,16 @@ async fn upload_helper<T>(
 where
     T: S3 + Send + Clone,
 {
+    use bio::*;
+
     let (bucket, key, path) = (bucket.as_ref(), key.as_ref(), path.as_ref().to_owned());
     if path.exists() {
-        let stat = bio::fs::metadata(&path)?;
-        let file = bio::File::open(&path)?;
+        let stat = fs::metadata(&path)?;
         if compressed {
             #[cfg(feature = "compression")]
             {
                 use crate::compression::compress_to_tempfile;
-                let (compressed, size) = compress_to_tempfile(file, path.clone()).await?;
+                let (compressed, size) = compress_to_tempfile(path.clone()).await?;
                 upload_from_reader(s3, bucket, key, compressed, size).await
             }
             #[cfg(not(feature = "compression"))]
@@ -109,7 +110,7 @@ where
         } else {
             let size = stat.len();
             debug!("upload: file size: {}", size);
-            let reader = bio::BufReader::new(file);
+            let reader = BufReader::new(File::open(path)?);
             upload_from_reader(s3, bucket, key, reader, size).await
         }
     } else {

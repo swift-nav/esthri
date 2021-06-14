@@ -20,20 +20,33 @@ use futures::Future;
 use log::debug;
 use tokio::task;
 
-use super::{Result, EXPECT_SPAWN_BLOCKING};
+use super::{Error, Result, EXPECT_SPAWN_BLOCKING};
 
 /// Internal module used to call out operations that may block.
 mod bio {
     pub(super) use std::fs;
     pub(super) use std::fs::File;
-    pub(super) use std::io::prelude::*;
     pub(super) use std::io::BufReader;
+    pub(super) use std::io::Seek;
     pub(super) use std::io::SeekFrom;
     pub(super) use tempfile::NamedTempFile;
 }
 
+fn rewind_file<T: bio::Seek>(file: &mut T) -> Result<()> {
+    file.seek(bio::SeekFrom::Start(0))
+        .map(|_| ())
+        .map_err(Error::from)
+}
+
+fn named_tempfile<P: AsRef<Path>>(dir: P) -> Result<bio::NamedTempFile> {
+    tempfile::Builder::new()
+        .prefix(".esthri_temp.")
+        .suffix(".gz")
+        .tempfile_in(dir.as_ref())
+        .map_err(Error::from)
+}
+
 pub(crate) fn compress_to_tempfile(
-    file: bio::File,
     path: impl AsRef<Path>,
 ) -> impl Future<Output = Result<(bio::NamedTempFile, u64)>> {
     use bio::*;
@@ -43,12 +56,12 @@ pub(crate) fn compress_to_tempfile(
             let size = path.metadata()?.len();
             debug!("old file size: {}", size);
             debug!("compressing: {}", path.display());
-            let mut reader = GzEncoder::new(BufReader::new(file), Compression::default());
-            let mut compressed = NamedTempFile::new()?;
-            std::io::copy(&mut reader, &mut compressed)?;
-            compressed.flush()?;
-            compressed.seek(SeekFrom::Start(0))?;
-            let size = compressed.path().metadata()?.len();
+            let buf_reader = BufReader::new(File::open(&path)?);
+            let mut reader = GzEncoder::new(buf_reader, Compression::default());
+            let pwd = std::env::current_dir()?;
+            let mut compressed = named_tempfile(path.parent().unwrap_or(&pwd))?;
+            let size = std::io::copy(&mut reader, &mut compressed)?;
+            rewind_file(&mut compressed)?;
             debug!("new file size: {}", size);
             Ok((compressed, size))
         })
@@ -60,9 +73,8 @@ pub(crate) fn compress_to_tempfile(
 pub(crate) async fn compress_and_replace(path: impl AsRef<Path>) -> Result<PathBuf> {
     use bio::*;
     let path = path.as_ref();
-    let file = File::open(&path)?;
     debug!("compressing (and renaming): {}", path.display());
-    let (temp_file, _size) = compress_to_tempfile(file, path).await?;
+    let (temp_file, _size) = compress_to_tempfile(path).await?;
     let (_temp_file, temp_path) = temp_file.keep()?;
     let file_gz = format!("{}.gz", path.display());
     let file_gz = PathBuf::from_str(&file_gz)?;
