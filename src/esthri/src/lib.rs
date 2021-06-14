@@ -29,13 +29,13 @@ use tokio::task;
 
 #[cfg(feature = "blocking")]
 pub mod blocking;
-#[cfg(feature = "compression")]
-pub mod compression;
 pub mod errors;
 #[cfg(feature = "http_server")]
 pub mod http_server;
 pub mod rusoto;
 
+#[cfg(feature = "compression")]
+pub(crate) mod compression;
 pub(crate) mod types;
 
 mod config;

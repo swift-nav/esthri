@@ -135,12 +135,6 @@ enum Command {
         #[structopt(long, default_value = "127.0.0.1:3030")]
         address: std::net::SocketAddr,
     },
-    /// Compress a file using internal gzip compression.
-    #[cfg(feature = "compression")]
-    Compress {
-        /// The path to file for compression
-        file: PathBuf,
-    },
 }
 
 async fn async_main() -> Result<()> {
@@ -269,11 +263,6 @@ async fn async_main() -> Result<()> {
         #[cfg(feature = "http_server")]
         Serve { bucket, address } => {
             http_server::run(s3.clone(), &bucket, &address).await?;
-        }
-
-        #[cfg(feature = "compression")]
-        Compress { file } => {
-            esthri::compression::compress_and_replace(file).await?;
         }
     }
 

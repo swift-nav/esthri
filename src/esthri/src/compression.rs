@@ -57,7 +57,7 @@ pub(crate) fn compress_to_tempfile(
     }
 }
 
-pub async fn compress_and_replace(path: impl AsRef<Path>) -> Result<PathBuf> {
+pub(crate) async fn compress_and_replace(path: impl AsRef<Path>) -> Result<PathBuf> {
     use bio::*;
     let path = path.as_ref();
     let file = File::open(&path)?;
