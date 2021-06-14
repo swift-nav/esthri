@@ -20,9 +20,6 @@ use std::path::Path;
 use crypto::digest::Digest;
 use crypto::md5::Md5;
 
-#[cfg(feature = "compression")]
-use flate2::{read::GzEncoder, Compression};
-
 use futures::{stream, Future, TryStream, TryStreamExt};
 
 use hyper::client::connect::HttpConnector;
@@ -32,14 +29,18 @@ use tokio::task;
 
 #[cfg(feature = "blocking")]
 pub mod blocking;
-pub mod config;
+#[cfg(feature = "compression")]
+pub mod compression;
 pub mod errors;
 #[cfg(feature = "http_server")]
 pub mod http_server;
-pub mod retry;
-pub mod types;
-
 pub mod rusoto;
+
+pub(crate) mod types;
+
+mod config;
+mod ops;
+mod retry;
 
 /// Internal module used to call out operations that may block.
 mod bio {
@@ -47,10 +48,6 @@ mod bio {
     pub(super) use std::fs::File;
     pub(super) use std::io::prelude::*;
     pub(super) use std::io::BufReader;
-    #[cfg(feature = "compression")]
-    pub(super) use std::io::SeekFrom;
-    #[cfg(feature = "compression")]
-    pub(super) use tempfile::NamedTempFile;
 }
 
 pub use crate::errors::{Error, Result};
@@ -62,8 +59,6 @@ use crate::config::Config;
 use crate::types::S3Listing;
 
 pub use crate::types::{ObjectInfo, S3ListingItem, S3Object, SyncParam};
-
-mod ops;
 
 pub use ops::download::download;
 
@@ -456,48 +451,4 @@ pub fn new_https_connector() -> HttpsConnector<HttpConnector> {
 #[cfg(feature = "nativetls")]
 pub fn new_https_connector() -> HttpsConnector<HttpConnector> {
     HttpsConnector::new()
-}
-
-#[cfg(feature = "compression")]
-pub(crate) fn compress_to_tempfile(
-    file: bio::File,
-    path: impl AsRef<Path>,
-) -> impl Future<Output = Result<(bio::NamedTempFile, u64)>> {
-    use bio::*;
-    use log::debug;
-    let path = path.as_ref().to_path_buf();
-    async move {
-        task::spawn_blocking(move || {
-            let size = path.metadata()?.len();
-            debug!("old file size: {}", size);
-            debug!("compressing: {}", path.display());
-            let mut reader = GzEncoder::new(BufReader::new(file), Compression::default());
-            let mut compressed = NamedTempFile::new()?;
-            std::io::copy(&mut reader, &mut compressed)?;
-            compressed.flush()?;
-            compressed.seek(SeekFrom::Start(0))?;
-            let size = compressed.path().metadata()?.len();
-            debug!("new file size: {}", size);
-            Ok((compressed, size))
-        })
-        .await
-        .expect(EXPECT_SPAWN_BLOCKING)
-    }
-}
-
-#[cfg(feature = "compression")]
-pub(crate) async fn compress_and_replace(path: impl AsRef<Path>) -> Result<std::path::PathBuf> {
-    use std::path::PathBuf;
-    use std::str::FromStr;
-    let path = path.as_ref();
-    let file = bio::File::open(&path)?;
-    log::debug!("compressing (and renaming): {}", path.display());
-    let (temp_file, _size) = compress_to_tempfile(file, path).await?;
-    let (_temp_file, temp_path) = temp_file.keep()?;
-    let file_gz = format!("{}.gz", path.display());
-    let file_gz = PathBuf::from_str(&file_gz)?;
-    log::debug!("renaming {} to {}", path.display(), file_gz.display());
-    bio::fs::rename(temp_path, &file_gz)?;
-    bio::fs::remove_file(path)?;
-    Ok(file_gz)
 }

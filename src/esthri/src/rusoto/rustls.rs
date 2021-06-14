@@ -10,6 +10,8 @@
  * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
  */
 
+#![cfg_attr(feature = "aggressive_lint", deny(warnings))]
+
 #[cfg(feature = "rustls")]
 pub use hyper_rustls::{self, *};
 #[cfg(feature = "rustls")]

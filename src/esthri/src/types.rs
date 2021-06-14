@@ -29,7 +29,7 @@ pub struct ObjectInfo {
     pub last_modified: DateTime<Utc>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SyncParam {
     Local { path: PathBuf },
     Bucket { bucket: String, key: String },

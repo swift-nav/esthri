@@ -1,3 +1,17 @@
+/*
+ * Copyright (C) 2020 Swift Navigation Inc.
+ * Contact: Swift Navigation <dev@swiftnav.com>
+ *
+ * This source is subject to the license found in the file 'LICENSE' which must
+ * be be distributed together with this source. All other rights reserved.
+ *
+ * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND,
+ * EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
+ */
+
+#![cfg_attr(feature = "aggressive_lint", deny(warnings))]
+
 //! Configuration module for the library, allows sizing of internal concurrent task counts,
 //! multipart upload sizes and read buffer sizes, among other things.
 
@@ -16,6 +30,7 @@ pub const DOWNLOAD_BUFFER_SIZE: usize = 8 * 1024 * 1024;
 pub const CONCURRENT_DOWNLOADER_TASKS: u16 = 32;
 /// The default number of concurrent tasks run when receiving compressed data
 /// from S3.  Each task represents a connection to S3.
+#[cfg(feature = "compression")]
 pub const CONCURRENT_COMPRESSED_DOWNLOADER_TASKS: u16 = 2;
 /// The default number of concurrent tasks run when writing download data to disk.
 pub const CONCURRENT_WRITER_TASKS: u16 = 64;
@@ -33,6 +48,7 @@ pub struct Config {
     download_buffer_size: DownloadBufferSize,
     #[serde(default)]
     concurrent_downloader_tasks: ConcurrentDownloaderTasks,
+    #[cfg(feature = "compression")]
     #[serde(default)]
     concurrent_compressed_downloader_tasks: ConcurrentCompressedDownloaderTasks,
     #[serde(default)]
@@ -79,10 +95,12 @@ impl Default for ConcurrentDownloaderTasks {
 
 /// Wrapper type for [CONCURRENT_COMPRESSED_DOWNLOADER_TASKS] which allows
 /// [Config::concurrent_compressed_downloader_tasks()] to bind a default value.
+#[cfg(feature = "compression")]
 #[derive(Deserialize)]
 #[serde(transparent)]
 struct ConcurrentCompressedDownloaderTasks(u16);
 
+#[cfg(feature = "compression")]
 impl Default for ConcurrentCompressedDownloaderTasks {
     fn default() -> Self {
         ConcurrentCompressedDownloaderTasks(CONCURRENT_COMPRESSED_DOWNLOADER_TASKS)
@@ -174,6 +192,7 @@ impl Config {
 
     /// The number of concurrent tasks run when receiving compressed data from S3.  Each task
     /// represents a connection to S3.  Defaults to [CONCURRENT_COMPRESSED_DOWNLOADER_TASKS].
+    #[cfg(feature = "compression")]
     pub fn concurrent_compressed_downloader_tasks(&self) -> usize {
         self.concurrent_compressed_downloader_tasks.0 as usize
     }

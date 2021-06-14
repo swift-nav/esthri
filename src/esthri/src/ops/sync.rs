@@ -1,14 +1,16 @@
 /*
-* Copyright (C) 2021 Swift Navigation Inc.
-* Contact: Swift Navigation <dev@swiftnav.com>
-*
-* This source is subject to the license found in the file 'LICENSE' which must
-* be be distributed together with this source. All other rights reserved.
-*
-* THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND,
-* EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
-* WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
-*/
+ * Copyright (C) 2021 Swift Navigation Inc.
+ * Contact: Swift Navigation <dev@swiftnav.com>
+ *
+ * This source is subject to the license found in the file 'LICENSE' which must
+ * be be distributed together with this source. All other rights reserved.
+ *
+ * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND,
+ * EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
+ */
+
+#![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
 use std::path::{Path, PathBuf};
 
@@ -219,13 +221,14 @@ where
         let path = PathBuf::from_str(&path)?;
         #[cfg(feature = "compression")]
         {
+            use crate::compression::compress_and_replace;
             let (path, local_etag) = if compressed {
                 if path.to_string_lossy().ends_with(".gz") {
                     let local_etag = compute_etag(&path).await;
                     (path, local_etag)
                 } else {
                     info!("compressing and replacing: {}", path.display());
-                    let path = crate::compress_and_replace(path).await?;
+                    let path = compress_and_replace(path).await?;
                     let local_etag = compute_etag(&path).await;
                     (path, local_etag)
                 }

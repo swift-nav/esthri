@@ -1,14 +1,16 @@
 /*
-* Copyright (C) 2021 Swift Navigation Inc.
-* Contact: Swift Navigation <dev@swiftnav.com>
-*
-* This source is subject to the license found in the file 'LICENSE' which must
-* be be distributed together with this source. All other rights reserved.
-*
-* THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND,
-* EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
-* WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
-*/
+ * Copyright (C) 2021 Swift Navigation Inc.
+ * Contact: Swift Navigation <dev@swiftnav.com>
+ *
+ * This source is subject to the license found in the file 'LICENSE' which must
+ * be be distributed together with this source. All other rights reserved.
+ *
+ * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND,
+ * EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
+ */
+
+#![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
 use std::path::Path;
 use std::sync::Mutex;
@@ -96,7 +98,7 @@ where
         if compressed {
             #[cfg(feature = "compression")]
             {
-                use crate::compress_to_tempfile;
+                use crate::compression::compress_to_tempfile;
                 let (compressed, size) = compress_to_tempfile(file, path.clone()).await?;
                 upload_from_reader(s3, bucket, key, compressed, size).await
             }
@@ -305,10 +307,10 @@ where
             create_chunk_upload_stream(chunk_stream, s3.clone(), upload_id.clone(), bucket, key)
                 .await;
 
-        let downloaders_count = Config::global().concurrent_downloader_tasks();
+        let uploaders_count = Config::global().concurrent_upload_tasks();
 
         let mut completed_parts: Vec<CompletedPart> = upload_stream
-            .buffer_unordered(downloaders_count)
+            .buffer_unordered(uploaders_count)
             .try_collect()
             .await?;
 
