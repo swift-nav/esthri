@@ -25,6 +25,12 @@ pipeline {
     buildDiscarder(logRotator(daysToKeepStr: '30'))
   }
   stages {
+    stage('Prepare Jenkins docker') {
+      agent { dockerfile { reuseNode true } }
+      steps {
+        sh("echo done")
+      }
+    }
     stage('Build checks') {
       parallel {
         stage('Build (rustls)') {
