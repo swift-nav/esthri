@@ -76,10 +76,7 @@ impl EphemeralTempDir {
         let temp_dir = TempDir::new("esthri_tmp").expect("creating temporary directory");
         let old_dir = std::env::current_dir().expect("getting current directory");
         std::env::set_current_dir(temp_dir.path()).expect("changing to new temporary directory");
-        EphemeralTempDir {
-            temp_dir,
-            old_dir,
-        }
+        EphemeralTempDir { temp_dir, old_dir }
     }
 }
 

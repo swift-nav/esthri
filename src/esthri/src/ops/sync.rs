@@ -41,8 +41,7 @@ pub async fn sync<T>(
     destination: SyncParam,
     includes: Option<&[impl AsRef<str>]>,
     excludes: Option<&[impl AsRef<str>]>,
-    #[cfg(feature = "compression")]
-    compressed: bool,
+    #[cfg(feature = "compression")] compressed: bool,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
