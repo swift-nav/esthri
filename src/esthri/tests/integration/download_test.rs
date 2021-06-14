@@ -46,6 +46,7 @@ async fn test_download_zero_size() {
     assert_eq!(stat.len(), 0);
 }
 
+#[cfg(feature = "compression")]
 #[test]
 fn test_download_decompressed() {
     let s3client = crate::get_s3client();

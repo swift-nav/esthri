@@ -122,12 +122,21 @@ pub async fn sync<T>(
     destination: SyncParam,
     includes: Option<&[impl AsRef<str>]>,
     excludes: Option<&[impl AsRef<str>]>,
+    #[cfg(feature = "compression")]
     compressed: bool,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
 {
-    super::sync(s3, source, destination, includes, excludes, compressed).await
+    super::sync(
+        s3,
+        source,
+        destination,
+        includes,
+        excludes,
+        #[cfg(feature = "compression")]
+        compressed,
+    ).await
 }
 
 #[tokio::main]

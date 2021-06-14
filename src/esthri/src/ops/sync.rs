@@ -41,11 +41,15 @@ pub async fn sync<T>(
     destination: SyncParam,
     includes: Option<&[impl AsRef<str>]>,
     excludes: Option<&[impl AsRef<str>]>,
+    #[cfg(feature = "compression")]
     compressed: bool,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
 {
+    #[cfg(not(feature = "compression"))]
+    let compressed = false;
+
     let mut glob_excludes: Vec<Pattern> = vec![];
     let mut glob_includes: Vec<Pattern> = vec![];
 

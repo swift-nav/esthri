@@ -4,6 +4,7 @@ use std::io::Cursor;
 
 use esthri::blocking;
 use esthri::upload;
+#[allow(unused_imports)]
 use esthri::ObjectInfo;
 
 #[test]
@@ -17,6 +18,7 @@ fn test_upload() {
     assert!(res.is_ok());
 }
 
+#[cfg(feature = "compression")]
 #[test]
 fn test_upload_compressed() {
     let s3client = crate::get_s3client();

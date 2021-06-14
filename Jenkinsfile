@@ -86,6 +86,29 @@ pipeline {
             }
           }
         }
+        stage('Test - minimum features (rustls)') {
+          agent { dockerfile { reuseNode true; args dockerRunArgs } }
+          environment {
+            AWS_REGION = "us-west-2"
+            AWS_DEFAULT_REGION = "us-west-2"
+            USER = "jenkins"
+          }
+          steps {
+            gitPrep()
+            lock(resource: "esthri-integration-tests") {
+              script {
+                sh("""/bin/bash -ex
+                    |
+                    | git lfs install
+                    | git lfs pull
+                    |
+                    | cargo make --profile release test-min
+                    |
+                   """.stripMargin())
+              }
+            }
+          }
+        }
         stage('Test (nativetls)') {
           agent { dockerfile { reuseNode true; args dockerRunArgs } }
           environment {
@@ -103,6 +126,29 @@ pipeline {
                     | git lfs pull
                     |
                     | cargo make --profile release+nativetls test
+                    |
+                   """.stripMargin())
+              }
+            }
+          }
+        }
+        stage('Test - minimum features (nativetls)') {
+          agent { dockerfile { reuseNode true; args dockerRunArgs } }
+          environment {
+            AWS_REGION = "us-west-2"
+            AWS_DEFAULT_REGION = "us-west-2"
+            USER = "jenkins"
+          }
+          steps {
+            gitPrep()
+            lock(resource: "esthri-integration-tests") {
+              script {
+                sh("""/bin/bash -ex
+                    |
+                    | git lfs install
+                    | git lfs pull
+                    |
+                    | cargo make --profile release+nativetls test-min
                     |
                    """.stripMargin())
               }

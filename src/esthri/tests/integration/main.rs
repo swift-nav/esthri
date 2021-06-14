@@ -66,7 +66,8 @@ pub fn get_s3client() -> Arc<S3Client> {
 pub struct KeyHashPair(pub &'static str, pub &'static str);
 
 pub struct EphemeralTempDir {
-    _temp_dir: TempDir,
+    #[allow(dead_code)]
+    temp_dir: TempDir,
     old_dir: std::path::PathBuf,
 }
 
@@ -76,7 +77,7 @@ impl EphemeralTempDir {
         let old_dir = std::env::current_dir().expect("getting current directory");
         std::env::set_current_dir(temp_dir.path()).expect("changing to new temporary directory");
         EphemeralTempDir {
-            _temp_dir: temp_dir,
+            temp_dir,
             old_dir,
         }
     }

@@ -73,6 +73,19 @@ args = [
         "--nocapture"
         ]
 
+[tasks.test-min]
+env = { RUST_LOG = "esthri=debug", RUST_BACKTRACE = "1" }
+cwd = "src/esthri"
+command = "cargo"
+args = [
+        "test",
+        "--features=${TLS_PROVIDER},blocking",
+        "--no-default-features",
+        "@@remove-empty(BUILD_FLAVOR)",
+        "--",
+        "--nocapture"
+        ]
+
 [tasks.lint]
 command = "cargo"
 cwd = "src/esthri"
