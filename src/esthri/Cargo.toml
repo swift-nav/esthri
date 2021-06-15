@@ -27,7 +27,6 @@ envy = "0.4"
 async-stream = "0.3"
 serde = "1"
 serde_derive = "1"
-libc = "0.2"
 
 [dev-dependencies]
 md5 = "0.7"
