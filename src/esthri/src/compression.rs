@@ -12,7 +12,10 @@
 
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
-use std::{ffi::OsString, path::{Path, PathBuf}};
+use std::{
+    ffi::OsString,
+    path::{Path, PathBuf},
+};
 
 use flate2::{read::GzEncoder, Compression};
 use futures::Future;
@@ -93,9 +96,7 @@ pub(crate) async fn compress_and_replace(path: impl AsRef<Path>) -> Result<PathB
         use std::os::unix::fs::PermissionsExt;
         let umask = unsafe { libc::umask(0o666) };
         unsafe { libc::umask(umask) };
-        let mut permissions = file_gz
-            .metadata()?
-            .permissions();
+        let mut permissions = file_gz.metadata()?.permissions();
         permissions.set_mode(0o666 & !umask);
         std::fs::set_permissions(&file_gz, permissions)?;
     }
