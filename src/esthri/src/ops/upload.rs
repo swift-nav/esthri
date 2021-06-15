@@ -92,7 +92,6 @@ where
     T: S3 + Send + Clone,
 {
     use bio::*;
-
     let (bucket, key, path) = (bucket.as_ref(), key.as_ref(), path.as_ref().to_owned());
     if path.exists() {
         let stat = fs::metadata(&path)?;

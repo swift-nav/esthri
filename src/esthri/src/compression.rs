@@ -12,8 +12,7 @@
 
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
-use std::path::{Path, PathBuf};
-use std::str::FromStr;
+use std::{ffi::OsString, path::{Path, PathBuf}};
 
 use flate2::{read::GzEncoder, Compression};
 use futures::Future;
@@ -74,12 +73,32 @@ pub(crate) async fn compress_and_replace(path: impl AsRef<Path>) -> Result<PathB
     use bio::*;
     let path = path.as_ref();
     debug!("compressing (and renaming): {}", path.display());
-    let (temp_file, _size) = compress_to_tempfile(path).await?;
-    let (_temp_file, temp_path) = temp_file.keep()?;
-    let file_gz = format!("{}.gz", path.display());
-    let file_gz = PathBuf::from_str(&file_gz)?;
+    let temp_path = {
+        let (temp_file, _size) = compress_to_tempfile(path).await?;
+        let (_temp_file, temp_path) = temp_file.keep()?;
+        temp_path
+    };
+    let file_gz = path
+        .extension()
+        .map(OsString::from)
+        .map(|mut ext| {
+            ext.push(".gz");
+            path.to_path_buf().with_extension(ext)
+        })
+        .unwrap_or_else(|| path.to_path_buf().with_extension("gz"));
     debug!("renaming {} to {}", path.display(), file_gz.display());
     fs::rename(temp_path, &file_gz)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let umask = unsafe { libc::umask(0o666) };
+        unsafe { libc::umask(umask) };
+        let mut permissions = file_gz
+            .metadata()?
+            .permissions();
+        permissions.set_mode(0o666 & !umask);
+        std::fs::set_permissions(&file_gz, permissions)?;
+    }
     fs::remove_file(path)?;
     Ok(file_gz)
 }
