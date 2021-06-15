@@ -34,6 +34,7 @@ tar = "0.4"
 flate2 = "1.0"
 tempdir = "0.3"
 backtrace = "0.3"
+fs_extra = "1.2"
 
 [lib]
 name = "esthri"

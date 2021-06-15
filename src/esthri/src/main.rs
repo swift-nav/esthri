@@ -12,6 +12,7 @@
 
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use log::*;
@@ -26,10 +27,10 @@ use hyper::Client;
 use tokio::runtime::Builder;
 
 #[logfn(err = "ERROR")]
-fn log_etag(path: &str) -> Result<String> {
-    info!("s3etag: path={}", path);
-    let etag = s3_compute_etag(path)?;
-    debug!("s3etag: file={}, etag={}", path, etag);
+async fn log_etag(path: &Path) -> Result<String> {
+    info!("s3etag: path={}", path.display());
+    let etag = compute_etag(path).await?;
+    debug!("s3etag: file={}, etag={}", path.display(), etag);
     Ok(etag)
 }
 
@@ -45,6 +46,7 @@ enum Command {
     /// Upload an object to S3
     Put {
         /// Should the file be compressed during upload
+        #[cfg(feature = "compression")]
         #[structopt(long)]
         compress: bool,
         /// The target bucket (example: my-bucket)
@@ -54,11 +56,12 @@ enum Command {
         #[structopt(long)]
         key: String,
         /// The path of the local file to read
-        file: String,
+        file: PathBuf,
     },
     /// Download an object from S3
     Get {
         /// Should the file be decompressed during download
+        #[cfg(feature = "compression")]
         #[structopt(long)]
         decompress: bool,
         /// The target bucket (example: my-bucket)
@@ -68,7 +71,7 @@ enum Command {
         #[structopt(long)]
         key: String,
         /// The path of the local file to write
-        file: String,
+        file: PathBuf,
     },
     /// Manually abort a multipart upload
     Abort {
@@ -82,10 +85,9 @@ enum Command {
         upload_id: String,
     },
     /// Compute and print the S3 ETag of the file
-    S3Etag { file: String },
+    Etag { file: PathBuf },
     /// Sync a directory with S3
-    #[structopt(name = "sync")]
-    SyncCmd {
+    Sync {
         /// Source of the sync (example: s3://my-bucket/a/prefix/src)
         #[structopt(long)]
         source: SyncParam,
@@ -98,6 +100,10 @@ enum Command {
         /// Optional exclude glob pattern (see `man 3 glob`)
         #[structopt(long)]
         exclude: Option<Vec<String>>,
+        #[cfg(feature = "compression")]
+        #[structopt(long)]
+        /// Enable compression, only valid on upload
+        compress: bool,
     },
     /// Retreive the ETag for a remote object
     HeadObject {
@@ -156,29 +162,49 @@ async fn async_main() -> Result<()> {
 
     match cli.cmd {
         Put {
-            bucket,
-            key,
-            file,
-            compress,
+            ref bucket,
+            ref key,
+            ref file,
+            ..
         } => {
             setup_upload_termination_handler();
-            if compress {
-                upload_compressed(&s3, &bucket, &key, &file).await?;
-            } else {
-                upload(&s3, &bucket, &key, &file).await?;
+            #[cfg(feature = "compression")]
+            {
+                if matches!(cli.cmd, Put { compress: true, .. }) {
+                    upload_compressed(&s3, bucket, key, file).await?;
+                } else {
+                    upload(&s3, bucket, key, file).await?;
+                }
+            }
+            #[cfg(not(feature = "compression"))]
+            {
+                upload(&s3, bucket, key, file).await?;
             }
         }
 
         Get {
-            bucket,
-            key,
-            file,
-            decompress,
+            ref bucket,
+            ref key,
+            ref file,
+            ..
         } => {
-            if decompress {
-                download_decompressed(&s3, &bucket, &key, &file).await?;
-            } else {
-                download(&s3, &bucket, &key, &file).await?;
+            #[cfg(feature = "compression")]
+            {
+                if matches!(
+                    cli.cmd,
+                    Get {
+                        decompress: true,
+                        ..
+                    }
+                ) {
+                    download_decompressed(&s3, bucket, key, file).await?;
+                } else {
+                    download(&s3, bucket, key, file).await?;
+                }
+            }
+            #[cfg(not(feature = "compression"))]
+            {
+                download(&s3, bucket, key, file).await?;
             }
         }
 
@@ -190,23 +216,38 @@ async fn async_main() -> Result<()> {
             abort_upload(&s3, &bucket, &key, &upload_id).await?;
         }
 
-        S3Etag { file } => {
-            log_etag(&file)?;
+        Etag { file } => {
+            log_etag(&file).await?;
         }
 
-        SyncCmd {
-            source,
-            destination,
-            include,
-            exclude,
+        Sync {
+            ref source,
+            ref destination,
+            ref include,
+            ref exclude,
+            ..
         } => {
+            #[cfg(feature = "compression")]
+            let compress;
+            #[cfg(feature = "compression")]
+            {
+                compress = matches!(cli.cmd, Sync { compress: true, .. });
+
+                if compress && !(source.is_local() && destination.is_bucket()) {
+                    return Err(errors::Error::InvalidSyncCompress);
+                }
+            }
+
             setup_upload_termination_handler();
+
             sync(
                 &s3,
-                source,
-                destination,
+                source.clone(),
+                destination.clone(),
                 include.as_deref(),
                 exclude.as_deref(),
+                #[cfg(feature = "compression")]
+                compress,
             )
             .await?;
         }

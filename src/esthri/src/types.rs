@@ -16,8 +16,6 @@ use std::result::Result as StdResult;
 use chrono::{DateTime, Utc};
 use regex::Regex;
 
-use crate::errors::Result;
-
 pub(super) struct GlobalData {
     pub(super) bucket: Option<String>,
     pub(super) key: Option<String>,
@@ -31,7 +29,7 @@ pub struct ObjectInfo {
     pub last_modified: DateTime<Utc>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SyncParam {
     Local { path: PathBuf },
     Bucket { bucket: String, key: String },
@@ -48,6 +46,12 @@ impl SyncParam {
             bucket: bucket.as_ref().into(),
             key: key.as_ref().into(),
         }
+    }
+    pub fn is_local(&self) -> bool {
+        matches!(self, SyncParam::Local { .. })
+    }
+    pub fn is_bucket(&self) -> bool {
+        matches!(self, SyncParam::Bucket { .. })
     }
 }
 
@@ -201,5 +205,3 @@ impl ListingMetadata {
         None
     }
 }
-
-pub(super) type MapEtagResult = Result<(String, Result<String>, Option<ListingMetadata>)>;

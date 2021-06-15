@@ -1,18 +1,21 @@
 /*
-* Copyright (C) 2021 Swift Navigation Inc.
-* Contact: Swift Navigation <dev@swiftnav.com>
-*
-* This source is subject to the license found in the file 'LICENSE' which must
-* be be distributed together with this source. All other rights reserved.
-*
-* THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND,
-* EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
-* WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
-*/
+ * Copyright (C) 2021 Swift Navigation Inc.
+ * Contact: Swift Navigation <dev@swiftnav.com>
+ *
+ * This source is subject to the license found in the file 'LICENSE' which must
+ * be be distributed together with this source. All other rights reserved.
+ *
+ * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND,
+ * EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
+ */
+
+#![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
 use std::marker::Unpin;
 use std::path::Path;
 use std::pin::Pin;
+#[cfg(feature = "compression")]
 use std::sync::{Arc, Mutex};
 
 use futures::future::BoxFuture;
@@ -27,6 +30,7 @@ use flate2::write::GzDecoder;
 /// Internal module used to call out operations that may block.
 mod bio {
     pub(super) use std::fs::File;
+    #[cfg(feature = "compression")]
     pub(super) use std::io::prelude::*;
     pub(super) use std::io::ErrorKind;
 }
@@ -39,6 +43,7 @@ use crate::{handle_dispatch_error, head_object_request};
 
 /// Unique (locked) pointer to a type that implements the [std::io::Write] trait used here to hold a
 /// pointer to an object that implements gzip decompression transparently.
+#[cfg(feature = "compression")]
 type LockedBoxedWrite = Arc<Mutex<Box<dyn bio::Write + Unpin + Send + Sync>>>;
 
 async fn get_object_request<T>(
@@ -241,12 +246,14 @@ impl Downloader for DownloadMultiple {
 
 /// `DownloadCompressedChunk` uses multiple readers and 1 writer concurrently to download compressed
 /// files and uncompress them transparently.
+#[cfg(feature = "compression")]
 struct DownloadCompressedChunk {
     writer: LockedBoxedWrite,
     buffer: Vec<u8>,
     length: usize,
 }
 
+#[cfg(feature = "compression")]
 impl DownloadCompressedChunk {
     fn new(writer: LockedBoxedWrite, buffer: Vec<u8>, length: usize) -> Self {
         Self {
@@ -257,6 +264,7 @@ impl DownloadCompressedChunk {
     }
 }
 
+#[cfg(feature = "compression")]
 impl DownloaderChunk for DownloadCompressedChunk {
     fn bio_write_chunk(self) -> Result<()> {
         let mut writer = self.writer.lock().unwrap();
@@ -265,6 +273,7 @@ impl DownloaderChunk for DownloadCompressedChunk {
     }
 }
 
+#[cfg(feature = "compression")]
 struct DownloadCompressed {
     file: LockedBoxedWrite,
     bucket: String,
@@ -273,6 +282,7 @@ struct DownloadCompressed {
     read_size: usize,
 }
 
+#[cfg(feature = "compression")]
 impl DownloadCompressed {
     fn new(
         file: LockedBoxedWrite,
@@ -292,6 +302,7 @@ impl DownloadCompressed {
     }
 }
 
+#[cfg(feature = "compression")]
 impl Downloader for DownloadCompressed {
     type Chunk = DownloadCompressedChunk;
 
@@ -350,6 +361,7 @@ where
     }))
 }
 
+#[cfg(feature = "compression")]
 fn write_all(writer: &mut dyn bio::Write, buffer: Vec<u8>, length: usize) -> Result<()> {
     writer.write_all(&buffer[..length]).map_err(Error::from)
 }
@@ -443,11 +455,18 @@ where
     }
 
     if decompress {
-        let file_output: Box<dyn bio::Write + Send + Sync + Unpin> =
-            Box::new(GzDecoder::new(bio::File::create(file)?));
-        let file_output = Arc::new(Mutex::new(file_output));
-        let downloader = DownloadCompressed::new(file_output, bucket, key, total_size);
-        run_downloader(s3.clone(), downloader, decompress).await
+        #[cfg(feature = "compression")]
+        {
+            let file_output: Box<dyn bio::Write + Send + Sync + Unpin> =
+                Box::new(GzDecoder::new(bio::File::create(file)?));
+            let file_output = Arc::new(Mutex::new(file_output));
+            let downloader = DownloadCompressed::new(file_output, bucket, key, total_size);
+            run_downloader(s3.clone(), downloader, decompress).await
+        }
+        #[cfg(not(feature = "compression"))]
+        {
+            panic!("compression feature not enabled");
+        }
     } else {
         let file_output = bio::File::create(file)?;
         let downloader = DownloadMultiple::new(file_output, bucket, key, total_size);
@@ -513,6 +532,7 @@ where
     Ok(())
 }
 
+#[cfg(feature = "http_server")]
 pub(crate) async fn download_streaming<T>(
     s3: &T,
     bucket: impl AsRef<str>,

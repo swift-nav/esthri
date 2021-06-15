@@ -25,6 +25,12 @@ pipeline {
     buildDiscarder(logRotator(daysToKeepStr: '30'))
   }
   stages {
+    stage('Prepare Jenkins docker') {
+      agent { dockerfile { reuseNode true } }
+      steps {
+        sh("echo done")
+      }
+    }
     stage('Build checks') {
       parallel {
         stage('Build (rustls)') {
@@ -33,10 +39,34 @@ pipeline {
             sh("cargo make --profile release build")
           }
         }
+        stage('Build library (rustls)') {
+          agent { dockerfile { reuseNode true } }
+          steps {
+            sh("cargo make --profile release build-lib")
+          }
+        }
+        stage('Build CLI with minimum features (rustls)') {
+          agent { dockerfile { reuseNode true } }
+          steps {
+            sh("cargo make --profile release build-min-cli")
+          }
+        }
         stage('Build (nativetls)') {
           agent { dockerfile { reuseNode true } }
           steps {
             sh("cargo make --profile release+nativetls build")
+          }
+        }
+        stage('Build library (nativetls)') {
+          agent { dockerfile { reuseNode true } }
+          steps {
+            sh("cargo make --profile release+nativetls build-lib")
+          }
+        }
+        stage('Build CLI with minimum features (nativetls)') {
+          agent { dockerfile { reuseNode true } }
+          steps {
+            sh("cargo make --profile release+nativetls build-min-cli")
           }
         }
         stage('Test (rustls)') {
@@ -62,6 +92,29 @@ pipeline {
             }
           }
         }
+        stage('Test - minimum features (rustls)') {
+          agent { dockerfile { reuseNode true; args dockerRunArgs } }
+          environment {
+            AWS_REGION = "us-west-2"
+            AWS_DEFAULT_REGION = "us-west-2"
+            USER = "jenkins"
+          }
+          steps {
+            gitPrep()
+            lock(resource: "esthri-integration-tests") {
+              script {
+                sh("""/bin/bash -ex
+                    |
+                    | git lfs install
+                    | git lfs pull
+                    |
+                    | cargo make --profile release test-min
+                    |
+                   """.stripMargin())
+              }
+            }
+          }
+        }
         stage('Test (nativetls)') {
           agent { dockerfile { reuseNode true; args dockerRunArgs } }
           environment {
@@ -79,6 +132,29 @@ pipeline {
                     | git lfs pull
                     |
                     | cargo make --profile release+nativetls test
+                    |
+                   """.stripMargin())
+              }
+            }
+          }
+        }
+        stage('Test - minimum features (nativetls)') {
+          agent { dockerfile { reuseNode true; args dockerRunArgs } }
+          environment {
+            AWS_REGION = "us-west-2"
+            AWS_DEFAULT_REGION = "us-west-2"
+            USER = "jenkins"
+          }
+          steps {
+            gitPrep()
+            lock(resource: "esthri-integration-tests") {
+              script {
+                sh("""/bin/bash -ex
+                    |
+                    | git lfs install
+                    | git lfs pull
+                    |
+                    | cargo make --profile release+nativetls test-min
                     |
                    """.stripMargin())
               }
