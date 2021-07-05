@@ -105,7 +105,8 @@ version = "0.3"
 optional = true
 
 [dependencies.async-tar]
-version = "0.3"
+git = "https://github.com/silverjam/async-tar.git"
+rev = "d17cb9488fa6cf919e557f676adf35e5499c2e45"
 optional = true
 
 [dependencies.async-compression]

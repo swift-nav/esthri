@@ -114,7 +114,7 @@ where
 }
 
 /// Transforms a [ByteStream] into an [AsyncRead] object suitable for use in a future.
-fn create_reader(stream: ByteStream) -> Pin<Box<dyn AsyncRead + Send + Sync>> {
+fn create_reader(stream: ByteStream) -> Pin<Box<dyn AsyncRead + Send>> {
     let async_reader = stream.into_async_read();
     let buf_reader = tokio::io::BufReader::new(async_reader);
     Box::pin(buf_reader)
