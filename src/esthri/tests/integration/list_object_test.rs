@@ -5,8 +5,8 @@ use esthri::head_object;
 use esthri::list_directory;
 use esthri::list_objects;
 use esthri::list_objects_stream;
-use esthri::types::ObjectInfo;
 use esthri::upload;
+use esthri::ObjectInfo;
 
 use crate::DateTime;
 

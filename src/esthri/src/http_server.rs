@@ -1,3 +1,15 @@
+/*
+ * Copyright (C) 2020 Swift Navigation Inc.
+ * Contact: Swift Navigation <dev@swiftnav.com>
+ *
+ * This source is subject to the license found in the file 'LICENSE' which must
+ * be be distributed together with this source. All other rights reserved.
+ *
+ * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND,
+ * EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
+ */
+
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
 use std::cell::Cell;
@@ -134,9 +146,9 @@ impl ErrorTrackerArc {
     }
 }
 
-impl Into<Option<io::Error>> for ErrorTrackerArc {
-    fn into(self) -> Option<io::Error> {
-        let the_error = self.0.the_error.lock().unwrap();
+impl From<ErrorTrackerArc> for Option<io::Error> {
+    fn from(s: ErrorTrackerArc) -> Option<io::Error> {
+        let the_error = s.0.the_error.lock().unwrap();
         let the_error = {
             if let Some(the_error) = &*the_error {
                 the_error
@@ -282,7 +294,7 @@ async fn abort_with_error(
     ErrorTracker::record_error(error_tracker, err);
 }
 
-async fn stream_object_to_archive<T: S3 + Send>(
+async fn stream_object_to_archive<T: S3 + Send + Clone>(
     s3: &T,
     bucket: &str,
     path: &str,
@@ -366,7 +378,7 @@ async fn create_error_monitor_stream<T: Stream<Item = io::Result<BytesMut>> + Un
                 } else {
                     debug!("wrapped stream done, no error signaled");
                 }
-                break;
+                return;
             }
         }
     }
@@ -460,6 +472,7 @@ async fn create_index_stream(
                 }
                 Err(err) => {
                     yield Err(into_io_error(anyhow!(err)));
+                    return;
                 }
             }
         }
@@ -473,18 +486,18 @@ async fn create_item_stream(
     path: String,
 ) -> impl Stream<Item = io::Result<Bytes>> {
     stream! {
-    let mut stream = match download_streaming(&s3, &bucket, &path).await {
-        Ok(byte_stream) => byte_stream,
-        Err(err) => {
-            yield Err(into_io_error(anyhow!(err)));
-            return;
-        }
-    };
+        let mut stream = match download_streaming(&s3, &bucket, &path).await {
+            Ok(byte_stream) => byte_stream,
+            Err(err) => {
+                yield Err(into_io_error(anyhow!(err)));
+                return;
+            }
+        };
         loop {
             if let Some(data) = stream.next().await {
                 yield data;
             } else {
-                break;
+                return;
             }
         }
     }

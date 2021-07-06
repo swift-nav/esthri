@@ -1,14 +1,16 @@
 /*
-* Copyright (C) 2020 Swift Navigation Inc.
-* Contact: Swift Navigation <dev@swiftnav.com>
-*
-* This source is subject to the license found in the file 'LICENSE' which must
-* be be distributed together with this source. All other rights reserved.
-*
-* THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND,
-* EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
-* WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
-*/
+ * Copyright (C) 2020 Swift Navigation Inc.
+ * Contact: Swift Navigation <dev@swiftnav.com>
+ *
+ * This source is subject to the license found in the file 'LICENSE' which must
+ * be be distributed together with this source. All other rights reserved.
+ *
+ * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND,
+ * EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
+ */
+
+#![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
 //! Blocking version of the [esthri](crate) crate.  All functions are annotated with
 //! `[tokio::main]` and block until completion.
@@ -47,11 +49,13 @@ use super::SyncParam;
 /// head_object(s3, "esthri-test", "foo.txt").unwrap();
 /// ```
 #[tokio::main]
-pub async fn head_object<T, SR0, SR1>(s3: &T, bucket: SR0, key: SR1) -> Result<Option<ObjectInfo>>
+pub async fn head_object<T>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+) -> Result<Option<ObjectInfo>>
 where
     T: S3 + Send,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
 {
     super::head_object(s3, bucket, key).await
 }
@@ -93,17 +97,14 @@ where
 /// abort_upload(s3, "esthri-test", "foo-multipart.bin", upload_id).unwrap();
 /// ```
 #[tokio::main]
-pub async fn abort_upload<T, SR0, SR1, SR2>(
+pub async fn abort_upload<T>(
     s3: &T,
-    bucket: SR0,
-    key: SR1,
-    upload_id: SR2,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+    upload_id: impl AsRef<str>,
 ) -> Result<()>
 where
     T: S3 + Send,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
-    SR2: AsRef<str>,
 {
     super::abort_upload(s3, bucket, key, upload_id).await
 }
@@ -132,65 +133,111 @@ where
 /// upload(s3, "esthri-test", "foo.txt", "tests/data/test1mb.bin").unwrap();
 /// ```
 #[tokio::main]
-pub async fn upload<T, P, SR0, SR1>(s3: &T, bucket: SR0, key: SR1, file: P) -> Result<()>
+pub async fn upload<T>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+    file: impl AsRef<Path>,
+) -> Result<()>
 where
-    T: S3 + Send,
-    P: AsRef<Path>,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
+    T: S3 + Send + Clone,
 {
     super::upload(s3, bucket, key, file).await
 }
 
 #[tokio::main]
-pub async fn upload_from_reader<T, SR0, SR1>(
+pub async fn upload_from_reader<T, R>(
     s3: &T,
-    bucket: SR0,
-    key: SR1,
-    reader: &mut dyn Read,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+    reader: R,
     file_size: u64,
 ) -> Result<()>
 where
-    T: S3 + Send,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
+    T: S3 + Send + Clone,
+    R: Read + Send + 'static,
 {
     super::upload_from_reader(s3, bucket, key, reader, file_size).await
 }
 
+#[cfg(feature = "compression")]
 #[tokio::main]
-pub async fn download<T, P, SR0, SR1>(s3: &T, bucket: SR0, key: SR1, file: P) -> Result<()>
+pub async fn upload_compressed<T>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+    file: impl AsRef<Path>,
+) -> Result<()>
 where
-    T: S3 + Send,
-    P: AsRef<Path>,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
+    T: S3 + Send + Clone,
+{
+    super::upload_compressed(s3, bucket, key, file).await
+}
+
+#[tokio::main]
+pub async fn download<T>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+    file: impl AsRef<Path>,
+) -> Result<()>
+where
+    T: S3 + Sync + Send + Clone,
 {
     super::download(s3, bucket, key, file).await
 }
 
+#[cfg(feature = "compression")]
 #[tokio::main]
-pub async fn sync<T, SR0, SR1>(
+pub async fn download_decompressed<T>(
     s3: &T,
-    source: SyncParam,
-    destination: SyncParam,
-    includes: Option<&[SR0]>,
-    excludes: Option<&[SR1]>,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+    file: impl AsRef<Path>,
 ) -> Result<()>
 where
-    T: S3 + Send,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
+    T: S3 + Sync + Send + Clone,
 {
-    super::sync(s3, source, destination, includes, excludes).await
+    super::download_decompressed(s3, bucket, key, file).await
 }
 
 #[tokio::main]
-pub async fn list_objects<T, SR0, SR1>(s3: &T, bucket: SR0, key: SR1) -> Result<Vec<String>>
+pub async fn sync<T>(
+    s3: &T,
+    source: SyncParam,
+    destination: SyncParam,
+    includes: Option<&[impl AsRef<str>]>,
+    excludes: Option<&[impl AsRef<str>]>,
+    #[cfg(feature = "compression")] compressed: bool,
+) -> Result<()>
+where
+    T: S3 + Sync + Send + Clone,
+{
+    super::sync(
+        s3,
+        source,
+        destination,
+        includes,
+        excludes,
+        #[cfg(feature = "compression")]
+        compressed,
+    )
+    .await
+}
+
+#[tokio::main]
+pub async fn list_objects<T>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+) -> Result<Vec<String>>
 where
     T: S3 + Send,
-    SR0: AsRef<str>,
-    SR1: AsRef<str>,
 {
     super::list_objects(s3, bucket, key).await
+}
+
+#[tokio::main]
+pub async fn compute_etag(path: impl AsRef<Path>) -> Result<String> {
+    super::compute_etag(path).await
 }

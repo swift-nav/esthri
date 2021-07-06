@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Swift Navigation Inc.
+ * Copyright (C) 2021 Swift Navigation Inc.
  * Contact: Swift Navigation <dev@swiftnav.com>
  *
  * This source is subject to the license found in the file 'LICENSE' which must
@@ -10,15 +10,6 @@
  * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-#![cfg_attr(feature = "aggressive_lint", deny(warnings))]
-
-#[cfg(feature = "rustls")]
-pub use hyper_rustls::{self, *};
-#[cfg(feature = "rustls")]
-pub use rusoto_core::{self, *};
-#[cfg(feature = "rustls")]
-pub use rusoto_credential::{self, *};
-#[cfg(feature = "rustls")]
-pub use rusoto_s3::{self, *};
-#[cfg(feature = "rustls")]
-pub use rusoto_signature::{self, *};
+pub(super) mod download;
+pub(super) mod sync;
+pub(super) mod upload;

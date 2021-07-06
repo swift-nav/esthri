@@ -23,6 +23,10 @@ futures = "0.3"
 thiserror = "1.0"
 chrono = "0.4"
 regex = "1"
+envy = "0.4"
+async-stream = "0.3"
+serde = "1"
+serde_derive = "1"
 
 [dev-dependencies]
 md5 = "0.7"
@@ -31,19 +35,21 @@ flate2 = "1.0"
 tempdir = "0.3"
 backtrace = "0.3"
 tokio-test = "0.4"
+fs_extra = "1.2"
 
 [lib]
 name = "esthri"
 path = "src/lib.rs"
 
 [features]
-default = [ "rustls", "cli", "http_server", "blocking", ]
+default = [ "rustls", "cli", "http_server", "blocking", "compression",]
 aggressive_lint = []
 blocking = []
-http_server = [ "async-tar", "async-compression", "async-stream", "bytes", "futures-util", "mime_guess", "sluice", "sanitize-filename", "serde", "serde_derive", "tokio-util", "warp", "ctrlc", "anyhow"]
+compression = [ "flate2", "tempfile"]
+http_server = [ "async-tar", "async-compression", "bytes", "futures-util", "mime_guess", "sluice", "sanitize-filename", "tokio-util", "warp", "ctrlc", "anyhow",]
 nativetls = [ "rusoto_credential", "rusoto_core/native-tls", "rusoto_signature", "rusoto_s3/native-tls", "hyper-tls",]
 rustls = [ "rusoto_credential", "rusoto_core/rustls", "rusoto_signature", "rusoto_s3/rustls", "hyper-rustls",]
-cli = [ "ctrlc", "structopt", "blocking" ]
+cli = [ "ctrlc", "structopt", "blocking", "tokio/rt-multi-thread",]
 
 [dependencies.anyhow]
 version = "1"
@@ -84,8 +90,8 @@ version = "0.3"
 optional = true
 
 [dependencies.tokio]
-version = "1.5"
-features = [ "io-std", "net", "rt", "time",]
+version = "1.6"
+features = [ "rt",]
 
 [dependencies.backoff]
 version = "0.3"
@@ -108,10 +114,6 @@ version = "0.3"
 features = [ "gzip", "futures-io",]
 optional = true
 
-[dependencies.async-stream]
-version = "0.3"
-optional = true
-
 [dependencies.sluice]
 version = "0.5"
 optional = true
@@ -125,14 +127,6 @@ version = "0.6"
 features = [ "compat", "codec",]
 optional = true
 
-[dependencies.serde]
-version = "1.0"
-optional = true
-
-[dependencies.serde_derive]
-version = "1.0"
-optional = true
-
 [dependencies.mime_guess]
 version = "2.0"
 optional = true
@@ -144,4 +138,12 @@ optional = true
 [dependencies.ctrlc]
 version = "3.1"
 features = [ "termination",]
+optional = true
+
+[dependencies.flate2]
+version = "1.0"
+optional = true
+
+[dependencies.tempfile]
+version = "3.0"
 optional = true

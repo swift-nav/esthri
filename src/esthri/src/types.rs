@@ -11,14 +11,15 @@
 */
 
 use std::path::{Path, PathBuf};
+use std::result::Result as StdResult;
 
 use chrono::{DateTime, Utc};
 use regex::Regex;
 
-pub(crate) struct GlobalData {
-    pub(crate) bucket: Option<String>,
-    pub(crate) key: Option<String>,
-    pub(crate) upload_id: Option<String>,
+pub(super) struct GlobalData {
+    pub(super) bucket: Option<String>,
+    pub(super) key: Option<String>,
+    pub(super) upload_id: Option<String>,
 }
 
 #[derive(Debug)]
@@ -28,7 +29,7 @@ pub struct ObjectInfo {
     pub last_modified: DateTime<Utc>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SyncParam {
     Local { path: PathBuf },
     Bucket { bucket: String, key: String },
@@ -46,12 +47,18 @@ impl SyncParam {
             key: key.as_ref().into(),
         }
     }
+    pub fn is_local(&self) -> bool {
+        matches!(self, SyncParam::Local { .. })
+    }
+    pub fn is_bucket(&self) -> bool {
+        matches!(self, SyncParam::Bucket { .. })
+    }
 }
 
 impl std::str::FromStr for SyncParam {
     type Err = String;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    fn from_str(s: &str) -> StdResult<Self, Self::Err> {
         let s3_format = Regex::new(r"^s3://(?P<bucket>[^/]+)/(?P<key>.*)$").unwrap();
 
         if let Some(captures) = s3_format.captures(s) {
@@ -119,4 +126,82 @@ impl S3Listing {
 pub struct S3Object {
     pub key: String,
     pub e_tag: String,
+}
+
+/// Used to track parallel reads when downloading data from S3.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct ReadState {
+    read_size: usize,
+    remaining: u64,
+    offset: u64,
+    total: u64,
+}
+
+impl ToString for ReadState {
+    fn to_string(&self) -> String {
+        format!(
+            "bytes={}-{}",
+            self.offset,
+            self.offset + self.read_size() as u64 - 1,
+        )
+    }
+}
+
+impl ReadState {
+    /// Creates an object for tracking read sizes and offsets when requesting data from S3.  Goals
+    /// are as follows:
+    /// * Uses [ToString@ReadSize] to build a Range header value to request data from S3, see the [MDN docs](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Range) and [S3 docs](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html#API_GetObject_RequestSyntax) for reference
+    /// * Tracks when the end of the object is reached and adjusts the read size accordingly
+    /// * Allows the read process to know if the object size has changed, and abort the read
+    ///
+    /// # Arguments
+    /// * `read_size` - the size of each read to request from S3
+    /// * `total` - the total size of the remote object on S3
+    pub(super) fn new(read_size: usize, total: u64) -> Self {
+        ReadState {
+            offset: 0,
+            read_size: usize::min(total as usize, read_size),
+            remaining: total,
+            total,
+        }
+    }
+    /// Advance the read to the next chunk.
+    pub(super) fn update(&mut self, amount: usize) -> usize {
+        self.remaining -= amount as u64;
+        self.offset += amount as u64;
+        self.read_size()
+    }
+    /// Fetch the next read size
+    pub(super) fn read_size(&self) -> usize {
+        usize::min(self.remaining as usize, self.read_size)
+    }
+    /// Indicates if the read process is completed
+    pub(super) fn complete(&self) -> bool {
+        self.remaining == 0
+    }
+    /// Tracks the total object size on S3
+    pub(super) fn total(&self) -> u64 {
+        self.total
+    }
+    /// The current read offset
+    pub(super) fn offset(&self) -> u64 {
+        self.offset
+    }
+}
+
+/// For syncing from remote to local, or local to remote, "metadata" is attached to the listing in
+/// the remote case (the S3 "suffix" and the ETag) so that we can make the comparison to decide if
+/// we need to download or upload.
+pub(super) struct ListingMetadata {
+    pub(super) s3_suffix: String,
+    pub(super) e_tag: String,
+}
+
+impl ListingMetadata {
+    pub(super) fn some(s3_suffix: String, e_tag: String) -> Option<Self> {
+        Some(Self { s3_suffix, e_tag })
+    }
+    pub(super) fn none() -> Option<Self> {
+        None
+    }
 }
