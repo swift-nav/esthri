@@ -24,12 +24,14 @@ use std::{io, io::ErrorKind};
 use log::*;
 
 use warp::http;
+use warp::http::header::HeaderValue;
 use warp::http::header::{
     CACHE_CONTROL, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_TYPE, ETAG, LAST_MODIFIED,
 };
 use warp::http::response;
 use warp::http::Response;
 use warp::hyper::Body;
+use warp::path::Tail;
 use warp::Filter;
 
 use once_cell::sync::OnceCell;
@@ -64,6 +66,8 @@ use anyhow::anyhow;
 
 use maud::{html, Markup, DOCTYPE};
 
+use rust_embed::RustEmbed;
+
 use crate::download_streaming;
 use crate::head_object;
 use crate::list_directory_stream;
@@ -86,6 +90,10 @@ struct DownloadParams {
 struct S3PrefixList {
     prefixes: Vec<String>,
 }
+
+#[derive(RustEmbed)]
+#[folder = "static/css"]
+struct Styles;
 
 impl<'de> serde::Deserialize<'de> for S3PrefixList {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -243,6 +251,19 @@ pub fn esthri_filter(
         .and_then(download)
 }
 
+async fn serve_css_files(path: Tail) -> Result<http::Response<Body>, warp::Rejection> {
+    let path = path.as_str();
+    let asset = Styles::get(path).ok_or_else(warp::reject::not_found)?;
+    let mime = mime_guess::from_path(path).first_or_octet_stream();
+
+    let resp_builder = Response::builder();
+
+    resp_builder
+        .header(CONTENT_TYPE, HeaderValue::from_str(mime.as_ref()).unwrap())
+        .body(asset.data.into())
+        .map_err(|err| EsthriRejection::warp_rejection(format!("{}", err)))
+}
+
 pub async fn run(
     s3_client: S3Client,
     bucket: &str,
@@ -259,8 +280,12 @@ pub async fn run(
 
     let still_alive = || "still alive";
     let health_check = warp::path(".esthri_health_check").map(still_alive);
+    let styles = warp::path(".css")
+        .and(warp::path::tail())
+        .and_then(serve_css_files);
 
     let routes = health_check
+        .or(styles)
         .or(esthri_filter(s3_client, bucket))
         .recover(handle_rejection);
 
@@ -531,8 +556,8 @@ async fn create_listing_page(s3: S3Client, bucket: String, path: String) -> io::
         title {
             "Esthri " (bucket) " - " (path)
         }
-        link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.1/css/bootstrap.min.css";
-        link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css";
+        link rel="stylesheet" href="/.css/bootstrap-5.1.1.min.css";
+        link rel="stylesheet" href="/.css/fontawesome/css/all.min.css";
 
         div."container p-2" {
             (format_title(&bucket, &path))
