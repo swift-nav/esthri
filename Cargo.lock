@@ -623,7 +623,6 @@ dependencies = [
  "rusoto_s3",
  "rusoto_signature",
  "rust-crypto",
- "rust-embed",
  "sanitize-filename",
  "serde",
  "serde_derive",
@@ -1881,40 +1880,6 @@ dependencies = [
  "rand 0.3.23",
  "rustc-serialize",
  "time",
-]
-
-[[package]]
-name = "rust-embed"
-version = "6.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1be44a6694859b7cfc955699935944a6844aa9fe416aeda5d40829e3e38dfee6"
-dependencies = [
- "rust-embed-impl",
- "rust-embed-utils",
- "walkdir",
-]
-
-[[package]]
-name = "rust-embed-impl"
-version = "6.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f567ca01565c50c67b29e535f5f67b8ea8aeadaeed16a88f10792ab57438b957"
-dependencies = [
- "proc-macro2",
- "quote",
- "rust-embed-utils",
- "syn",
- "walkdir",
-]
-
-[[package]]
-name = "rust-embed-utils"
-version = "7.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6116e7ab9ea963f60f2f20291d8fcf6c7273192cdd7273b3c80729a9605c97b2"
-dependencies = [
- "sha2",
- "walkdir",
 ]
 
 [[package]]
