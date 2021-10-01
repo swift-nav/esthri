@@ -668,7 +668,7 @@ fn sanitize_filename(filename: String) -> String {
         ..Default::default()
     };
     sanitize_filename::sanitize_with_options(
-        filename.strip_suffix("/").unwrap_or(&filename),
+        filename.strip_suffix('/').unwrap_or(&filename),
         options,
     )
 }
