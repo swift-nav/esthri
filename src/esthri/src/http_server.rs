@@ -62,6 +62,8 @@ use futures::stream::StreamExt;
 
 use anyhow::anyhow;
 
+use maud::{html, Markup, DOCTYPE};
+
 use crate::download_streaming;
 use crate::head_object;
 use crate::list_directory_stream;
@@ -437,47 +439,119 @@ fn into_io_error(err: anyhow::Error) -> io::Error {
     io::Error::new(ErrorKind::Other, format!("{}", err))
 }
 
-fn format_link(base: &str, path: &str, archive: bool) -> String {
-    let path = path.strip_prefix(base).unwrap();
-    if archive {
-        format!(
-            "<li><a href=\"{}\">{}</a> [<a href=\"{}?archive=true\">tgz</a>]</li>\n",
-            path, path, path
-        )
-    } else {
-        format!("<li><a href=\"{}\">{}</a></li>\n", path, path)
+fn get_stripped_path<'a>(base: &str, path: &'a str) -> &'a str {
+    path.strip_prefix(base).unwrap()
+}
+
+fn format_archive_download_button(path: &str, tooltip_label: &str) -> Markup {
+    html! {
+        a class="btn btn-primary btn-sm" role="button" href=(format!("{}?archive=true", path))
+            title=(format!("Download tgz archive of {}", tooltip_label)) {
+            span class="fa fa-file-archive fa-lg" { }
+        }
     }
 }
 
-async fn create_index_stream(
-    s3: S3Client,
-    bucket: String,
-    path: String,
-) -> impl Stream<Item = io::Result<Bytes>> {
-    stream! {
-        yield Ok(Bytes::from(format!("<html><h3>{}</h3>", path)));
-        yield Ok(Bytes::from("<ul><li><a href=\".\">.</a> [<a href=\"?archive=true\">tgz</a>]</li>"));
-        yield Ok(Bytes::from("<li><a href=\"..\">..</a> [<a href=\"..?archive=true\">tgz</a>]</li>\n"));
-        let mut directory_list_stream = list_directory_stream(&s3, &bucket, &path);
-        loop {
-            match directory_list_stream.try_next().await {
-                Ok(None) => break,
-                Ok(Some(items)) => {
-                    for s3obj in items {
-                        match s3obj {
-                            S3ListingItem::S3Object(o) => yield Ok(Bytes::from(format_link(&path, &o.key, false))),
-                            S3ListingItem::S3CommonPrefix(cp) => yield Ok(Bytes::from(format_link(&path, &cp, true))),
-                        }
+fn format_bucket_item(path: &str, archive: bool) -> Markup {
+    html! {
+        div {
+            @if archive {
+                i class="far fa-folder fa-fw pe-4" { }
+            } @else {
+                i class="far fa-file fa-fw pe-4" { }
+            }
+
+            a href=(path) {
+                (path)
+            }
+        }
+
+        @if archive {
+            (format_archive_download_button(path, path))
+        }
+    }
+}
+
+fn format_title(bucket: &str, path: &str) -> Markup {
+    let path_components: Vec<&str> = path
+        .strip_suffix('/')
+        .unwrap_or(path)
+        .split_terminator('/')
+        .collect();
+
+    let path_length = path_components.len();
+
+    html! {
+        h5 {
+            a href=("../".repeat(path_length)) {
+                (bucket)
+            }
+
+            @for (i, component) in path_components.iter().enumerate() {
+                " > "
+                @if i == path_length - 1 {
+                    a href="." class="pe-1" {
+                        (component)
                     }
-                }
-                Err(err) => {
-                    yield Err(into_io_error(anyhow!(err)));
-                    return;
+
+                    (format_archive_download_button(".", component))
+                } @else {
+                    a href=("../".repeat(path_length - 1 - i)) {
+                        (component)
+                    }
                 }
             }
         }
-        yield Ok(Bytes::from("</ul></html>\n"));
     }
+}
+
+async fn create_listing_page(s3: S3Client, bucket: String, path: String) -> io::Result<Bytes> {
+    let mut directory_list_stream = list_directory_stream(&s3, &bucket, &path);
+    let mut elements = vec![];
+
+    loop {
+        match directory_list_stream.try_next().await {
+            Ok(None) => break,
+            Ok(Some(items)) => {
+                for s3obj in items {
+                    match s3obj {
+                        S3ListingItem::S3Object(o) => elements
+                            .push(format_bucket_item(get_stripped_path(&path, &o.key), false)),
+                        S3ListingItem::S3CommonPrefix(cp) => {
+                            elements.push(format_bucket_item(get_stripped_path(&path, &cp), true))
+                        }
+                    }
+                }
+            }
+            Err(err) => {
+                return Err(into_io_error(anyhow!(err)));
+            }
+        }
+    }
+
+    let document = html! {
+        (DOCTYPE)
+        meta charset="utf-8";
+        title {
+            "Esthri " (bucket) " - " (path)
+        }
+        link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.1.1/css/bootstrap.min.css";
+        link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css";
+
+        div."container p-2" {
+            (format_title(&bucket, &path))
+
+            ul class="list-group" {
+                @for element in elements {
+                    li class="list-group-item d-flex justify-content-between align-items-center" {
+                        (element)
+                    }
+                }
+            }
+        }
+    };
+
+    Ok(Bytes::from(document.into_string()))
 }
 
 async fn create_item_stream(
@@ -598,7 +672,7 @@ fn sanitize_filename(filename: String) -> String {
         ..Default::default()
     };
     sanitize_filename::sanitize_with_options(
-        filename.strip_suffix("/").unwrap_or(&filename),
+        filename.strip_suffix('/').unwrap_or(&filename),
         options,
     )
 }
@@ -655,11 +729,13 @@ async fn download(
             (None, resp_builder)
         }
     } else if path.ends_with('/') || path.is_empty() {
-        let stream = create_index_stream(s3.clone(), bucket, path).await;
-        (
-            Some(Body::wrap_stream(stream)),
-            resp_builder.header(CONTENT_TYPE, TEXT_HTML_UTF_8.essence_str()),
-        )
+        let listing_page = create_listing_page(s3.clone(), bucket, path).await;
+        let header = resp_builder.header(CONTENT_TYPE, TEXT_HTML_UTF_8.essence_str());
+
+        match listing_page {
+            Ok(page) => (Some(Body::from(page)), header),
+            Err(e) => (Some(Body::from(e.to_string())), header),
+        }
     } else {
         let (resp_builder, create_stream) =
             item_pre_response(&s3, bucket, path, if_none_match, resp_builder).await?;

@@ -404,7 +404,7 @@ where
     while let Some(from_entries) = stream.try_next().await? {
         for entry in from_entries {
             if let S3ListingItem::S3Object(src_object) = entry {
-                let path = process_globs(&src_object.key, &glob_includes, &glob_excludes);
+                let path = process_globs(&src_object.key, glob_includes, glob_excludes);
 
                 if let Some(_accept) = path {
                     let mut should_copy_file: bool = true;
