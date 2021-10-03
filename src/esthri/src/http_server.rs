@@ -443,6 +443,15 @@ fn get_stripped_path<'a>(base: &str, path: &'a str) -> &'a str {
     path.strip_prefix(base).unwrap()
 }
 
+fn format_archive_download_button(path: &str, tooltip_label: &str) -> Markup {
+    html! {
+        a class="btn btn-primary btn-sm" role="button" href=(format!("{}?archive=true", path))
+            title=(format!("Download tgz archive of {}", tooltip_label)) {
+            span class="fa fa-file-archive fa-lg" { }
+        }
+    }
+}
+
 fn format_bucket_item(path: &str, archive: bool) -> Markup {
     html! {
         div {
@@ -458,9 +467,7 @@ fn format_bucket_item(path: &str, archive: bool) -> Markup {
         }
 
         @if archive {
-            a class="btn btn-primary btn-sm" role="button" href=(format!("{}?archive=true", path)) {
-                span class="fa fa-file-archive fa-lg" { }
-            }
+            (format_archive_download_button(path, path))
         }
     }
 }
@@ -483,9 +490,11 @@ fn format_title(bucket: &str, path: &str) -> Markup {
             @for (i, component) in path_components.iter().enumerate() {
                 " > "
                 @if i == path_length - 1 {
-                    a href="." {
+                    a href="." class="pe-1" {
                         (component)
                     }
+
+                    (format_archive_download_button(".", component))
                 } @else {
                     a href=("../".repeat(path_length - 1 - i)) {
                         (component)
@@ -498,12 +507,7 @@ fn format_title(bucket: &str, path: &str) -> Markup {
 
 async fn create_listing_page(s3: S3Client, bucket: String, path: String) -> io::Result<Bytes> {
     let mut directory_list_stream = list_directory_stream(&s3, &bucket, &path);
-    let mut elements = vec![format_bucket_item(".", true)];
-
-    if !path.is_empty() {
-        // check if we're at the root of the bucket
-        elements.push(format_bucket_item("..", true));
-    }
+    let mut elements = vec![];
 
     loop {
         match directory_list_stream.try_next().await {
