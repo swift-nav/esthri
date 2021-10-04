@@ -51,12 +51,12 @@ struct Cli {
 enum S3Command {
     #[structopt(name = "cp")]
     Copy {
-        source: SyncParam,
-        destination: SyncParam,
+        source: S3PathParam,
+        destination: S3PathParam,
     },
     Sync {
-        source: SyncParam,
-        destination: SyncParam,
+        source: S3PathParam,
+        destination: S3PathParam,
     },
 }
 
@@ -114,10 +114,10 @@ enum EsthriCommand {
     Sync {
         /// Source of the sync (example: s3://my-bucket/a/prefix/src)
         #[structopt(long)]
-        source: SyncParam,
+        source: S3PathParam,
         /// Destination of the sync (example: s3://my-bucket/a/prefix/dst)
         #[structopt(long)]
-        destination: SyncParam,
+        destination: S3PathParam,
         /// Optional include glob pattern (see `man 3 glob`)
         #[structopt(long)]
         include: Option<Vec<String>>,

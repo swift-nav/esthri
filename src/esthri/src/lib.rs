@@ -58,7 +58,7 @@ use crate::rusoto::*;
 use crate::config::Config;
 use crate::types::S3Listing;
 
-pub use crate::types::{ObjectInfo, S3ListingItem, S3Object, SyncParam};
+pub use crate::types::{ObjectInfo, S3ListingItem, S3Object, S3PathParam};
 
 pub use ops::download::download;
 

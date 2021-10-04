@@ -2,7 +2,7 @@
 
 use std::fs;
 
-use esthri::{blocking, sync, SyncParam, EXCLUDE_EMPTY, INCLUDE_EMPTY};
+use esthri::{blocking, sync, S3PathParam, EXCLUDE_EMPTY, INCLUDE_EMPTY};
 
 use crate::{validate_key_hash_pairs, KeyHashPair};
 
@@ -14,8 +14,8 @@ fn test_sync_down() {
     let includes: Option<Vec<String>> = Some(vec!["*.txt".to_string()]);
     let excludes: Option<Vec<String>> = Some(vec!["*".to_string()]);
 
-    let source = SyncParam::new_bucket(crate::TEST_BUCKET, s3_key);
-    let destination = SyncParam::new_local(local_directory);
+    let source = S3PathParam::new_bucket(crate::TEST_BUCKET, s3_key);
+    let destination = S3PathParam::new_local(local_directory);
 
     let res = blocking::sync(
         s3client.as_ref(),
@@ -37,8 +37,8 @@ async fn test_sync_down_async() {
     let includes: Option<Vec<String>> = Some(vec!["*.txt".to_string()]);
     let excludes: Option<Vec<String>> = Some(vec!["*".to_string()]);
 
-    let source = SyncParam::new_bucket(crate::TEST_BUCKET, s3_key);
-    let destination = SyncParam::new_local(local_directory);
+    let source = S3PathParam::new_bucket(crate::TEST_BUCKET, s3_key);
+    let destination = S3PathParam::new_local(local_directory);
 
     let res = sync(
         s3client.as_ref(),
@@ -59,8 +59,8 @@ fn test_sync_down_fail() {
     let local_directory = "tests/data/";
     let s3_key = "test_folder";
 
-    let source = SyncParam::new_bucket(crate::TEST_BUCKET, s3_key);
-    let destination = SyncParam::new_local(local_directory);
+    let source = S3PathParam::new_bucket(crate::TEST_BUCKET, s3_key);
+    let destination = S3PathParam::new_local(local_directory);
 
     let res = blocking::sync(
         s3client.as_ref(),
@@ -80,8 +80,8 @@ fn test_sync_up_fail() {
     let local_directory = "tests/data/";
     let s3_key = "test_folder";
 
-    let source = SyncParam::new_local(local_directory);
-    let destination = SyncParam::new_bucket(crate::TEST_BUCKET, s3_key);
+    let source = S3PathParam::new_local(local_directory);
+    let destination = S3PathParam::new_bucket(crate::TEST_BUCKET, s3_key);
 
     let res = blocking::sync(
         s3client.as_ref(),
@@ -103,8 +103,8 @@ fn test_sync_up() {
     let includes: Option<Vec<String>> = Some(vec!["*.txt".to_string()]);
     let excludes: Option<Vec<String>> = Some(vec!["*".to_string()]);
 
-    let source = SyncParam::new_local(local_directory);
-    let destination = SyncParam::new_bucket(crate::TEST_BUCKET, s3_key);
+    let source = S3PathParam::new_local(local_directory);
+    let destination = S3PathParam::new_bucket(crate::TEST_BUCKET, s3_key);
 
     let res = blocking::sync(
         s3client.as_ref(),
@@ -126,8 +126,8 @@ async fn test_sync_up_async() {
     let includes: Option<Vec<String>> = Some(vec!["*.txt".to_string()]);
     let excludes: Option<Vec<String>> = Some(vec!["*".to_string()]);
 
-    let source = SyncParam::new_local(local_directory);
-    let destination = SyncParam::new_bucket(crate::TEST_BUCKET, s3_key);
+    let source = S3PathParam::new_local(local_directory);
+    let destination = S3PathParam::new_bucket(crate::TEST_BUCKET, s3_key);
 
     let res = sync(
         s3client.as_ref(),
@@ -148,8 +148,8 @@ fn test_sync_up_default() {
     let local_directory = "tests/data/sync_up";
     let s3_key = "test_sync_up_default/";
 
-    let source = SyncParam::new_local(local_directory);
-    let destination = SyncParam::new_bucket(crate::TEST_BUCKET, s3_key);
+    let source = S3PathParam::new_local(local_directory);
+    let destination = S3PathParam::new_bucket(crate::TEST_BUCKET, s3_key);
 
     let res = blocking::sync(
         s3client.as_ref(),
@@ -196,8 +196,8 @@ fn test_sync_down_default() {
     //
     let s3_key = "test_sync_down_default/";
 
-    let source = SyncParam::new_bucket(crate::TEST_BUCKET, s3_key);
-    let destination = SyncParam::new_local(local_directory);
+    let source = S3PathParam::new_bucket(crate::TEST_BUCKET, s3_key);
+    let destination = S3PathParam::new_local(local_directory);
 
     let res = blocking::sync(
         s3client.as_ref(),
@@ -229,8 +229,8 @@ async fn test_sync_across() {
     let includes: Option<Vec<String>> = Some(vec!["*.txt".to_string()]);
     let excludes: Option<Vec<String>> = None;
 
-    let source = SyncParam::new_bucket(crate::TEST_BUCKET, source_prefix);
-    let destination = SyncParam::new_bucket(crate::TEST_BUCKET, dest_prefix);
+    let source = S3PathParam::new_bucket(crate::TEST_BUCKET, source_prefix);
+    let destination = S3PathParam::new_bucket(crate::TEST_BUCKET, dest_prefix);
 
     let res = sync(
         s3client.as_ref(),
@@ -268,8 +268,8 @@ fn test_sync_up_compressed() {
 
     fs_extra::dir::copy(data_dir_fp, temp_data_dir, &opts).unwrap();
 
-    let source = SyncParam::new_local(temp_data_dir);
-    let destination = SyncParam::new_bucket(crate::TEST_BUCKET, s3_key);
+    let source = S3PathParam::new_local(temp_data_dir);
+    let destination = S3PathParam::new_bucket(crate::TEST_BUCKET, s3_key);
 
     let res = blocking::sync(
         s3client.as_ref(),

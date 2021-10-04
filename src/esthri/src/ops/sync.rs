@@ -27,7 +27,7 @@ use crate::{
     handle_dispatch_error, head_object_request, list_objects_stream,
     rusoto::*,
     types::ListingMetadata,
-    types::{S3ListingItem, SyncParam},
+    types::{S3ListingItem, S3PathParam},
 };
 
 const FORWARD_SLASH: char = '/';
@@ -37,8 +37,8 @@ type MapEtagResult = Result<(PathBuf, Result<String>, Option<ListingMetadata>)>;
 #[logfn(err = "ERROR")]
 pub async fn sync<T>(
     s3: &T,
-    source: SyncParam,
-    destination: SyncParam,
+    source: S3PathParam,
+    destination: S3PathParam,
     includes: Option<&[impl AsRef<str>]>,
     excludes: Option<&[impl AsRef<str>]>,
     #[cfg(feature = "compression")] compressed: bool,
@@ -83,7 +83,7 @@ where
     }
 
     match (source, destination) {
-        (SyncParam::Local { path }, SyncParam::Bucket { bucket, key }) => {
+        (S3PathParam::Local { path }, S3PathParam::Bucket { bucket, key }) => {
             info!(
                 "sync-up, local directory: {}, bucket: {}, key: {}",
                 path.display(),
@@ -102,7 +102,7 @@ where
             )
             .await?;
         }
-        (SyncParam::Bucket { bucket, key }, SyncParam::Local { path }) => {
+        (S3PathParam::Bucket { bucket, key }, S3PathParam::Local { path }) => {
             info!(
                 "sync-down, local directory: {}, bucket: {}, key: {}",
                 path.display(),
@@ -113,11 +113,11 @@ where
             sync_remote_to_local(s3, &bucket, &key, &path, &glob_includes, &glob_excludes).await?;
         }
         (
-            SyncParam::Bucket {
+            S3PathParam::Bucket {
                 bucket: source_bucket,
                 key: source_key,
             },
-            SyncParam::Bucket {
+            S3PathParam::Bucket {
                 bucket: destination_bucket,
                 key: destination_key,
             },

@@ -13,25 +13,25 @@
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
 use crate::errors::{Error, Result};
-use crate::{download, upload, SyncParam};
+use crate::{download, upload, S3PathParam};
 use log_derive::logfn;
 use rusoto_s3::S3;
 
 #[logfn(err = "ERROR")]
-pub async fn copy<T>(s3: &T, source: SyncParam, destination: SyncParam) -> Result<()>
+pub async fn copy<T>(s3: &T, source: S3PathParam, destination: S3PathParam) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
 {
     match source {
-        SyncParam::Bucket { bucket, key } => match destination {
-            SyncParam::Local { path } => download(s3, bucket, key, path).await,
-            SyncParam::Bucket { bucket: _, key: _ } => {
+        S3PathParam::Bucket { bucket, key } => match destination {
+            S3PathParam::Local { path } => download(s3, bucket, key, path).await,
+            S3PathParam::Bucket { bucket: _, key: _ } => {
                 Err(Error::BucketToBucketCpNotImplementedError)
             }
         },
-        SyncParam::Local { path } => match destination {
-            SyncParam::Bucket { bucket, key } => upload(s3, bucket, key, path).await,
-            SyncParam::Local { path: _ } => Err(Error::LocalToLocalCpNotImplementedError),
+        S3PathParam::Local { path } => match destination {
+            S3PathParam::Bucket { bucket, key } => upload(s3, bucket, key, path).await,
+            S3PathParam::Local { path: _ } => Err(Error::LocalToLocalCpNotImplementedError),
         },
     }
 }
