@@ -113,6 +113,12 @@ pub enum Error {
     #[cfg(feature = "compression")]
     #[error(transparent)]
     PersistError(#[from] tempfile::PersistError),
+
+    #[error("cp: Local to local copy not implemented")]
+    LocalToLocalCpNotImplementedError,
+
+    #[error("cp: Bucket to bucket copy not implemented")]
+    BucketToBucketCpNotImplementedError,
 }
 
 impl From<std::convert::Infallible> for Error {

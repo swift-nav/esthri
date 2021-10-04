@@ -12,7 +12,11 @@
 
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
+use std::env;
+use std::ffi::OsStr;
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::time::Duration;
 
 use log::*;
@@ -26,6 +30,8 @@ use structopt::StructOpt;
 use hyper::Client;
 use tokio::runtime::Builder;
 
+const REAL_AWS_EXECUTABLE: &str = "aws.real";
+
 #[logfn(err = "ERROR")]
 async fn log_etag(path: &Path) -> Result<String> {
     info!("s3etag: path={}", path.display());
@@ -38,11 +44,29 @@ async fn log_etag(path: &Path) -> Result<String> {
 #[structopt(name = "esthri", about = "Simple S3 file transfer utility.")]
 struct Cli {
     #[structopt(subcommand)]
-    cmd: Command,
+    cmd: EsthriCommand,
 }
 
 #[derive(Debug, StructOpt)]
-enum Command {
+enum S3Command {
+    #[structopt(name = "cp")]
+    Copy {
+        source: SyncParam,
+        destination: SyncParam,
+    },
+    Sync {
+        source: SyncParam,
+        destination: SyncParam,
+    },
+}
+
+#[derive(Debug, StructOpt)]
+enum EsthriCommand {
+    /// S3 compatibility layer, providing a compatibility CLI layer for the official AWS S3 CLI tool
+    S3 {
+        #[structopt(subcommand)]
+        cmd: S3Command,
+    },
     /// Upload an object to S3
     Put {
         /// Should the file be compressed during upload
@@ -137,6 +161,37 @@ enum Command {
     },
 }
 
+fn call_real_aws() {
+    warn!("Falling back from esthri to the real AWS executable");
+    let args = env::args().skip(1);
+
+    let err = Command::new(REAL_AWS_EXECUTABLE).args(args).exec();
+
+    panic!(
+        "Executing aws didn't work. Is it installed and available as {:?}? {:?}",
+        REAL_AWS_EXECUTABLE, err
+    );
+}
+
+/// Checks if the Esthri CLI tool should run in "aws compatibility mode", where
+/// it will intercept aws s3 commands that it can handle and then pass off aws
+/// commands it cannot handle to the real aws command line tool.
+fn is_aws_compatibility_mode() -> bool {
+    let program_name = env::current_exe()
+        .ok()
+        .as_ref()
+        .map(Path::new)
+        .and_then(Path::file_name)
+        .and_then(OsStr::to_str)
+        .map(String::from);
+
+    // Returns true if the binary is named 'aws' or if it was invoked from a hard link named 'aws'
+    let is_run_as_aws = program_name.unwrap_or_else(|| "".to_string()) == *"aws";
+    let has_aws_env_var = env::var("ESTHRI_AWS_COMPAT_MODE").is_ok();
+
+    is_run_as_aws || has_aws_env_var
+}
+
 async fn async_main() -> Result<()> {
     if std::env::var("RUST_LOG").is_err() {
         std::env::set_var("RUST_LOG", "esthri=debug,esthri_lib=debug");
@@ -144,7 +199,17 @@ async fn async_main() -> Result<()> {
 
     env_logger::init();
 
-    let cli = Cli::from_args();
+    let aws_compat_mode = is_aws_compatibility_mode();
+
+    let cli = Cli::from_args_safe()
+        .map_err(|e| {
+            if aws_compat_mode {
+                call_real_aws();
+            }
+            e.exit();
+        })
+        .unwrap();
+
     let region = Region::default();
 
     info!("Starting, using region: {:?}...", region);
@@ -158,7 +223,7 @@ async fn async_main() -> Result<()> {
     let credentials_provider = DefaultCredentialsProvider::new().unwrap();
     let s3 = S3Client::new_with(http_client, credentials_provider, Region::default());
 
-    use Command::*;
+    use EsthriCommand::*;
 
     match cli.cmd {
         Put {
@@ -263,6 +328,43 @@ async fn async_main() -> Result<()> {
         #[cfg(feature = "http_server")]
         Serve { bucket, address } => {
             http_server::run(s3.clone(), &bucket, &address).await?;
+        }
+
+        S3 { cmd } => {
+            match cmd {
+                S3Command::Copy {
+                    ref source,
+                    ref destination,
+                } => {
+                    if let Err(e) = copy(&s3, source.clone(), destination.clone()).await {
+                        match e {
+                            Error::BucketToBucketCpNotImplementedError => {
+                                call_real_aws();
+                            }
+                            _ => {
+                                return Err(e);
+                            }
+                        }
+                    }
+                }
+
+                S3Command::Sync {
+                    ref source,
+                    ref destination,
+                } => {
+                    setup_upload_termination_handler();
+
+                    sync(
+                        &s3,
+                        source.clone(),
+                        destination.clone(),
+                        None::<&[&str]>,
+                        None::<&[&str]>,
+                        false,
+                    )
+                    .await?;
+                }
+            };
         }
     }
 
