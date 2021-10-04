@@ -243,6 +243,7 @@ async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
                         destination.clone(),
                         None::<&[&str]>,
                         None::<&[&str]>,
+                        #[cfg(feature = "compression")]
                         false,
                     )
                     .await?;
@@ -275,7 +276,7 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
             }
             #[cfg(not(feature = "compression"))]
             {
-                upload(&s3, bucket, key, file).await?;
+                upload(s3, bucket, key, file).await?;
             }
         }
 
@@ -301,7 +302,7 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
             }
             #[cfg(not(feature = "compression"))]
             {
-                download(&s3, bucket, key, file).await?;
+                download(s3, bucket, key, file).await?;
             }
         }
 

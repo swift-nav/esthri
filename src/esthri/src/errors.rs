@@ -23,6 +23,7 @@ use rusoto_s3::{
     CreateMultipartUploadError, GetObjectError, HeadObjectError, ListObjectsV2Error,
     PutObjectError, UploadPartError,
 };
+#[cfg(feature = "cli")]
 use structopt::clap::Error as ClapError;
 use tokio::task::JoinError;
 
@@ -121,6 +122,7 @@ pub enum Error {
     #[error("cp: Bucket to bucket copy not implemented")]
     BucketToBucketCpNotImplementedError,
 
+    #[cfg(feature = "cli")]
     #[error(transparent)]
     CliError(#[from] ClapError),
 }
