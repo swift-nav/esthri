@@ -24,35 +24,25 @@ SUBCOMMANDS:
     help            Prints this message or the help of the given subcommand(s)
     list-objects    List remote objects in S3
     put             Upload an object to S3
-    s3              S3 compatibility layer, providing a compatibility CLI layer for the official AWS S3 CLI tool
     serve           Launch an HTTP server attached to the specified bucket
     sync            Sync a directory with S3
 ```
 
 ## AWS S3 Compatibility Layer
 
-For ease of use, the esthri CLI tool provides a compatible CLI interface for the
-`cp` and `sync` operations within the `aws s3` tool, allowing users to use the
-`esthri` tool in the same way as they would use the `aws s3` tool for these
-select commands. Currently, only the basic case is implemented for these
+The esthri CLI tool additionally provides a AWS CLI compatibility mode where it
+is able to handle `cp` and `sync` operations with an identical CLI interface as
+the `aws s3` tool. Currently, only the basic case is implemented for these
 commands and no no optional arguments are handled.
 
-To use, invoke the esthri tool as you would invoke the AWS S3 tool. For example:
+To use, the esthri binary must either be:
 
-```
-$ esthri s3 cp s3://bucket/file file
-```
+- Named or hard-linked as `aws`
+- Run with the `ESTHRI_AWS_COMPAT_MODE` environment variable set
 
-Additionally, esthri can be configured to transparently intercept the S3
-commands that it can handle and otherwise invoke the real `aws` tool if it can't.
-This can be configured by:
-
-- Either renaming or hard-linking the esthri binary to `aws` or by setting the
-  `ESTHRI_AWS_COMPAT_MODE` environment variable.
-- Renaming the original `aws` tool to `aws.real`, to allow esthri to call
-  through to it when it encounters a command it cannot handle.
-
-Eg:
+In this mode, esthri will attempt to transparently invoke the real `aws` tool if
+it encounters a command it cannot handle. For this to work, the original `aws`
+tool should be available as `aws.real`.
 
 ```
 $ ln -s /usr/local/bin/aws /usr/local/bin/aws.real

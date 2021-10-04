@@ -40,11 +40,35 @@ async fn log_etag(path: &Path) -> Result<String> {
     Ok(etag)
 }
 
+enum Cli {
+    Esthri(EsthriCli),
+    AwsCompat(AwsCompatCli),
+}
+
 #[derive(Debug, StructOpt)]
 #[structopt(name = "esthri", about = "Simple S3 file transfer utility.")]
-struct Cli {
+struct EsthriCli {
     #[structopt(subcommand)]
     cmd: EsthriCommand,
+}
+
+#[derive(Debug, StructOpt)]
+#[structopt(
+    name = "esthri aws wrapper",
+    about = "Simple S3 file transfer utility."
+)]
+struct AwsCompatCli {
+    #[structopt(subcommand)]
+    cmd: AwsCommand,
+}
+
+#[derive(Debug, StructOpt)]
+enum AwsCommand {
+    /// S3 compatibility layer, providing a compatibility CLI layer for the official AWS S3 CLI tool
+    S3 {
+        #[structopt(subcommand)]
+        cmd: S3Command,
+    },
 }
 
 #[derive(Debug, StructOpt)]
@@ -62,11 +86,6 @@ enum S3Command {
 
 #[derive(Debug, StructOpt)]
 enum EsthriCommand {
-    /// S3 compatibility layer, providing a compatibility CLI layer for the official AWS S3 CLI tool
-    S3 {
-        #[structopt(subcommand)]
-        cmd: S3Command,
-    },
     /// Upload an object to S3
     Put {
         /// Should the file be compressed during upload
@@ -192,151 +211,15 @@ fn is_aws_compatibility_mode() -> bool {
     is_run_as_aws || has_aws_env_var
 }
 
-async fn async_main() -> Result<()> {
-    if std::env::var("RUST_LOG").is_err() {
-        std::env::set_var("RUST_LOG", "esthri=debug,esthri_lib=debug");
-    }
-
-    env_logger::init();
-
-    let aws_compat_mode = is_aws_compatibility_mode();
-
-    let cli = Cli::from_args_safe()
-        .map_err(|e| {
-            if aws_compat_mode {
-                call_real_aws();
-            }
-            e.exit();
-        })
-        .unwrap();
-
-    let region = Region::default();
-
-    info!("Starting, using region: {:?}...", region);
-
-    let mut hyper_builder = Client::builder();
-    hyper_builder.pool_idle_timeout(Duration::from_secs(20));
-
-    let https_connector = new_https_connector();
-    let http_client = HttpClient::from_builder(hyper_builder, https_connector);
-
-    let credentials_provider = DefaultCredentialsProvider::new().unwrap();
-    let s3 = S3Client::new_with(http_client, credentials_provider, Region::default());
-
-    use EsthriCommand::*;
-
-    match cli.cmd {
-        Put {
-            ref bucket,
-            ref key,
-            ref file,
-            ..
-        } => {
-            setup_upload_termination_handler();
-            #[cfg(feature = "compression")]
-            {
-                if matches!(cli.cmd, Put { compress: true, .. }) {
-                    upload_compressed(&s3, bucket, key, file).await?;
-                } else {
-                    upload(&s3, bucket, key, file).await?;
-                }
-            }
-            #[cfg(not(feature = "compression"))]
-            {
-                upload(&s3, bucket, key, file).await?;
-            }
-        }
-
-        Get {
-            ref bucket,
-            ref key,
-            ref file,
-            ..
-        } => {
-            #[cfg(feature = "compression")]
-            {
-                if matches!(
-                    cli.cmd,
-                    Get {
-                        decompress: true,
-                        ..
-                    }
-                ) {
-                    download_decompressed(&s3, bucket, key, file).await?;
-                } else {
-                    download(&s3, bucket, key, file).await?;
-                }
-            }
-            #[cfg(not(feature = "compression"))]
-            {
-                download(&s3, bucket, key, file).await?;
-            }
-        }
-
-        Abort {
-            bucket,
-            key,
-            upload_id,
-        } => {
-            abort_upload(&s3, &bucket, &key, &upload_id).await?;
-        }
-
-        Etag { file } => {
-            log_etag(&file).await?;
-        }
-
-        Sync {
-            ref source,
-            ref destination,
-            ref include,
-            ref exclude,
-            ..
-        } => {
-            #[cfg(feature = "compression")]
-            let compress;
-            #[cfg(feature = "compression")]
-            {
-                compress = matches!(cli.cmd, Sync { compress: true, .. });
-
-                if compress && !(source.is_local() && destination.is_bucket()) {
-                    return Err(errors::Error::InvalidSyncCompress);
-                }
-            }
-
-            setup_upload_termination_handler();
-
-            sync(
-                &s3,
-                source.clone(),
-                destination.clone(),
-                include.as_deref(),
-                exclude.as_deref(),
-                #[cfg(feature = "compression")]
-                compress,
-            )
-            .await?;
-        }
-
-        HeadObject { bucket, key } => {
-            head_object(&s3, &bucket, &key).await?;
-        }
-
-        ListObjects { bucket, key } => {
-            list_objects(&s3, &bucket, &key).await?;
-        }
-
-        #[cfg(feature = "http_server")]
-        Serve { bucket, address } => {
-            http_server::run(s3.clone(), &bucket, &address).await?;
-        }
-
-        S3 { cmd } => {
+async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
+    match cmd {
+        AwsCommand::S3 { cmd } => {
             match cmd {
                 S3Command::Copy {
                     ref source,
                     ref destination,
                 } => {
-                    if let Err(e) = copy(&s3, source.clone(), destination.clone()).await {
+                    if let Err(e) = copy(s3, source.clone(), destination.clone()).await {
                         match e {
                             Error::BucketToBucketCpNotImplementedError => {
                                 call_real_aws();
@@ -355,7 +238,7 @@ async fn async_main() -> Result<()> {
                     setup_upload_termination_handler();
 
                     sync(
-                        &s3,
+                        s3,
                         source.clone(),
                         destination.clone(),
                         None::<&[&str]>,
@@ -366,6 +249,160 @@ async fn async_main() -> Result<()> {
                 }
             };
         }
+    }
+
+    Ok(())
+}
+
+async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
+    use EsthriCommand::*;
+
+    match cmd {
+        Put {
+            ref bucket,
+            ref key,
+            ref file,
+            ..
+        } => {
+            setup_upload_termination_handler();
+            #[cfg(feature = "compression")]
+            {
+                if matches!(cmd, Put { compress: true, .. }) {
+                    upload_compressed(s3, bucket, key, file).await?;
+                } else {
+                    upload(s3, bucket, key, file).await?;
+                }
+            }
+            #[cfg(not(feature = "compression"))]
+            {
+                upload(&s3, bucket, key, file).await?;
+            }
+        }
+
+        Get {
+            ref bucket,
+            ref key,
+            ref file,
+            ..
+        } => {
+            #[cfg(feature = "compression")]
+            {
+                if matches!(
+                    cmd,
+                    Get {
+                        decompress: true,
+                        ..
+                    }
+                ) {
+                    download_decompressed(s3, bucket, key, file).await?;
+                } else {
+                    download(s3, bucket, key, file).await?;
+                }
+            }
+            #[cfg(not(feature = "compression"))]
+            {
+                download(&s3, bucket, key, file).await?;
+            }
+        }
+
+        Abort {
+            bucket,
+            key,
+            upload_id,
+        } => {
+            abort_upload(s3, &bucket, &key, &upload_id).await?;
+        }
+
+        Etag { file } => {
+            log_etag(&file).await?;
+        }
+
+        Sync {
+            ref source,
+            ref destination,
+            ref include,
+            ref exclude,
+            ..
+        } => {
+            #[cfg(feature = "compression")]
+            let compress;
+            #[cfg(feature = "compression")]
+            {
+                compress = matches!(cmd, Sync { compress: true, .. });
+
+                if compress && !(source.is_local() && destination.is_bucket()) {
+                    return Err(errors::Error::InvalidSyncCompress);
+                }
+            }
+
+            setup_upload_termination_handler();
+
+            sync(
+                s3,
+                source.clone(),
+                destination.clone(),
+                include.as_deref(),
+                exclude.as_deref(),
+                #[cfg(feature = "compression")]
+                compress,
+            )
+            .await?;
+        }
+
+        HeadObject { bucket, key } => {
+            head_object(s3, &bucket, &key).await?;
+        }
+
+        ListObjects { bucket, key } => {
+            list_objects(s3, &bucket, &key).await?;
+        }
+
+        #[cfg(feature = "http_server")]
+        Serve { bucket, address } => {
+            http_server::run(s3.clone(), &bucket, &address).await?;
+        }
+    }
+
+    Ok(())
+}
+
+async fn async_main() -> Result<()> {
+    if std::env::var("RUST_LOG").is_err() {
+        std::env::set_var("RUST_LOG", "esthri=debug,esthri_lib=debug");
+    }
+
+    env_logger::init();
+
+    let aws_compat_mode = is_aws_compatibility_mode();
+
+    let cli = match aws_compat_mode {
+        false => Cli::Esthri(EsthriCli::from_args()),
+        true => {
+            let args = AwsCompatCli::from_args_safe().map_err(|e| {
+                call_real_aws();
+                e
+            })?;
+
+            Cli::AwsCompat(args)
+        }
+    };
+
+    let region = Region::default();
+
+    info!("Starting, using region: {:?}...", region);
+
+    let mut hyper_builder = Client::builder();
+    hyper_builder.pool_idle_timeout(Duration::from_secs(20));
+
+    let https_connector = new_https_connector();
+    let http_client = HttpClient::from_builder(hyper_builder, https_connector);
+
+    let credentials_provider = DefaultCredentialsProvider::new().unwrap();
+    let s3 = S3Client::new_with(http_client, credentials_provider, Region::default());
+
+    match cli {
+        Cli::Esthri(esthri_cli) => dispatch_esthri_cli(esthri_cli.cmd, &s3).await?,
+        Cli::AwsCompat(aws_cli) => dispatch_aws_cli(aws_cli.cmd, &s3).await?,
     }
 
     Ok(())

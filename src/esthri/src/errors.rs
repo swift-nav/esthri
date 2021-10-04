@@ -23,6 +23,7 @@ use rusoto_s3::{
     CreateMultipartUploadError, GetObjectError, HeadObjectError, ListObjectsV2Error,
     PutObjectError, UploadPartError,
 };
+use structopt::clap::Error as ClapError;
 use tokio::task::JoinError;
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -119,6 +120,9 @@ pub enum Error {
 
     #[error("cp: Bucket to bucket copy not implemented")]
     BucketToBucketCpNotImplementedError,
+
+    #[error(transparent)]
+    CliError(#[from] ClapError),
 }
 
 impl From<std::convert::Infallible> for Error {
