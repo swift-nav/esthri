@@ -41,8 +41,10 @@ To use, the esthri binary must either be:
 - Run with the `ESTHRI_AWS_COMPAT_MODE` environment variable set
 
 In this mode, esthri will attempt to transparently invoke the real `aws` tool if
-it encounters a command it cannot handle. For this to work, the original `aws`
-tool should be available as `aws.real`.
+it encounters a command it cannot handle. For this to work, the path to the real
+`aws` tool should be put in an environment variable named `ESTHRI_AWS_PATH`. For
+example: `ETHRI_AWS_PATH=/usr/bin/aws`. If this environment variable is not
+specified then esthri will default to invoking `aws.real` as the `aws` tool.
 
 ```
 $ ln -s /usr/local/bin/aws /usr/local/bin/aws.real

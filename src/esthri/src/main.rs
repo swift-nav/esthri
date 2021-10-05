@@ -30,7 +30,11 @@ use structopt::StructOpt;
 use hyper::Client;
 use tokio::runtime::Builder;
 
-const REAL_AWS_EXECUTABLE: &str = "aws.real";
+// Environment variable that can be set to set the path to the aws tool that esthri falls back to
+const REAL_AWS_EXECUTABLE_ENV_NAME: &str = "ESTHRI_AWS_PATH";
+
+// Default path to aws tool if the env var isn't set
+const REAL_AWS_EXECUTABLE_DEFAULT: &str = "aws.real";
 
 #[logfn(err = "ERROR")]
 async fn log_etag(path: &Path) -> Result<String> {
@@ -184,11 +188,14 @@ fn call_real_aws() {
     warn!("Falling back from esthri to the real AWS executable");
     let args = env::args().skip(1);
 
-    let err = Command::new(REAL_AWS_EXECUTABLE).args(args).exec();
+    let aws_tool_path = env::var(REAL_AWS_EXECUTABLE_ENV_NAME)
+        .unwrap_or_else(|_| REAL_AWS_EXECUTABLE_DEFAULT.to_string());
+
+    let err = Command::new(&aws_tool_path).args(args).exec();
 
     panic!(
         "Executing aws didn't work. Is it installed and available as {:?}? {:?}",
-        REAL_AWS_EXECUTABLE, err
+        aws_tool_path, err
     );
 }
 
