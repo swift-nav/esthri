@@ -30,32 +30,32 @@ pub struct ObjectInfo {
 }
 
 #[derive(Debug, Clone)]
-pub enum SyncParam {
+pub enum S3PathParam {
     Local { path: PathBuf },
     Bucket { bucket: String, key: String },
 }
 
-impl SyncParam {
-    pub fn new_local<P: AsRef<Path>>(path: P) -> SyncParam {
-        SyncParam::Local {
+impl S3PathParam {
+    pub fn new_local<P: AsRef<Path>>(path: P) -> S3PathParam {
+        S3PathParam::Local {
             path: path.as_ref().into(),
         }
     }
-    pub fn new_bucket<S1: AsRef<str>, S2: AsRef<str>>(bucket: S1, key: S2) -> SyncParam {
-        SyncParam::Bucket {
+    pub fn new_bucket<S1: AsRef<str>, S2: AsRef<str>>(bucket: S1, key: S2) -> S3PathParam {
+        S3PathParam::Bucket {
             bucket: bucket.as_ref().into(),
             key: key.as_ref().into(),
         }
     }
     pub fn is_local(&self) -> bool {
-        matches!(self, SyncParam::Local { .. })
+        matches!(self, S3PathParam::Local { .. })
     }
     pub fn is_bucket(&self) -> bool {
-        matches!(self, SyncParam::Bucket { .. })
+        matches!(self, S3PathParam::Bucket { .. })
     }
 }
 
-impl std::str::FromStr for SyncParam {
+impl std::str::FromStr for S3PathParam {
     type Err = String;
 
     fn from_str(s: &str) -> StdResult<Self, Self::Err> {
@@ -64,9 +64,9 @@ impl std::str::FromStr for SyncParam {
         if let Some(captures) = s3_format.captures(s) {
             let bucket = captures.name("bucket").unwrap().as_str();
             let key = captures.name("key").unwrap().as_str();
-            Ok(SyncParam::new_bucket(bucket, key))
+            Ok(S3PathParam::new_bucket(bucket, key))
         } else {
-            Ok(SyncParam::new_local(s))
+            Ok(S3PathParam::new_local(s))
         }
     }
 }

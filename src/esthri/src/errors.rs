@@ -23,6 +23,8 @@ use rusoto_s3::{
     CreateMultipartUploadError, GetObjectError, HeadObjectError, ListObjectsV2Error,
     PutObjectError, UploadPartError,
 };
+#[cfg(feature = "cli")]
+use structopt::clap::Error as ClapError;
 use tokio::task::JoinError;
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -113,6 +115,16 @@ pub enum Error {
     #[cfg(feature = "compression")]
     #[error(transparent)]
     PersistError(#[from] tempfile::PersistError),
+
+    #[error("cp: Local to local copy not implemented")]
+    LocalToLocalCpNotImplementedError,
+
+    #[error("cp: Bucket to bucket copy not implemented")]
+    BucketToBucketCpNotImplementedError,
+
+    #[cfg(feature = "cli")]
+    #[error(transparent)]
+    CliError(#[from] ClapError),
 }
 
 impl From<std::convert::Infallible> for Error {

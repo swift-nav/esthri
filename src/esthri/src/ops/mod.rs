@@ -10,6 +10,7 @@
  * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
  */
 
+pub(super) mod copy;
 pub(super) mod download;
 pub(super) mod sync;
 pub(super) mod upload;

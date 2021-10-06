@@ -58,7 +58,7 @@ use crate::rusoto::*;
 use crate::config::Config;
 use crate::types::S3Listing;
 
-pub use crate::types::{ObjectInfo, S3ListingItem, S3Object, SyncParam};
+pub use crate::types::{ObjectInfo, S3ListingItem, S3Object, S3PathParam};
 
 pub use ops::download::download;
 
@@ -75,6 +75,8 @@ pub use ops::upload::setup_upload_termination_handler;
 pub use ops::upload::{abort_upload, upload, upload_from_reader};
 
 pub use ops::sync::sync;
+
+pub use ops::copy::copy;
 
 pub const INCLUDE_EMPTY: Option<&[&str]> = None;
 pub const EXCLUDE_EMPTY: Option<&[&str]> = None;

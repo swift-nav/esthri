@@ -19,7 +19,7 @@ use super::rusoto::*;
 
 use super::ObjectInfo;
 use super::Result;
-use super::SyncParam;
+use super::S3PathParam;
 
 #[tokio::main]
 pub async fn head_object<T>(
@@ -118,8 +118,8 @@ where
 #[tokio::main]
 pub async fn sync<T>(
     s3: &T,
-    source: SyncParam,
-    destination: SyncParam,
+    source: S3PathParam,
+    destination: S3PathParam,
     includes: Option<&[impl AsRef<str>]>,
     excludes: Option<&[impl AsRef<str>]>,
     #[cfg(feature = "compression")] compressed: bool,
