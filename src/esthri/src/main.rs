@@ -75,16 +75,37 @@ enum AwsCommand {
     },
 }
 
+// Esthri does this by default (and can currently only do this), exposing this
+// as an option just ensures that Esthri will still be able to handle the case
+// when the acl option is specified and set to this value
+const S3_ACL_OPTIONS: &[&str] = &["bucket-owner-full-control"];
+
 #[derive(Debug, StructOpt)]
 enum S3Command {
     #[structopt(name = "cp")]
     Copy {
         source: S3PathParam,
         destination: S3PathParam,
+        #[structopt(long)]
+        #[allow(dead_code)]
+        quiet: bool,
+        #[structopt(long, possible_values(S3_ACL_OPTIONS))]
+        #[allow(dead_code)]
+        acl: Option<String>,
     },
     Sync {
         source: S3PathParam,
         destination: S3PathParam,
+        #[structopt(long)]
+        include: Option<Vec<String>>,
+        #[structopt(long)]
+        exclude: Option<Vec<String>>,
+        #[structopt(long)]
+        #[allow(dead_code)]
+        quiet: bool,
+        #[structopt(long, possible_values(S3_ACL_OPTIONS))]
+        #[allow(dead_code)]
+        acl: Option<String>,
     },
 }
 
@@ -225,6 +246,7 @@ async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
                 S3Command::Copy {
                     ref source,
                     ref destination,
+                    ..
                 } => {
                     if let Err(e) = copy(s3, source.clone(), destination.clone()).await {
                         match e {
@@ -241,6 +263,9 @@ async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
                 S3Command::Sync {
                     ref source,
                     ref destination,
+                    ref include,
+                    ref exclude,
+                    ..
                 } => {
                     setup_upload_termination_handler();
 
@@ -248,8 +273,8 @@ async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
                         s3,
                         source.clone(),
                         destination.clone(),
-                        None::<&[&str]>,
-                        None::<&[&str]>,
+                        include.as_deref(),
+                        exclude.as_deref(),
                         #[cfg(feature = "compression")]
                         false,
                     )
