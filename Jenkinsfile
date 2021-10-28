@@ -218,7 +218,6 @@ pipeline {
                 | cargo make --profile release+static build
                 |
                 | cp target/release/esthri \$dir_name
-                | cp bin/aws.esthri \$dir_name
                 |
                 | tar -cvzf \$archive_name \$dir_name
                 |
