@@ -125,6 +125,9 @@ pub enum Error {
     #[cfg(feature = "cli")]
     #[error(transparent)]
     CliError(#[from] ClapError),
+
+    #[error("Could not parse S3 filename")]
+    CouldNotParseS3Filename,
 }
 
 impl From<std::convert::Infallible> for Error {

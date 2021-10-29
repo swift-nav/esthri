@@ -411,13 +411,25 @@ async fn download_helper<T>(
     s3: &T,
     bucket: impl AsRef<str>,
     key: impl AsRef<str>,
-    file: impl AsRef<Path>,
+    download_path: impl AsRef<Path>,
     decompress: bool,
 ) -> Result<()>
 where
     T: S3 + Send + Sync + Clone,
 {
-    let (bucket, key, file) = (bucket.as_ref(), key.as_ref(), file.as_ref());
+    let (bucket, key, download_path) = (bucket.as_ref(), key.as_ref(), download_path.as_ref());
+
+    // If we're trying to download into a directory, assemble the path for the user
+    let is_dir = download_path.is_dir();
+    let file = if !is_dir {
+        download_path.to_path_buf()
+    } else {
+        let s3filename = key
+            .split('/')
+            .next_back()
+            .ok_or(Error::CouldNotParseS3Filename)?;
+        download_path.join(s3filename)
+    };
 
     let stat = head_object_request(s3, bucket, key).await?;
     let total_size = stat
