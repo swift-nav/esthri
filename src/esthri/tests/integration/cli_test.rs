@@ -100,7 +100,7 @@ fn test_aws_fallthrough() {
     // and if it doesn't know how to handle the arg
     let assert = cmd
         .env("ESTHRI_AWS_COMPAT_MODE", "1")
-        .env("ESTHRI_AWS_PATH", "/usr/bin/echo")
+        .env("ESTHRI_AWS_PATH", "echo")
         .arg("unknown_command")
         .assert();
 
@@ -114,7 +114,7 @@ fn test_aws_fallthrough_cp_option() {
     // Try with some options we know but one we don't (ls)
     let assert = cmd
         .env("ESTHRI_AWS_COMPAT_MODE", "1")
-        .env("ESTHRI_AWS_PATH", "/usr/bin/echo")
+        .env("ESTHRI_AWS_PATH", "echo")
         .arg("s3")
         .arg("ls")
         .assert();
