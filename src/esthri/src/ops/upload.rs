@@ -93,6 +93,30 @@ where
 {
     use bio::*;
     let (bucket, key, path) = (bucket.as_ref(), key.as_ref(), path.as_ref().to_owned());
+
+    // This is to allow a user to upload to a prefix in a bucket, but relies on
+    // them putting a trailing slash.
+    //
+    // If, for example, there's an existing prefix of
+    // "s3://mybucket/myprefix1/myprefix" and this function is invoked with
+    // key="s3://mybucket/myprefix1/myprefix" then both there will be BOTH a
+    // prefix and an object available with the same name. This is currently the
+    // same implementation as the official aws tool.
+    //
+    // If instead this function is invoked with
+    // key="s3://mybucket/myprefix1/myprefix/" then the file will be uploaded as
+    // s3://mybucket/myprefix1/myprefix/{filename from path}.
+    let key = if !key.ends_with('/') {
+        key.to_string()
+    } else {
+        let filename = path.file_name().ok_or(Error::CouldNotParseS3Filename)?;
+        format!(
+            "{}{}",
+            key,
+            filename.to_str().ok_or(Error::CouldNotParseS3Filename)?
+        )
+    };
+
     if path.exists() {
         let stat = fs::metadata(&path)?;
         if compressed {

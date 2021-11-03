@@ -30,8 +30,6 @@ use crate::{
     types::{S3ListingItem, S3PathParam},
 };
 
-const FORWARD_SLASH: char = '/';
-
 type MapEtagResult = Result<(PathBuf, Result<String>, Option<ListingMetadata>)>;
 
 #[logfn(err = "ERROR")]
@@ -328,11 +326,6 @@ where
     T: S3 + Send + Clone,
 {
     let directory = directory.as_ref();
-
-    if !key.ends_with(FORWARD_SLASH) {
-        return Err(Error::DirlikePrefixRequired);
-    }
-
     let task_count = Config::global().concurrent_sync_tasks();
     let dirent_stream = create_dirent_stream(directory, glob_includes, glob_excludes);
     let etag_stream = map_paths_to_etags(dirent_stream, compressed).buffer_unordered(task_count);
@@ -391,14 +384,6 @@ async fn sync_across<T>(
 where
     T: S3 + Send,
 {
-    if !source_prefix.ends_with(FORWARD_SLASH) {
-        return Err(Error::DirlikePrefixRequired);
-    }
-
-    if !destination_key.ends_with(FORWARD_SLASH) {
-        return Err(Error::DirlikePrefixRequired);
-    }
-
     let mut stream = list_objects_stream(s3, source_bucket, source_prefix);
 
     while let Some(from_entries) = stream.try_next().await? {
@@ -544,10 +529,6 @@ where
     T: S3 + Sync + Send + Clone,
 {
     let directory = directory.as_ref();
-    if !key.ends_with(FORWARD_SLASH) {
-        return Err(Error::DirlikePrefixRequired);
-    }
-
     let task_count = Config::global().concurrent_sync_tasks();
     let object_listing =
         flattened_object_listing(s3, bucket, key, directory, glob_includes, glob_excludes);

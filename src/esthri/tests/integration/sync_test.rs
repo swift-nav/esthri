@@ -54,10 +54,12 @@ async fn test_sync_down_async() {
 }
 
 #[test]
-fn test_sync_down_fail() {
+fn test_sync_down_without_slash() {
     let s3client = crate::get_s3client();
     let local_directory = "tests/data/";
     let s3_key = "test_folder";
+    let includes: Option<Vec<String>> = Some(vec!["*.txt".to_string()]);
+    let excludes: Option<Vec<String>> = Some(vec!["*".to_string()]);
 
     let source = S3PathParam::new_bucket(crate::TEST_BUCKET, s3_key);
     let destination = S3PathParam::new_local(local_directory);
@@ -66,19 +68,21 @@ fn test_sync_down_fail() {
         s3client.as_ref(),
         source,
         destination,
-        INCLUDE_EMPTY,
-        EXCLUDE_EMPTY,
+        includes.as_deref(),
+        excludes.as_deref(),
         #[cfg(feature = "compression")]
         false,
     );
-    assert!(res.is_err());
+    assert!(res.is_ok());
 }
 
 #[test]
-fn test_sync_up_fail() {
+fn test_sync_up_without_slash() {
     let s3client = crate::get_s3client();
     let local_directory = "tests/data/";
     let s3_key = "test_folder";
+    let includes: Option<Vec<String>> = Some(vec!["*.txt".to_string()]);
+    let excludes: Option<Vec<String>> = Some(vec!["*".to_string()]);
 
     let source = S3PathParam::new_local(local_directory);
     let destination = S3PathParam::new_bucket(crate::TEST_BUCKET, s3_key);
@@ -87,12 +91,12 @@ fn test_sync_up_fail() {
         s3client.as_ref(),
         source,
         destination,
-        INCLUDE_EMPTY,
-        EXCLUDE_EMPTY,
+        includes.as_deref(),
+        excludes.as_deref(),
         #[cfg(feature = "compression")]
         false,
     );
-    assert!(res.is_err());
+    assert!(res.is_ok());
 }
 
 #[test]
