@@ -420,8 +420,7 @@ where
     let (bucket, key, download_path) = (bucket.as_ref(), key.as_ref(), download_path.as_ref());
 
     // If we're trying to download into a directory, assemble the path for the user
-    let is_dir = download_path.is_dir();
-    let file = if !is_dir {
+    let file = if !download_path.is_dir() {
         download_path.to_path_buf()
     } else {
         let s3filename = key
