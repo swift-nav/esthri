@@ -92,6 +92,9 @@ enum S3Command {
         #[structopt(long, possible_values(S3_ACL_OPTIONS))]
         #[allow(dead_code)]
         acl: Option<String>,
+        #[cfg(feature = "compression")]
+        #[structopt(long)]
+        no_transparent_compression: bool,
     },
     Sync {
         source: S3PathParam,
@@ -106,6 +109,9 @@ enum S3Command {
         #[structopt(long, possible_values(S3_ACL_OPTIONS))]
         #[allow(dead_code)]
         acl: Option<String>,
+        #[cfg(feature = "compression")]
+        #[structopt(long)]
+        no_transparent_compression: bool,
     },
 }
 
@@ -246,9 +252,19 @@ async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
                 S3Command::Copy {
                     ref source,
                     ref destination,
+                    #[cfg(feature = "compression")]
+                    no_transparent_compression,
                     ..
                 } => {
-                    if let Err(e) = copy(s3, source.clone(), destination.clone()).await {
+                    if let Err(e) = copy(
+                        s3,
+                        source.clone(),
+                        destination.clone(),
+                        #[cfg(feature = "compression")]
+                        !no_transparent_compression,
+                    )
+                    .await
+                    {
                         match e {
                             Error::BucketToBucketCpNotImplementedError => {
                                 call_real_aws();
@@ -265,6 +281,8 @@ async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
                     ref destination,
                     ref include,
                     ref exclude,
+                    #[cfg(feature = "compression")]
+                    no_transparent_compression,
                     ..
                 } => {
                     setup_upload_termination_handler();
@@ -276,7 +294,7 @@ async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
                         include.as_deref(),
                         exclude.as_deref(),
                         #[cfg(feature = "compression")]
-                        false,
+                        !no_transparent_compression,
                     )
                     .await?;
                 }
