@@ -272,7 +272,7 @@ pub async fn run(
         debug!("got shutdown signal, waiting for all open connections to complete...");
     });
 
-    info!("listening on: {}...", addr);
+    info!("listening on: http://{}...", addr);
     let _ = tokio::task::spawn(server).await;
 
     info!("shutting down...");
