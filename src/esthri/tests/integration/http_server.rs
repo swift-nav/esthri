@@ -39,6 +39,96 @@ async fn test_fetch_object() {
     assert_eq!(body, "this file has contents\n");
 }
 
+async fn upload_compressed_html_file() {
+    let filename = "tests/data/compressed.html.gz".to_owned();
+    let s3client = crate::get_s3client();
+    let s3_key = "compressed.html.gz".to_owned();
+    let res = upload(s3client.as_ref(), crate::TEST_BUCKET, &s3_key, &filename).await;
+    assert!(res.is_ok());
+}
+
+/// Ensures that an object path will fallback to the gzipped version, if the
+/// path doesn't exist
+#[tokio::test]
+async fn test_fetch_compressed_object_fallback() {
+    upload_compressed_html_file().await;
+    let s3client = crate::get_s3client();
+    let filter = esthri_filter((*s3client).clone(), crate::TEST_BUCKET);
+
+    let mut result = warp::test::request()
+        .path("/compressed.html")
+        .filter(&filter)
+        .await
+        .unwrap();
+
+    let headers = result.headers();
+    assert_eq!(headers["content-type"], "text/html");
+    assert_eq!(headers["content-encoding"], "gzip");
+
+    let body = hyper::body::to_bytes(result.body_mut()).await.unwrap();
+    let digest = md5::compute(body);
+    assert_eq!(
+        format!("{:x}", digest),
+        "14ca7578687b016e4633be7fc26fa05e",
+        "md5 digest did not match"
+    );
+}
+
+/// Ensures that getting an object with `from_gz_compressed` specified sets the
+/// right content-encoding
+#[tokio::test]
+async fn test_fetch_compressed_object_encoding() {
+    upload_compressed_html_file().await;
+    let s3client = crate::get_s3client();
+
+    let filter = esthri_filter((*s3client).clone(), crate::TEST_BUCKET);
+
+    let mut result = warp::test::request()
+        .path("/compressed.html?from_gz_compressed=true")
+        .filter(&filter)
+        .await
+        .unwrap();
+
+    let headers = result.headers();
+    assert_eq!(headers["content-type"], "text/html");
+    assert_eq!(headers["content-encoding"], "gzip");
+
+    let body = hyper::body::to_bytes(result.body_mut()).await.unwrap();
+    let digest = md5::compute(body);
+    assert_eq!(
+        format!("{:x}", digest),
+        "14ca7578687b016e4633be7fc26fa05e",
+        "md5 digest did not match"
+    );
+}
+
+/// Tests that directly accessing the compressed path will allow downloading the
+/// compressed file
+#[tokio::test]
+async fn test_fetch_compresed_object_as_compressed() {
+    upload_compressed_html_file().await;
+    let s3client = crate::get_s3client();
+
+    let filter = esthri_filter((*s3client).clone(), crate::TEST_BUCKET);
+
+    let mut result = warp::test::request()
+        .path("/compressed.html.gz")
+        .filter(&filter)
+        .await
+        .unwrap();
+
+    let headers = result.headers();
+    assert_eq!(headers["content-type"], "application/x-gzip");
+
+    let body = hyper::body::to_bytes(result.body_mut()).await.unwrap();
+    let digest = md5::compute(body);
+    assert_eq!(
+        format!("{:x}", digest),
+        "14ca7578687b016e4633be7fc26fa05e",
+        "md5 digest did not match"
+    );
+}
+
 fn upload_test_data() -> anyhow::Result<()> {
     let s3client = crate::get_s3client();
     let local_directory = "tests/data/sync_up";
