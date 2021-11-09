@@ -482,6 +482,9 @@ fn format_object_link(path: &str) -> Markup {
                 a href=(format!("{}?from_gz_compressed=true", uncompressed_path)) {
                     (uncompressed_path)
                 }
+                span style="color: lightgrey" {
+                    " .gz"
+                }
             } @else {
                 a href=(path) {
                     (path)
