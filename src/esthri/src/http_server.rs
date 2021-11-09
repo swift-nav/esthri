@@ -526,7 +526,7 @@ fn format_title(bucket: &str, path: &str) -> Markup {
                         (component)
                     }
 
-                    (format_archive_download_button(".", component))
+                    (format_archive_download_button(".?archive=true",&format!("Download tgz archive of {}", component)))
                 } @else {
                     a href=("../".repeat(path_length - 1 - i)) {
                         (component)
