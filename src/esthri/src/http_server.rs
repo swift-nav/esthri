@@ -483,7 +483,7 @@ fn format_object_link(path: &str) -> Markup {
                     (uncompressed_path)
                 }
                 span style="color: lightgrey" {
-                    " .gz"
+                    ".gz"
                 }
             } @else {
                 a href=(path) {
