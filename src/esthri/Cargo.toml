@@ -157,5 +157,5 @@ version = "3.0"
 optional = true
 
 [dependencies.maud]
-version = "0.22"
+version = "0.23"
 optional = true
