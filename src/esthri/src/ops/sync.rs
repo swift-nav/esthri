@@ -260,7 +260,8 @@ where
                 }
                 SyncCompressionDirection::Down => {
                     if path.extension().map(|e| e == "gz").unwrap_or(false) {
-                        let uncompressed_path = compressed_path_to_path(&path);
+                        let uncompressed_path =
+                            compressed_path_to_path(&path).expect("Path should be compressed");
 
                         if !uncompressed_path.exists() {
                             (path, Err(Error::ETagNotPresent))

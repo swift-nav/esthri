@@ -128,6 +128,10 @@ pub enum Error {
 
     #[error("Could not parse S3 filename")]
     CouldNotParseS3Filename,
+
+    #[cfg(feature = "compression")]
+    #[error("File is not gzip compressed")]
+    FileNotCompressed,
 }
 
 impl From<std::convert::Infallible> for Error {
