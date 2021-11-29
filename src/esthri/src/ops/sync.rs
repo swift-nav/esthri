@@ -240,7 +240,6 @@ where
         {
             use crate::compression::{
                 compress_and_replace, compress_to_tempfile, compressed_path_to_path,
-                path_to_compressed_path,
             };
 
             let (path, local_etag) = match compressed {
@@ -273,7 +272,7 @@ where
                             let (temp_compressed, _) =
                                 compress_to_tempfile(&uncompressed_path).await?;
                             let local_etag = compute_etag(&temp_compressed).await;
-                            (path_to_compressed_path(&path), local_etag)
+                            (path, local_etag)
                         }
                     } else {
                         let local_etag = compute_etag(&path).await;
