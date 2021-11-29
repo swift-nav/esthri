@@ -109,7 +109,7 @@ pub enum Error {
     #[error(transparent)]
     JoinError(#[from] JoinError),
 
-    #[error("sync: compression is only valid for upload")]
+    #[error("sync: compression is not valid for bucket to bucket transfers")]
     InvalidSyncCompress,
 
     #[cfg(feature = "compression")]

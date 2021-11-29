@@ -363,7 +363,7 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
             {
                 compress = matches!(cmd, Sync { compress: true, .. });
 
-                if compress && !(source.is_local() && destination.is_bucket()) {
+                if compress && (source.is_bucket() && destination.is_bucket()) {
                     return Err(errors::Error::InvalidSyncCompress);
                 }
             }
