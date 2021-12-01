@@ -71,7 +71,7 @@ where
     T: S3 + Send + Clone,
     R: Read + Send + 'static,
 {
-    super::upload_from_reader(s3, bucket, key, reader, file_size).await
+    super::upload_from_reader(s3, bucket, key, reader, file_size, None).await
 }
 
 #[cfg(feature = "compression")]

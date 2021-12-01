@@ -331,10 +331,17 @@ fn process_head_obj_resp(hoo: HeadObjectOutput) -> Result<Option<ObjectInfo>> {
         ));
     };
 
+    let metadata = if let Some(metadata) = hoo.metadata {
+        metadata
+    } else {
+        return Err(Error::HeadObjectUnexpected("no metadata found".into()));
+    };
+
     Ok(Some(ObjectInfo {
         e_tag,
         size,
         last_modified,
+        metadata,
     }))
 }
 

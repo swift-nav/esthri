@@ -16,6 +16,15 @@ fn test_upload() {
 
     let res = blocking::upload(s3client.as_ref(), crate::TEST_BUCKET, &s3_key, &filepath);
     assert!(res.is_ok());
+
+    let res = blocking::head_object(s3client.as_ref(), crate::TEST_BUCKET, &s3_key);
+    let obj_info: Option<ObjectInfo> = res.unwrap();
+    assert!(obj_info.is_some());
+    let obj_info: ObjectInfo = obj_info.unwrap();
+
+    assert_eq!(obj_info.size, 5242880);
+    assert_eq!(obj_info.e_tag, "\"8542c49db935a57bb8c26ec68d39aaea\"");
+    assert!(!obj_info.metadata.contains_key("esthri_compress_version"));
 }
 
 #[cfg(feature = "compression")]
@@ -39,6 +48,10 @@ fn test_upload_compressed() {
 
     assert_eq!(obj_info.size, 3344161);
     assert_eq!(obj_info.e_tag, "\"4a57bdf6ed65bc7e9ed34a4796561f06\"");
+    assert_eq!(
+        obj_info.metadata.get("esthri_compress_version").unwrap(),
+        env!("CARGO_PKG_VERSION")
+    );
 }
 
 #[tokio::test]
