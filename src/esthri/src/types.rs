@@ -10,6 +10,7 @@
 * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
 */
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::result::Result as StdResult;
 
@@ -27,6 +28,7 @@ pub struct ObjectInfo {
     pub e_tag: String,
     pub size: i64,
     pub last_modified: DateTime<Utc>,
+    pub metadata: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone)]

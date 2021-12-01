@@ -13,6 +13,7 @@
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
 use std::{
+    collections::HashMap,
     ffi::OsString,
     path::{Path, PathBuf},
 };
@@ -33,6 +34,15 @@ mod bio {
     pub(super) use std::io::Seek;
     pub(super) use std::io::SeekFrom;
     pub(super) use tempfile::NamedTempFile;
+}
+
+pub(crate) fn compressed_file_metadata() -> HashMap<String, String> {
+    let mut m = HashMap::new();
+    m.insert(
+        "esthri_compress_version".to_string(),
+        env!("CARGO_PKG_VERSION").to_string(),
+    );
+    m
 }
 
 fn rewind_file<T: bio::Seek>(file: &mut T) -> Result<()> {

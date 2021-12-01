@@ -12,8 +12,8 @@
 
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
-use std::path::Path;
 use std::sync::Mutex;
+use std::{collections::HashMap, path::Path};
 
 use futures::{stream, Future, Stream, StreamExt, TryStreamExt};
 
@@ -124,7 +124,15 @@ where
             {
                 use crate::compression::compress_to_tempfile;
                 let (compressed, size) = compress_to_tempfile(path.clone()).await?;
-                upload_from_reader(s3, bucket, key, compressed, size).await
+                upload_from_reader(
+                    s3,
+                    bucket,
+                    key,
+                    compressed,
+                    size,
+                    Some(crate::compression::compressed_file_metadata()),
+                )
+                .await
             }
             #[cfg(not(feature = "compression"))]
             {
@@ -134,7 +142,7 @@ where
             let size = stat.len();
             debug!("upload: file size: {}", size);
             let reader = BufReader::new(File::open(path)?);
-            upload_from_reader(s3, bucket, key, reader, size).await
+            upload_from_reader(s3, bucket, key, reader, size, None).await
         }
     } else {
         Err(Error::InvalidSourceFile(path))
@@ -287,6 +295,7 @@ pub async fn upload_from_reader<T, R>(
     key: impl AsRef<str>,
     mut reader: R,
     file_size: u64,
+    metadata: Option<HashMap<String, String>>,
 ) -> Result<()>
 where
     T: S3 + Send + Clone,
@@ -306,6 +315,7 @@ where
                 bucket: bucket.into(),
                 key: key.into(),
                 acl: Some("bucket-owner-full-control".into()),
+                metadata: metadata.as_ref().cloned(),
                 ..Default::default()
             };
 
@@ -385,6 +395,7 @@ where
                 key: key.into(),
                 body: Some(body),
                 acl: Some("bucket-owner-full-control".into()),
+                metadata: metadata.as_ref().cloned(),
                 ..Default::default()
             };
 
