@@ -525,6 +525,7 @@ pub(in crate) async fn download_with_dir<T>(
     s3_prefix: &str,
     s3_suffix: &str,
     local_dir: impl AsRef<Path>,
+    decompress: bool,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
@@ -538,7 +539,23 @@ where
     let key = format!("{}", Path::new(s3_prefix).join(s3_suffix).display());
     let dest_path = format!("{}", dest_path.display());
 
-    download(s3, bucket, &key, &dest_path).await?;
+    let file_is_compressed = dest_path.ends_with(".gz");
+
+    if decompress && file_is_compressed {
+        #[cfg(feature = "compression")]
+        {
+            let dest_path = dest_path
+                .strip_suffix(".gz")
+                .expect("Should have a gz suffix");
+            download_decompressed(s3, bucket, &key, dest_path).await?;
+        }
+        #[cfg(not(feature = "compression"))]
+        {
+            panic!("compression feature not enabled");
+        }
+    } else {
+        download(s3, bucket, &key, &dest_path).await?;
+    }
 
     Ok(())
 }

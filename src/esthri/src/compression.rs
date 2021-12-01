@@ -24,6 +24,7 @@ use tokio::task;
 
 use super::{Error, Result, EXPECT_SPAWN_BLOCKING};
 
+use crate::Error::FileNotCompressed;
 /// Internal module used to call out operations that may block.
 mod bio {
     pub(super) use std::fs;
@@ -81,6 +82,16 @@ pub(crate) async fn compress_and_replace(path: impl AsRef<Path>) -> Result<PathB
         let (_temp_file, temp_path) = temp_file.keep()?;
         temp_path
     };
+    let file_gz = path_to_compressed_path(path);
+    debug!("renaming {} to {}", path.display(), file_gz.display());
+    fs::rename(temp_path, &file_gz)?;
+    let permissions = path.metadata()?.permissions();
+    fs::set_permissions(&file_gz, permissions)?;
+    fs::remove_file(path)?;
+    Ok(file_gz)
+}
+
+pub(crate) fn path_to_compressed_path(path: &Path) -> PathBuf {
     let file_gz = path
         .extension()
         .map(OsString::from)
@@ -89,10 +100,38 @@ pub(crate) async fn compress_and_replace(path: impl AsRef<Path>) -> Result<PathB
             path.to_path_buf().with_extension(ext)
         })
         .unwrap_or_else(|| path.to_path_buf().with_extension("gz"));
-    debug!("renaming {} to {}", path.display(), file_gz.display());
-    fs::rename(temp_path, &file_gz)?;
-    let permissions = path.metadata()?.permissions();
-    fs::set_permissions(&file_gz, permissions)?;
-    fs::remove_file(path)?;
-    Ok(file_gz)
+    file_gz
+}
+
+pub(crate) fn compressed_path_to_path(path: &Path) -> Result<PathBuf> {
+    let mut pathbuf = path.to_path_buf();
+    let ext = path.extension().ok_or(FileNotCompressed)?;
+    let filename = path.file_name().ok_or(FileNotCompressed)?;
+    if ext == "gz" {
+        pathbuf.set_file_name(filename.to_string_lossy().strip_suffix(".gz").unwrap());
+        Ok(pathbuf)
+    } else {
+        Err(FileNotCompressed)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_compressed_path_to_path() {
+        assert_eq!(
+            Path::new("myfile.tar"),
+            compressed_path_to_path(Path::new("myfile.tar.gz")).unwrap()
+        );
+        assert!(matches!(
+            compressed_path_to_path(Path::new("myfile.tar")),
+            Err(FileNotCompressed),
+        ));
+        assert_eq!(
+            Path::new("/tmp/path/to/mycode.rs"),
+            compressed_path_to_path(Path::new("/tmp/path/to/mycode.rs.gz")).unwrap()
+        );
+    }
 }

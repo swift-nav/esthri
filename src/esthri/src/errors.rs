@@ -109,7 +109,7 @@ pub enum Error {
     #[error(transparent)]
     JoinError(#[from] JoinError),
 
-    #[error("sync: compression is only valid for upload")]
+    #[error("sync: compression is not valid for bucket to bucket transfers")]
     InvalidSyncCompress,
 
     #[cfg(feature = "compression")]
@@ -128,6 +128,10 @@ pub enum Error {
 
     #[error("Could not parse S3 filename")]
     CouldNotParseS3Filename,
+
+    #[cfg(feature = "compression")]
+    #[error("File is not gzip compressed")]
+    FileNotCompressed,
 }
 
 impl From<std::convert::Infallible> for Error {
