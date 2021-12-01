@@ -267,11 +267,13 @@ async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
                     ref destination,
                     ref include,
                     ref exclude,
+                    #[cfg(feature = "compression")]
                     compress,
                     ..
                 } => {
                     setup_upload_termination_handler();
 
+                    #[cfg(feature = "compression")]
                     // Works around structopt/clap not supporting flag values from environment variables
                     let compress =
                         compress || env::var("ESTHRI_AWS_COMPAT_MODE_COMPRESSION").is_ok();
