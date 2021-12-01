@@ -106,6 +106,8 @@ enum S3Command {
         #[structopt(long, possible_values(S3_ACL_OPTIONS))]
         #[allow(dead_code)]
         acl: Option<String>,
+        #[structopt(long)]
+        compress: bool,
     },
 }
 
@@ -265,9 +267,14 @@ async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
                     ref destination,
                     ref include,
                     ref exclude,
+                    compress,
                     ..
                 } => {
                     setup_upload_termination_handler();
+
+                    // Works around structopt/clap not supporting flag values from environment variables
+                    let compress =
+                        compress || env::var("ESTHRI_AWS_COMPAT_MODE_COMPRESSION").is_ok();
 
                     sync(
                         s3,
@@ -276,7 +283,7 @@ async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
                         include.as_deref(),
                         exclude.as_deref(),
                         #[cfg(feature = "compression")]
-                        false,
+                        compress,
                     )
                     .await?;
                 }
