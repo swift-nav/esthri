@@ -472,7 +472,10 @@ where
 
         directory_path
     } else {
-        download_path.to_path_buf()
+        download_path
+            .parent()
+            .expect("must have a parent path")
+            .to_path_buf()
     };
 
     let tempfile = bio::NamedTempFile::new_in(directory_path)?;
