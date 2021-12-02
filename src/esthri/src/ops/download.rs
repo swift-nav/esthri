@@ -12,6 +12,7 @@
 
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
+use std::fs::create_dir_all;
 use std::marker::Unpin;
 use std::path::Path;
 use std::pin::Pin;
@@ -419,6 +420,21 @@ where
 {
     let (bucket, key, download_path) = (bucket.as_ref(), key.as_ref(), download_path.as_ref());
 
+    if !download_path.is_file() && !download_path.is_dir() {
+        // If the specified destination directory doesn't already exist,
+        // see if the directory structure needs to be made
+        let directory_path = if !download_path.to_string_lossy().ends_with('/') {
+            let mut path = download_path.to_path_buf();
+            path.pop();
+            path
+        } else {
+            download_path.to_path_buf()
+        };
+
+        info!("Creating directory path {:?}", &directory_path);
+        create_dir_all(directory_path)?;
+    }
+
     // If we're trying to download into a directory, assemble the path for the user
     let file = if !download_path.is_dir() {
         download_path.to_path_buf()
@@ -429,6 +445,8 @@ where
             .ok_or(Error::CouldNotParseS3Filename)?;
         download_path.join(s3filename)
     };
+
+    info!("File will be downloaded to {:?}", &file);
 
     let stat = head_object_request(s3, bucket, key).await?;
     let total_size = stat
