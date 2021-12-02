@@ -1,6 +1,7 @@
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
 use esthri::{blocking, download};
+use tempdir::TempDir;
 
 #[test]
 fn test_download() {
@@ -11,6 +12,34 @@ fn test_download() {
 
     let res = blocking::download(s3client.as_ref(), crate::TEST_BUCKET, &s3_key, &filepath);
     assert!(res.is_ok());
+}
+
+#[test]
+fn test_download_to_nonexistent_path() {
+    let s3client = crate::get_s3client();
+    let filename = "test_file.txt";
+    let tmpdir = TempDir::new("esthri_tmp").expect("creating temporary directory");
+    let filepath = tmpdir
+        .path()
+        .join("some/extra/directories/that/dont/exist/");
+    let s3_key = format!("test_folder/{}", filename);
+
+    let res = blocking::download(s3client.as_ref(), crate::TEST_BUCKET, &s3_key, &filepath);
+    assert!(res.is_ok());
+    assert!(filepath.join(filename).exists());
+}
+
+#[test]
+fn test_download_to_current_directory() {
+    let s3client = crate::get_s3client();
+    let filename = "test_file.txt";
+    let _tmp_dir = crate::EphemeralTempDir::pushd();
+    let filepath = format!(".");
+    let s3_key = format!("test_folder/{}", filename);
+
+    let res = blocking::download(s3client.as_ref(), crate::TEST_BUCKET, &s3_key, &filepath);
+    assert!(res.is_ok());
+    assert!(_tmp_dir.temp_dir.path().join(filename).exists());
 }
 
 #[tokio::test]
