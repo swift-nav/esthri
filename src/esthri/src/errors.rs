@@ -112,7 +112,6 @@ pub enum Error {
     #[error("sync: compression is not valid for bucket to bucket transfers")]
     InvalidSyncCompress,
 
-    #[cfg(feature = "compression")]
     #[error(transparent)]
     PersistError(#[from] tempfile::PersistError),
 
