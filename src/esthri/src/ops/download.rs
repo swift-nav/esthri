@@ -456,7 +456,26 @@ where
         }
     }
 
-    let tempfile = bio::NamedTempFile::new()?;
+    let directory_path = if !download_path.is_file() && !download_path.is_dir() {
+        // If the specified destination directory doesn't already exist,
+        // see if the directory structure needs to be made
+        let directory_path = if !download_path.to_string_lossy().ends_with('/') {
+            let mut path = download_path.to_path_buf();
+            path.pop();
+            path
+        } else {
+            download_path.to_path_buf()
+        };
+
+        info!("Creating directory path {:?}", &directory_path);
+        create_dir_all(&directory_path)?;
+
+        directory_path
+    } else {
+        download_path.to_path_buf()
+    };
+
+    let tempfile = bio::NamedTempFile::new_in(directory_path)?;
 
     if decompress {
         #[cfg(feature = "compression")]
@@ -475,21 +494,6 @@ where
         let downloader =
             DownloadMultiple::new(bio::File::create(tempfile.path())?, bucket, key, total_size);
         run_downloader(s3.clone(), downloader, decompress).await?;
-    }
-
-    if !download_path.is_file() && !download_path.is_dir() {
-        // If the specified destination directory doesn't already exist,
-        // see if the directory structure needs to be made
-        let directory_path = if !download_path.to_string_lossy().ends_with('/') {
-            let mut path = download_path.to_path_buf();
-            path.pop();
-            path
-        } else {
-            download_path.to_path_buf()
-        };
-
-        info!("Creating directory path {:?}", &directory_path);
-        create_dir_all(directory_path)?;
     }
 
     // If we're trying to download into a directory, assemble the path for the user
