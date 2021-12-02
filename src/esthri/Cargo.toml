@@ -35,7 +35,6 @@ envy = "0.4"
 async-stream = "0.3"
 serde = "1"
 serde_derive = "1"
-tempfile = "3.0"
 
 [dev-dependencies]
 md5 = "0.7"
@@ -54,7 +53,7 @@ path = "src/lib.rs"
 default = [ "rustls", "cli", "http_server", "blocking", "compression",]
 aggressive_lint = []
 blocking = []
-compression = [ "flate2",]
+compression = [ "flate2", "tempfile"]
 http_server = [ "async-tar", "async-compression", "bytes", "futures-util", "mime_guess", "sluice", "sanitize-filename", "tokio-util", "warp", "ctrlc", "anyhow", "maud",]
 nativetls = [ "rusoto_credential", "rusoto_core/native-tls", "rusoto_signature", "rusoto_s3/native-tls", "hyper-tls",]
 rustls = [ "rusoto_credential", "rusoto_core/rustls", "rusoto_signature", "rusoto_s3/rustls", "hyper-rustls",]
@@ -151,6 +150,10 @@ optional = true
 
 [dependencies.flate2]
 version = "1.0"
+optional = true
+
+[dependencies.tempfile]
+version = "3.0"
 optional = true
 
 [dependencies.maud]
