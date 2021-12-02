@@ -12,7 +12,6 @@
 
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
-use std::fs::create_dir_all;
 use std::marker::Unpin;
 use std::path::Path;
 use std::pin::Pin;
@@ -34,7 +33,6 @@ mod bio {
     #[cfg(feature = "compression")]
     pub(super) use std::io::prelude::*;
     pub(super) use std::io::ErrorKind;
-    pub(super) use tempfile::NamedTempFile;
 }
 
 use crate::config::Config;
@@ -421,6 +419,17 @@ where
 {
     let (bucket, key, download_path) = (bucket.as_ref(), key.as_ref(), download_path.as_ref());
 
+    // If we're trying to download into a directory, assemble the path for the user
+    let file = if !download_path.is_dir() {
+        download_path.to_path_buf()
+    } else {
+        let s3filename = key
+            .split('/')
+            .next_back()
+            .ok_or(Error::CouldNotParseS3Filename)?;
+        download_path.join(s3filename)
+    };
+
     let stat = head_object_request(s3, bucket, key).await?;
     let total_size = stat
         .ok_or_else(|| Error::GetObjectInvalidKey(key.into()))?
@@ -456,58 +465,24 @@ where
         }
     }
 
-    let tempfile = bio::NamedTempFile::new()?;
-
     if decompress {
         #[cfg(feature = "compression")]
         {
             let file_output: Box<dyn bio::Write + Send + Sync + Unpin> =
-                Box::new(GzDecoder::new(bio::File::create(tempfile.path())?));
+                Box::new(GzDecoder::new(bio::File::create(file)?));
             let file_output = Arc::new(Mutex::new(file_output));
             let downloader = DownloadCompressed::new(file_output, bucket, key, total_size);
-            run_downloader(s3.clone(), downloader, decompress).await?;
+            run_downloader(s3.clone(), downloader, decompress).await
         }
         #[cfg(not(feature = "compression"))]
         {
             panic!("compression feature not enabled");
         }
     } else {
-        let downloader =
-            DownloadMultiple::new(bio::File::create(tempfile.path())?, bucket, key, total_size);
-        run_downloader(s3.clone(), downloader, decompress).await?;
+        let file_output = bio::File::create(file)?;
+        let downloader = DownloadMultiple::new(file_output, bucket, key, total_size);
+        run_downloader(s3.clone(), downloader, decompress).await
     }
-
-    if !download_path.is_file() && !download_path.is_dir() {
-        // If the specified destination directory doesn't already exist,
-        // see if the directory structure needs to be made
-        let directory_path = if !download_path.to_string_lossy().ends_with('/') {
-            let mut path = download_path.to_path_buf();
-            path.pop();
-            path
-        } else {
-            download_path.to_path_buf()
-        };
-
-        info!("Creating directory path {:?}", &directory_path);
-        create_dir_all(directory_path)?;
-    }
-
-    // If we're trying to download into a directory, assemble the path for the user
-    let save_path = if !download_path.is_dir() {
-        download_path.to_path_buf()
-    } else {
-        let s3filename = key
-            .split('/')
-            .next_back()
-            .ok_or(Error::CouldNotParseS3Filename)?;
-        download_path.join(s3filename)
-    };
-
-    tempfile.persist(&save_path)?;
-
-    info!("File downloaded to {:?}", &save_path);
-
-    Ok(())
 }
 
 async fn download_streaming_range<T>(
