@@ -14,23 +14,65 @@
 
 use crate::errors::{Error, Result};
 use crate::{download, upload, S3PathParam};
+#[cfg(feature = "compression")]
+use crate::{download_decompressed, upload_compressed};
 use log_derive::logfn;
 use rusoto_s3::S3;
 
 #[logfn(err = "ERROR")]
-pub async fn copy<T>(s3: &T, source: S3PathParam, destination: S3PathParam) -> Result<()>
+pub async fn copy<T>(
+    s3: &T,
+    source: S3PathParam,
+    destination: S3PathParam,
+    compress: bool,
+) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
 {
     match source {
         S3PathParam::Bucket { bucket, key } => match destination {
-            S3PathParam::Local { path } => download(s3, bucket, key, path).await,
+            S3PathParam::Local { path } => {
+                if compress {
+                    #[cfg(feature = "compression")]
+                    {
+                        match download_decompressed(s3, &bucket, &key, &path).await {
+                            Ok(_) => Ok(()),
+                            Err(error) => match error {
+                                Error::GetObjectInvalidKey(_) => {
+                                    let compressed_key = key + ".gz";
+                                    download_decompressed(s3, bucket, compressed_key, path).await
+                                }
+                                _ => Err(error),
+                            },
+                        }
+                    }
+                    #[cfg(not(feature = "compression"))]
+                    {
+                        panic!("compression feature not enabled");
+                    }
+                } else {
+                    download(s3, bucket, key, path).await
+                }
+            }
             S3PathParam::Bucket { bucket: _, key: _ } => {
                 Err(Error::BucketToBucketCpNotImplementedError)
             }
         },
         S3PathParam::Local { path } => match destination {
-            S3PathParam::Bucket { bucket, key } => upload(s3, bucket, key, path).await,
+            S3PathParam::Bucket { bucket, key } => {
+                if compress {
+                    #[cfg(feature = "compression")]
+                    {
+                        upload_compressed(s3, bucket, key, path).await
+                    }
+                    #[cfg(not(feature = "compression"))]
+                    {
+                        panic!("compression feature not enabled");
+                    }
+                } else {
+                    upload(s3, bucket, key, path).await
+                }
+            }
             S3PathParam::Local { path: _ } => Err(Error::LocalToLocalCpNotImplementedError),
         },
     }

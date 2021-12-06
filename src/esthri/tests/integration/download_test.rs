@@ -92,3 +92,20 @@ fn test_download_decompressed() {
     let etag = blocking::compute_etag(filename).unwrap();
     assert_eq!(etag, "\"6dbb4258fa16030c2daf6f1eac93dddd-8\"");
 }
+
+#[cfg(feature = "compression")]
+#[test]
+fn test_download_decompressed_to_directory() {
+    let s3client = crate::get_s3client();
+    let _tmp_dir = crate::EphemeralTempDir::pushd();
+
+    // Test object `test_download/27-185232-msg.csv.gz` must be prepopulated in the S3 bucket
+    let filename = "27-185232-msg.csv";
+    let s3_key = format!("test_download/{}.gz", filename);
+
+    let res = blocking::download_decompressed(s3client.as_ref(), crate::TEST_BUCKET, &s3_key, ".");
+    assert!(res.is_ok());
+
+    let etag = blocking::compute_etag(filename).unwrap();
+    assert_eq!(etag, "\"6dbb4258fa16030c2daf6f1eac93dddd-8\"");
+}

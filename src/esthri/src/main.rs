@@ -92,6 +92,8 @@ enum S3Command {
         #[structopt(long, possible_values(S3_ACL_OPTIONS))]
         #[allow(dead_code)]
         acl: Option<String>,
+        #[structopt(long)]
+        compress: bool,
     },
     Sync {
         source: S3PathParam,
@@ -248,9 +250,15 @@ async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
                 S3Command::Copy {
                     ref source,
                     ref destination,
+                    compress,
                     ..
                 } => {
-                    if let Err(e) = copy(s3, source.clone(), destination.clone()).await {
+                    #[cfg(feature = "compression")]
+                    // Works around structopt/clap not supporting flag values from environment variables
+                    let compress =
+                        compress || env::var("ESTHRI_AWS_COMPAT_MODE_COMPRESSION").is_ok();
+
+                    if let Err(e) = copy(s3, source.clone(), destination.clone(), compress).await {
                         match e {
                             Error::BucketToBucketCpNotImplementedError => {
                                 call_real_aws();

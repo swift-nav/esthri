@@ -507,6 +507,16 @@ where
             .split('/')
             .next_back()
             .ok_or(Error::CouldNotParseS3Filename)?;
+
+        let s3filename = if decompress {
+            // The caller hasn't specified a filename to download to
+            // (only a directory). Because we're decompressing, we
+            // should strip the compression suffix if there is one
+            s3filename.strip_suffix(".gz").unwrap_or(s3filename)
+        } else {
+            s3filename
+        };
+
         download_path.join(s3filename)
     };
 

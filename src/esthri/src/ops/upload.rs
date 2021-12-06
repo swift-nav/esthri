@@ -109,12 +109,17 @@ where
     let key = if !key.ends_with('/') {
         key.to_string()
     } else {
-        let filename = path.file_name().ok_or(Error::CouldNotParseS3Filename)?;
-        format!(
-            "{}{}",
-            key,
-            filename.to_str().ok_or(Error::CouldNotParseS3Filename)?
-        )
+        let filename = path
+            .file_name()
+            .ok_or(Error::CouldNotParseS3Filename)?
+            .to_str()
+            .ok_or(Error::CouldNotParseS3Filename)?;
+
+        if compressed {
+            format!("{}{}.gz", key, filename)
+        } else {
+            format!("{}{}", key, filename)
+        }
     };
 
     if path.exists() {
