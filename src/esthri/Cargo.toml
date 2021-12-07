@@ -6,7 +6,7 @@ required-features = [ "cli",]
 [package]
 name = "esthri"
 description = "Extremely simple (memory stable) S3 client that supports get, put, head, list, and sync."
-version = "6.2.0"
+version = "6.3.0"
 authors = [ "Swift Navigation <dev@swift-nav.com>",]
 edition = "2018"
 license = "MIT"
