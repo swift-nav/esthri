@@ -4,6 +4,7 @@ use std::fs;
 
 use esthri::{blocking, sync, GlobFilter, S3PathParam, FILTER_EMPTY};
 use glob::Pattern;
+use tempdir::TempDir;
 
 use crate::{validate_key_hash_pairs, KeyHashPair};
 
@@ -228,6 +229,37 @@ fn test_sync_down_default() {
     ];
 
     validate_key_hash_pairs(local_directory, &key_hash_pairs);
+}
+
+#[test]
+fn test_sync_down_filter() {
+    let s3client = crate::get_s3client();
+    let local_dir = TempDir::new("esthri_cli").unwrap();
+
+    let s3_key = "test_sync_down_default/";
+
+    let filters: Option<Vec<GlobFilter>> =
+        Some(vec![GlobFilter::Exclude(Pattern::new("*.bin").unwrap())]);
+
+    let source = S3PathParam::new_bucket(crate::TEST_BUCKET, s3_key);
+    let destination = S3PathParam::new_local(&local_dir);
+
+    let res = blocking::sync(
+        s3client.as_ref(),
+        source,
+        destination,
+        filters.as_deref(),
+        #[cfg(feature = "compression")]
+        false,
+    );
+    assert!(res.is_ok());
+
+    let key_hash_pairs = [
+        KeyHashPair("1-one.data", "827aa1b392c93cb25d2348bdc9b907b0"),
+        KeyHashPair("3-three.junk", "388f9763d78cecece332459baecb4b85"),
+    ];
+
+    validate_key_hash_pairs(&local_dir.path().to_string_lossy(), &key_hash_pairs);
 }
 
 #[tokio::test]

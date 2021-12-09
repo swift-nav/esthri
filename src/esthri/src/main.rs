@@ -354,7 +354,7 @@ fn globs_to_filter_list(
             .collect();
         let excludes: Vec<GlobFilter> = exclude
             .as_ref()
-            .unwrap()
+            .unwrap_or(&vec![])
             .iter()
             .cloned()
             .map(GlobFilter::Exclude)

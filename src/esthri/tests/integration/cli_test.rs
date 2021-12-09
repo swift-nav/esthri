@@ -215,3 +215,34 @@ fn test_aws_sync_down_filter_exclude_only() {
     validate_key_hash_pairs(sync_to, &key_hash_pairs);
     assert!(fs::remove_dir_all(sync_to).is_ok());
 }
+
+#[test]
+fn test_aws_sync_down_filter_include_only() {
+    let sync_from = "s3://esthri-test/test_sync_down_default";
+    let local_dir = TempDir::new("esthri_cli").unwrap();
+    let sync_to = local_dir.path().to_str().unwrap();
+    let mut cmd = Command::cargo_bin("esthri").unwrap();
+    let assert = cmd
+        .env("ESTHRI_AWS_COMPAT_MODE", "1")
+        .arg("s3")
+        .arg("sync")
+        .arg(sync_from)
+        .arg(sync_to)
+        .arg("--include")
+        .arg("*.bin")
+        .assert();
+
+    assert.success();
+
+    // This should download everything according to the AWS docs,
+    // because there's no explicit exclude
+    let key_hash_pairs = [
+        KeyHashPair("1-one.data", "827aa1b392c93cb25d2348bdc9b907b0"),
+        KeyHashPair("2-two.bin", "35500e07a35b413fc5f434397a4c6bfa"),
+        KeyHashPair("3-three.junk", "388f9763d78cecece332459baecb4b85"),
+        KeyHashPair("nested/2MiB.bin", "64a2635e42ef61c69d62feebdbf118d4"),
+    ];
+
+    validate_key_hash_pairs(sync_to, &key_hash_pairs);
+    assert!(fs::remove_dir_all(sync_to).is_ok());
+}

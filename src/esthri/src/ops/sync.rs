@@ -67,7 +67,7 @@ where
     let filters: Vec<GlobFilter> = match glob_filters {
         Some(filters) => {
             let mut filters = filters.to_vec();
-            if filters.iter().any(|x| matches!(x, GlobFilter::Include(_))) {
+            if !filters.iter().any(|x| matches!(x, GlobFilter::Include(_))) {
                 filters.push(GlobFilter::Include(Pattern::new("*")?));
             }
             filters

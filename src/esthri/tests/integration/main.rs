@@ -99,6 +99,10 @@ pub fn validate_key_hash_pairs(local_directory: &str, key_hash_pairs: &[KeyHashP
             path
         );
     }
+
+    // Ensure there aren't any extra unexpected files in the directory
+    let paths = fs::read_dir(local_directory).unwrap();
+    assert_eq!(paths.count(), key_hash_pairs.len());
 }
 
 type DateTime = chrono::DateTime<chrono::Utc>;
