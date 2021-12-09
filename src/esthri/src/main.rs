@@ -364,7 +364,7 @@ fn globs_to_filter_list(
             .chain(args_with_indices(excludes, "exclude", matches))
             .collect();
 
-        filters.sort_by(|a, b| b.0.cmp(&a.0));
+        filters.sort_by(|a, b| a.0.cmp(&b.0).reverse());
 
         let filters: Vec<GlobFilter> = filters.iter().cloned().map(|x| x.1).collect();
 
