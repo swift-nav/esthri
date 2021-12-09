@@ -122,6 +122,7 @@ fn test_aws_fallthrough_cp_option() {
     assert.success().stdout("s3 ls\n");
 }
 
+#[cfg(feature = "compression")]
 #[test]
 fn test_cp_falls_back_with_compression() {
     let mut cmd = Command::cargo_bin("esthri").unwrap();
