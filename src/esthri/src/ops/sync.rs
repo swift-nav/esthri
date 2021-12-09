@@ -32,13 +32,30 @@ use crate::{
 
 type MapEtagResult = Result<(PathBuf, Result<String>, Option<ListingMetadata>)>;
 
+#[derive(Debug, Clone)]
+pub enum GlobFilter {
+    Include(Pattern),
+    Exclude(Pattern),
+}
+
+/// Syncs between S3 prefixes and local directories
+///
+/// # Arguments
+///
+/// * `s3` - S3 client
+/// * `source` - S3 prefix or local directory to sync from
+/// * `destination` - S3 prefix or local directory to sync to
+/// * `glob_filter` - An (optional) slice of filters that specify whether files
+///                   should be included or not. These are processed in order,
+///                   with the first matching filter determining whether the
+///                   file will be included or excluded. If not supplied, then
+///                   all files will be synced.
 #[logfn(err = "ERROR")]
 pub async fn sync<T>(
     s3: &T,
     source: S3PathParam,
     destination: S3PathParam,
-    includes: Option<&[impl AsRef<str>]>,
-    excludes: Option<&[impl AsRef<str>]>,
+    glob_filters: Option<&[GlobFilter]>,
     #[cfg(feature = "compression")] compressed: bool,
 ) -> Result<()>
 where
@@ -47,38 +64,16 @@ where
     #[cfg(not(feature = "compression"))]
     let compressed = false;
 
-    let mut glob_excludes: Vec<Pattern> = vec![];
-    let mut glob_includes: Vec<Pattern> = vec![];
-
-    if let Some(excludes) = excludes {
-        for exclude in excludes {
-            let exclude = exclude.as_ref();
-            match Pattern::new(exclude) {
-                Err(e) => {
-                    return Err(Error::GlobPatternError(e));
-                }
-                Ok(p) => {
-                    glob_excludes.push(p);
-                }
+    let filters: Vec<GlobFilter> = match glob_filters {
+        Some(filters) => {
+            let mut filters = filters.to_vec();
+            if filters.iter().any(|x| matches!(x, GlobFilter::Include(_))) {
+                filters.push(GlobFilter::Include(Pattern::new("*")?));
             }
+            filters
         }
-    }
-
-    if let Some(includes) = includes {
-        for include in includes {
-            let include = include.as_ref();
-            match Pattern::new(include) {
-                Err(e) => {
-                    return Err(Error::GlobPatternError(e));
-                }
-                Ok(p) => {
-                    glob_includes.push(p);
-                }
-            }
-        }
-    } else {
-        glob_includes.push(Pattern::new("*")?);
-    }
+        None => vec![GlobFilter::Include(Pattern::new("*")?)],
+    };
 
     match (source, destination) {
         (S3PathParam::Local { path }, S3PathParam::Bucket { bucket, key }) => {
@@ -89,16 +84,7 @@ where
                 key
             );
 
-            sync_local_to_remote(
-                s3,
-                &bucket,
-                &key,
-                &path,
-                &glob_includes,
-                &glob_excludes,
-                compressed,
-            )
-            .await?;
+            sync_local_to_remote(s3, &bucket, &key, &path, &filters, compressed).await?;
         }
         (S3PathParam::Bucket { bucket, key }, S3PathParam::Local { path }) => {
             info!(
@@ -108,16 +94,7 @@ where
                 key
             );
 
-            sync_remote_to_local(
-                s3,
-                &bucket,
-                &key,
-                &path,
-                &glob_includes,
-                &glob_excludes,
-                compressed,
-            )
-            .await?;
+            sync_remote_to_local(s3, &bucket, &key, &path, &filters, compressed).await?;
         }
         (
             S3PathParam::Bucket {
@@ -140,8 +117,7 @@ where
                 &source_key,
                 &destination_bucket,
                 &destination_key,
-                &glob_includes,
-                &glob_excludes,
+                &filters,
             )
             .await?;
         }
@@ -153,25 +129,25 @@ where
     Ok(())
 }
 
-fn process_globs<'a, P: AsRef<Path> + 'a>(
-    path: P,
-    glob_includes: &[Pattern],
-    glob_excludes: &[Pattern],
-) -> Option<P> {
+fn process_globs<'a, P: AsRef<Path> + 'a>(path: P, filters: &[GlobFilter]) -> Option<P> {
     let mut excluded = false;
     let mut included = false;
     {
         let path = path.as_ref();
-        for pattern in glob_excludes {
-            if pattern.matches(path.to_string_lossy().as_ref()) {
-                excluded = true;
-                break;
-            }
-        }
-        for pattern in glob_includes {
-            if pattern.matches(path.to_string_lossy().as_ref()) {
-                included = true;
-                break;
+        for pattern in filters {
+            match pattern {
+                GlobFilter::Include(filter) => {
+                    if filter.matches(path.to_string_lossy().as_ref()) {
+                        included = true;
+                        break;
+                    }
+                }
+                GlobFilter::Exclude(filter) => {
+                    if filter.matches(path.to_string_lossy().as_ref()) {
+                        excluded = true;
+                        break;
+                    }
+                }
             }
         }
     }
@@ -184,8 +160,7 @@ fn process_globs<'a, P: AsRef<Path> + 'a>(
 
 fn create_dirent_stream<'a>(
     directory: &'a Path,
-    glob_includes: &'a [Pattern],
-    glob_excludes: &'a [Pattern],
+    filters: &'a [GlobFilter],
 ) -> impl Stream<Item = Result<(String, Option<ListingMetadata>)>> + 'a {
     async_stream::stream! {
         for entry in WalkDir::new(directory) {
@@ -211,7 +186,7 @@ fn create_dirent_stream<'a>(
             }
             let path = entry.path();
             debug!("local path={}", path.display());
-            if process_globs(&path, glob_includes, glob_excludes).is_some() {
+            if process_globs(&path, filters).is_some() {
                 yield Ok((path.to_string_lossy().into(), ListingMetadata::none()));
             }
         }
@@ -363,8 +338,7 @@ async fn sync_local_to_remote<T>(
     bucket: &str,
     key: &str,
     directory: impl AsRef<Path>,
-    glob_includes: &[Pattern],
-    glob_excludes: &[Pattern],
+    filters: &[GlobFilter],
     compressed: bool,
 ) -> Result<()>
 where
@@ -372,7 +346,7 @@ where
 {
     let directory = directory.as_ref();
     let task_count = Config::global().concurrent_sync_tasks();
-    let dirent_stream = create_dirent_stream(directory, glob_includes, glob_excludes);
+    let dirent_stream = create_dirent_stream(directory, filters);
     let compression = if compressed {
         SyncCompressionDirection::Up
     } else {
@@ -429,8 +403,7 @@ async fn sync_across<T>(
     source_prefix: &str,
     dest_bucket: &str,
     destination_key: &str,
-    glob_includes: &[Pattern],
-    glob_excludes: &[Pattern],
+    filters: &[GlobFilter],
 ) -> Result<()>
 where
     T: S3 + Send,
@@ -440,7 +413,7 @@ where
     while let Some(from_entries) = stream.try_next().await? {
         for entry in from_entries {
             if let S3ListingItem::S3Object(src_object) = entry {
-                let path = process_globs(&src_object.key, glob_includes, glob_excludes);
+                let path = process_globs(&src_object.key, filters);
 
                 if let Some(_accept) = path {
                     let mut should_copy_file: bool = true;
@@ -477,8 +450,7 @@ fn flattened_object_listing<'a, ClientT>(
     bucket: &'a str,
     key: &'a str,
     directory: &'a Path,
-    glob_includes: &'a [Pattern],
-    glob_excludes: &'a [Pattern],
+    filters: &'a [GlobFilter],
 ) -> impl Stream<Item = Result<(String, Option<ListingMetadata>)>> + 'a
 where
     ClientT: S3 + Send + Clone,
@@ -494,7 +466,7 @@ where
                         debug!("key={}", entry.key);
                         let path_result = Path::new(&entry.key).strip_prefix(key);
                         if let Ok(s3_suffix) = path_result {
-                            if process_globs(&s3_suffix, glob_includes, glob_excludes).is_some() {
+                            if process_globs(&s3_suffix, filters).is_some() {
                                 let local_path: String = directory.join(&s3_suffix).to_string_lossy().into();
                                 let s3_suffix = s3_suffix.to_string_lossy().into();
                                 yield Ok((local_path, ListingMetadata::some(s3_suffix, entry.e_tag)));
@@ -593,8 +565,7 @@ async fn sync_remote_to_local<T>(
     bucket: &str,
     key: &str,
     directory: impl AsRef<Path>,
-    glob_includes: &[Pattern],
-    glob_excludes: &[Pattern],
+    filters: &[GlobFilter],
     decompress: bool,
 ) -> Result<()>
 where
@@ -602,8 +573,7 @@ where
 {
     let directory = directory.as_ref();
     let task_count = Config::global().concurrent_sync_tasks();
-    let object_listing =
-        flattened_object_listing(s3, bucket, key, directory, glob_includes, glob_excludes);
+    let object_listing = flattened_object_listing(s3, bucket, key, directory, filters);
 
     let compression = if decompress {
         SyncCompressionDirection::Down
@@ -635,20 +605,46 @@ mod tests {
 
     #[test]
     fn test_process_globs() {
-        let includes = vec![Pattern::new("*.csv").unwrap()];
-        let excludes = vec![Pattern::new("*-blah.csv").unwrap()];
+        let filters = vec![
+            GlobFilter::Exclude(Pattern::new("*-blah.csv").unwrap()),
+            GlobFilter::Include(Pattern::new("*.csv").unwrap()),
+        ];
 
-        assert!(process_globs("data.sbp", &includes[..], &excludes[..]).is_none());
-        assert!(process_globs("yes.csv", &includes[..], &excludes[..]).is_some());
-        assert!(process_globs("no-blah.csv", &includes[..], &excludes[..]).is_none());
+        assert!(process_globs("data.sbp", &filters[..]).is_none());
+        assert!(process_globs("yes.csv", &filters[..]).is_some());
+        assert!(process_globs("no-blah.csv", &filters[..]).is_none());
     }
 
     #[test]
     fn test_process_globs_exclude_all() {
-        let includes = vec![Pattern::new("*.png").unwrap()];
-        let excludes = vec![];
+        let filters = vec![GlobFilter::Include(Pattern::new("*.png").unwrap())];
 
-        assert!(process_globs("a-fancy-thing.png", &includes[..], &excludes[..]).is_some());
-        assert!(process_globs("horse.gif", &includes[..], &excludes[..]).is_none());
+        assert!(process_globs("a-fancy-thing.png", &filters[..]).is_some());
+        assert!(process_globs("horse.gif", &filters[..]).is_none());
+    }
+
+    #[test]
+    fn test_process_globs_explicit_exclude() {
+        let filters = vec![
+            GlobFilter::Include(Pattern::new("*.png").unwrap()),
+            GlobFilter::Exclude(Pattern::new("*.txt").unwrap()),
+            GlobFilter::Include(Pattern::new("*").unwrap()),
+        ];
+
+        assert!(process_globs("a-fancy-thing.png", &filters[..]).is_some());
+        assert!(process_globs("horse.gif", &filters[..]).is_some());
+        assert!(process_globs("myfile.txt", &filters[..]).is_none());
+    }
+
+    #[test]
+    fn test_process_globs_precedence() {
+        let filters = vec![
+            GlobFilter::Exclude(Pattern::new("*").unwrap()),
+            GlobFilter::Include(Pattern::new("*").unwrap()),
+        ];
+
+        assert!(process_globs("a-fancy-thing.png", &filters[..]).is_none());
+        assert!(process_globs("horse.gif", &filters[..]).is_none());
+        assert!(process_globs("myfile.txt", &filters[..]).is_none());
     }
 }

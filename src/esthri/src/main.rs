@@ -19,6 +19,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
+use glob::Pattern;
 use log::*;
 use log_derive::logfn;
 
@@ -99,9 +100,9 @@ enum S3Command {
         source: S3PathParam,
         destination: S3PathParam,
         #[structopt(long)]
-        include: Option<Vec<String>>,
+        include: Option<Vec<Pattern>>,
         #[structopt(long)]
-        exclude: Option<Vec<String>>,
+        exclude: Option<Vec<Pattern>>,
         #[structopt(long)]
         #[allow(dead_code)]
         quiet: bool,
@@ -168,10 +169,10 @@ enum EsthriCommand {
         destination: S3PathParam,
         /// Optional include glob pattern (see `man 3 glob`)
         #[structopt(long)]
-        include: Option<Vec<String>>,
+        include: Option<Vec<Pattern>>,
         /// Optional exclude glob pattern (see `man 3 glob`)
         #[structopt(long)]
-        exclude: Option<Vec<String>>,
+        exclude: Option<Vec<Pattern>>,
         #[cfg(feature = "compression")]
         #[structopt(long)]
         /// Enable compression, only valid on upload
@@ -281,6 +282,27 @@ async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
                 } => {
                     setup_upload_termination_handler();
 
+                    let clap = AwsCompatCli::clap();
+                    let matches = clap.get_matches();
+                    let matches = matches
+                        .subcommand_matches("s3")
+                        .expect("Expected s3 command")
+                        .subcommand_matches("sync")
+                        .expect("Expected sync command");
+
+                    let user_filters = globs_to_filter_list(include, exclude, matches);
+
+                    let mut filters = vec![];
+
+                    if let Some(user_filters) = user_filters {
+                        filters.extend(user_filters);
+                    }
+
+                    // Following the interface of `aws sync`, we should
+                    // always fall back to including every file. See:
+                    // https://docs.aws.amazon.com/cli/latest/reference/s3/index.html#use-of-exclude-and-include-filters
+                    filters.push(GlobFilter::Include(Pattern::new("*")?));
+
                     #[cfg(feature = "compression")]
                     // Works around structopt/clap not supporting flag values from environment variables
                     let compress =
@@ -290,8 +312,7 @@ async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
                         s3,
                         source.clone(),
                         destination.clone(),
-                        include.as_deref(),
-                        exclude.as_deref(),
+                        Some(&filters),
                         #[cfg(feature = "compression")]
                         compress,
                     )
@@ -302,6 +323,55 @@ async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn args_with_indices<'a, I: IntoIterator + 'a>(
+    collection: I,
+    name: &str,
+    matches: &'a structopt::clap::ArgMatches,
+) -> impl Iterator<Item = (usize, I::Item)> + 'a {
+    matches
+        .indices_of(name)
+        .into_iter()
+        .flatten()
+        .zip(collection)
+}
+
+/// Gets a sorted list of include and exclude patterns, sorted in order
+/// from last specified to first specified
+fn globs_to_filter_list(
+    include: &Option<Vec<Pattern>>,
+    exclude: &Option<Vec<Pattern>>,
+    matches: &structopt::clap::ArgMatches,
+) -> Option<Vec<GlobFilter>> {
+    if include.as_deref().is_some() || exclude.as_deref().is_some() {
+        let includes: Vec<GlobFilter> = include
+            .as_ref()
+            .unwrap_or(&vec![])
+            .iter()
+            .cloned()
+            .map(GlobFilter::Include)
+            .collect();
+        let excludes: Vec<GlobFilter> = exclude
+            .as_ref()
+            .unwrap()
+            .iter()
+            .cloned()
+            .map(GlobFilter::Exclude)
+            .collect();
+
+        let mut filters: Vec<(usize, GlobFilter)> = args_with_indices(includes, "include", matches)
+            .chain(args_with_indices(excludes, "exclude", matches))
+            .collect();
+
+        filters.sort_by(|a, b| b.0.cmp(&a.0));
+
+        let filters: Vec<GlobFilter> = filters.iter().cloned().map(|x| x.1).collect();
+
+        Some(filters)
+    } else {
+        None
+    }
 }
 
 async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
@@ -387,12 +457,19 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
 
             setup_upload_termination_handler();
 
+            let clap = EsthriCommand::clap();
+            let matches = clap.get_matches();
+            let matches = matches
+                .subcommand_matches("sync")
+                .expect("Expected sync command");
+
+            let filters = globs_to_filter_list(include, exclude, matches);
+
             sync(
                 s3,
                 source.clone(),
                 destination.clone(),
-                include.as_deref(),
-                exclude.as_deref(),
+                filters.as_deref(),
                 #[cfg(feature = "compression")]
                 compress,
             )
