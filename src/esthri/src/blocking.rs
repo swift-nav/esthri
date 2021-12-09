@@ -15,6 +15,8 @@
 use std::io::prelude::*;
 use std::path::Path;
 
+use crate::ops::sync::GlobFilter;
+
 use super::rusoto::*;
 
 use super::ObjectInfo;
@@ -120,8 +122,7 @@ pub async fn sync<T>(
     s3: &T,
     source: S3PathParam,
     destination: S3PathParam,
-    includes: Option<&[impl AsRef<str>]>,
-    excludes: Option<&[impl AsRef<str>]>,
+    filters: Option<&[GlobFilter]>,
     #[cfg(feature = "compression")] compressed: bool,
 ) -> Result<()>
 where
@@ -131,8 +132,7 @@ where
         s3,
         source,
         destination,
-        includes,
-        excludes,
+        filters,
         #[cfg(feature = "compression")]
         compressed,
     )

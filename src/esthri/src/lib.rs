@@ -74,12 +74,11 @@ pub(crate) use ops::download::download_streaming;
 pub use ops::upload::setup_upload_termination_handler;
 pub use ops::upload::{abort_upload, upload, upload_from_reader};
 
-pub use ops::sync::sync;
+pub use ops::sync::{sync, GlobFilter};
 
 pub use ops::copy::copy;
 
-pub const INCLUDE_EMPTY: Option<&[&str]> = None;
-pub const EXCLUDE_EMPTY: Option<&[&str]> = None;
+pub const FILTER_EMPTY: Option<&[GlobFilter]> = None;
 
 const EXPECT_SPAWN_BLOCKING: &str = "spawned task failed";
 

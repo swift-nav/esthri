@@ -2,7 +2,9 @@
 
 use std::fs;
 
-use esthri::{blocking, sync, S3PathParam, EXCLUDE_EMPTY, INCLUDE_EMPTY};
+use esthri::{blocking, sync, GlobFilter, S3PathParam, FILTER_EMPTY};
+use glob::Pattern;
+use tempdir::TempDir;
 
 use crate::{validate_key_hash_pairs, KeyHashPair};
 
@@ -11,8 +13,11 @@ fn test_sync_down() {
     let s3client = crate::get_s3client();
     let local_directory = "tests/data/";
     let s3_key = "test_folder/";
-    let includes: Option<Vec<String>> = Some(vec!["*.txt".to_string()]);
-    let excludes: Option<Vec<String>> = Some(vec!["*".to_string()]);
+
+    let filters: Option<Vec<GlobFilter>> = Some(vec![
+        GlobFilter::Include(Pattern::new("*.txt").unwrap()),
+        GlobFilter::Exclude(Pattern::new("*").unwrap()),
+    ]);
 
     let source = S3PathParam::new_bucket(crate::TEST_BUCKET, s3_key);
     let destination = S3PathParam::new_local(local_directory);
@@ -21,8 +26,7 @@ fn test_sync_down() {
         s3client.as_ref(),
         source,
         destination,
-        includes.as_deref(),
-        excludes.as_deref(),
+        filters.as_deref(),
         #[cfg(feature = "compression")]
         false,
     );
@@ -34,8 +38,10 @@ async fn test_sync_down_async() {
     let s3client = crate::get_s3client();
     let local_directory = "tests/data/";
     let s3_key = "test_folder/";
-    let includes: Option<Vec<String>> = Some(vec!["*.txt".to_string()]);
-    let excludes: Option<Vec<String>> = Some(vec!["*".to_string()]);
+    let filters: Option<Vec<GlobFilter>> = Some(vec![
+        GlobFilter::Include(Pattern::new("*.txt").unwrap()),
+        GlobFilter::Exclude(Pattern::new("*").unwrap()),
+    ]);
 
     let source = S3PathParam::new_bucket(crate::TEST_BUCKET, s3_key);
     let destination = S3PathParam::new_local(local_directory);
@@ -44,8 +50,7 @@ async fn test_sync_down_async() {
         s3client.as_ref(),
         source,
         destination,
-        includes.as_deref(),
-        excludes.as_deref(),
+        filters.as_deref(),
         #[cfg(feature = "compression")]
         false,
     )
@@ -58,8 +63,10 @@ fn test_sync_down_without_slash() {
     let s3client = crate::get_s3client();
     let local_directory = "tests/data/";
     let s3_key = "test_folder";
-    let includes: Option<Vec<String>> = Some(vec!["*.txt".to_string()]);
-    let excludes: Option<Vec<String>> = Some(vec!["*".to_string()]);
+    let filters: Option<Vec<GlobFilter>> = Some(vec![
+        GlobFilter::Include(Pattern::new("*.txt").unwrap()),
+        GlobFilter::Exclude(Pattern::new("*").unwrap()),
+    ]);
 
     let source = S3PathParam::new_bucket(crate::TEST_BUCKET, s3_key);
     let destination = S3PathParam::new_local(local_directory);
@@ -68,8 +75,7 @@ fn test_sync_down_without_slash() {
         s3client.as_ref(),
         source,
         destination,
-        includes.as_deref(),
-        excludes.as_deref(),
+        filters.as_deref(),
         #[cfg(feature = "compression")]
         false,
     );
@@ -81,8 +87,10 @@ fn test_sync_up_without_slash() {
     let s3client = crate::get_s3client();
     let local_directory = "tests/data/";
     let s3_key = "test_folder";
-    let includes: Option<Vec<String>> = Some(vec!["*.txt".to_string()]);
-    let excludes: Option<Vec<String>> = Some(vec!["*".to_string()]);
+    let filters: Option<Vec<GlobFilter>> = Some(vec![
+        GlobFilter::Include(Pattern::new("*.txt").unwrap()),
+        GlobFilter::Exclude(Pattern::new("*").unwrap()),
+    ]);
 
     let source = S3PathParam::new_local(local_directory);
     let destination = S3PathParam::new_bucket(crate::TEST_BUCKET, s3_key);
@@ -91,8 +99,7 @@ fn test_sync_up_without_slash() {
         s3client.as_ref(),
         source,
         destination,
-        includes.as_deref(),
-        excludes.as_deref(),
+        filters.as_deref(),
         #[cfg(feature = "compression")]
         false,
     );
@@ -104,8 +111,10 @@ fn test_sync_up() {
     let s3client = crate::get_s3client();
     let local_directory = "tests/data/";
     let s3_key = "test_folder/";
-    let includes: Option<Vec<String>> = Some(vec!["*.txt".to_string()]);
-    let excludes: Option<Vec<String>> = Some(vec!["*".to_string()]);
+    let filters: Option<Vec<GlobFilter>> = Some(vec![
+        GlobFilter::Include(Pattern::new("*.txt").unwrap()),
+        GlobFilter::Exclude(Pattern::new("*").unwrap()),
+    ]);
 
     let source = S3PathParam::new_local(local_directory);
     let destination = S3PathParam::new_bucket(crate::TEST_BUCKET, s3_key);
@@ -114,8 +123,7 @@ fn test_sync_up() {
         s3client.as_ref(),
         source,
         destination,
-        includes.as_deref(),
-        excludes.as_deref(),
+        filters.as_deref(),
         #[cfg(feature = "compression")]
         false,
     );
@@ -127,8 +135,10 @@ async fn test_sync_up_async() {
     let s3client = crate::get_s3client();
     let local_directory = "tests/data/";
     let s3_key = "test_folder/";
-    let includes: Option<Vec<String>> = Some(vec!["*.txt".to_string()]);
-    let excludes: Option<Vec<String>> = Some(vec!["*".to_string()]);
+    let filters: Option<Vec<GlobFilter>> = Some(vec![
+        GlobFilter::Include(Pattern::new("*.txt").unwrap()),
+        GlobFilter::Exclude(Pattern::new("*").unwrap()),
+    ]);
 
     let source = S3PathParam::new_local(local_directory);
     let destination = S3PathParam::new_bucket(crate::TEST_BUCKET, s3_key);
@@ -137,8 +147,7 @@ async fn test_sync_up_async() {
         s3client.as_ref(),
         source,
         destination,
-        includes.as_deref(),
-        excludes.as_deref(),
+        filters.as_deref(),
         #[cfg(feature = "compression")]
         false,
     )
@@ -159,8 +168,7 @@ fn test_sync_up_default() {
         s3client.as_ref(),
         source,
         destination,
-        INCLUDE_EMPTY,
-        EXCLUDE_EMPTY,
+        FILTER_EMPTY,
         #[cfg(feature = "compression")]
         false,
     );
@@ -207,8 +215,7 @@ fn test_sync_down_default() {
         s3client.as_ref(),
         source,
         destination,
-        INCLUDE_EMPTY,
-        EXCLUDE_EMPTY,
+        FILTER_EMPTY,
         #[cfg(feature = "compression")]
         false,
     );
@@ -224,14 +231,45 @@ fn test_sync_down_default() {
     validate_key_hash_pairs(local_directory, &key_hash_pairs);
 }
 
+#[test]
+fn test_sync_down_filter() {
+    let s3client = crate::get_s3client();
+    let local_dir = TempDir::new("esthri_cli").unwrap();
+
+    let s3_key = "test_sync_down_default/";
+
+    let filters: Option<Vec<GlobFilter>> =
+        Some(vec![GlobFilter::Exclude(Pattern::new("*.bin").unwrap())]);
+
+    let source = S3PathParam::new_bucket(crate::TEST_BUCKET, s3_key);
+    let destination = S3PathParam::new_local(&local_dir);
+
+    let res = blocking::sync(
+        s3client.as_ref(),
+        source,
+        destination,
+        filters.as_deref(),
+        #[cfg(feature = "compression")]
+        false,
+    );
+    assert!(res.is_ok());
+
+    let key_hash_pairs = [
+        KeyHashPair("1-one.data", "827aa1b392c93cb25d2348bdc9b907b0"),
+        KeyHashPair("3-three.junk", "388f9763d78cecece332459baecb4b85"),
+    ];
+
+    validate_key_hash_pairs(&local_dir.path().to_string_lossy(), &key_hash_pairs);
+}
+
 #[tokio::test]
 async fn test_sync_across() {
     let s3client = crate::get_s3client();
     let source_prefix = "test_sync_folder1/";
     let dest_prefix = "test_sync_folder2/";
 
-    let includes: Option<Vec<String>> = Some(vec!["*.txt".to_string()]);
-    let excludes: Option<Vec<String>> = None;
+    let filters: Option<Vec<GlobFilter>> =
+        Some(vec![GlobFilter::Include(Pattern::new("*.txt").unwrap())]);
 
     let source = S3PathParam::new_bucket(crate::TEST_BUCKET, source_prefix);
     let destination = S3PathParam::new_bucket(crate::TEST_BUCKET, dest_prefix);
@@ -240,8 +278,7 @@ async fn test_sync_across() {
         s3client.as_ref(),
         source,
         destination,
-        includes.as_deref(),
-        excludes.as_deref(),
+        filters.as_deref(),
         #[cfg(feature = "compression")]
         false,
     )
@@ -264,14 +301,7 @@ fn sync_test_files_up_compressed(s3client: &rusoto_s3::S3Client, s3_key: &str) -
     fs_extra::dir::copy(data_dir_fp, temp_data_dir, &opts).unwrap();
     let source = S3PathParam::new_local(temp_data_dir);
     let destination = S3PathParam::new_bucket(crate::TEST_BUCKET, s3_key);
-    let res = blocking::sync(
-        s3client,
-        source,
-        destination,
-        INCLUDE_EMPTY,
-        EXCLUDE_EMPTY,
-        true,
-    );
+    let res = blocking::sync(s3client, source, destination, FILTER_EMPTY, true);
     assert!(res.is_ok());
     s3_key.to_string()
 }
@@ -322,8 +352,7 @@ fn test_sync_down_compressed() {
         s3client.as_ref(),
         S3PathParam::new_bucket(crate::TEST_BUCKET, s3_key),
         destination,
-        INCLUDE_EMPTY,
-        EXCLUDE_EMPTY,
+        FILTER_EMPTY,
         #[cfg(feature = "compression")]
         true,
     );
@@ -363,8 +392,7 @@ fn test_sync_down_compressed_mixed() {
         s3client.as_ref(),
         S3PathParam::new_bucket(crate::TEST_BUCKET, "test_sync_down_mixed_compressed"),
         destination,
-        INCLUDE_EMPTY,
-        EXCLUDE_EMPTY,
+        FILTER_EMPTY,
         #[cfg(feature = "compression")]
         true,
     );
