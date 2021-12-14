@@ -34,7 +34,6 @@ pub mod errors;
 pub mod http_server;
 pub mod rusoto;
 
-#[cfg(feature = "compression")]
 pub(crate) mod compression;
 pub(crate) mod types;
 
@@ -62,9 +61,8 @@ pub use crate::types::{ObjectInfo, S3ListingItem, S3Object, S3PathParam};
 
 pub use ops::download::download;
 
-#[cfg(feature = "compression")]
 pub use ops::download::download_decompressed;
-#[cfg(feature = "compression")]
+
 pub use ops::upload::upload_compressed;
 
 #[cfg(feature = "http_server")]

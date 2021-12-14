@@ -36,11 +36,11 @@ async-stream = "0.3"
 serde = "1"
 serde_derive = "1"
 tempfile = "3.0"
+flate2 = "1.0"
 
 [dev-dependencies]
 md5 = "0.7"
 tar = "0.4"
-flate2 = "1.0"
 tempdir = "0.3"
 backtrace = "0.3"
 fs_extra = "1.2"
@@ -51,10 +51,9 @@ name = "esthri"
 path = "src/lib.rs"
 
 [features]
-default = [ "rustls", "cli", "http_server", "blocking", "compression",]
+default = [ "rustls", "cli", "http_server", "blocking",]
 aggressive_lint = []
 blocking = []
-compression = [ "flate2",]
 http_server = [ "async-tar", "async-compression", "bytes", "futures-util", "mime_guess", "sluice", "sanitize-filename", "tokio-util", "warp", "ctrlc", "anyhow", "maud",]
 nativetls = [ "rusoto_credential", "rusoto_core/native-tls", "rusoto_signature", "rusoto_s3/native-tls", "hyper-tls",]
 rustls = [ "rusoto_credential", "rusoto_core/rustls", "rusoto_signature", "rusoto_s3/rustls", "hyper-rustls",]
@@ -147,10 +146,6 @@ optional = true
 [dependencies.ctrlc]
 version = "3.2"
 features = [ "termination",]
-optional = true
-
-[dependencies.flate2]
-version = "1.0"
 optional = true
 
 [dependencies.maud]

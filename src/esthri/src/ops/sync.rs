@@ -56,14 +56,11 @@ pub async fn sync<T>(
     source: S3PathParam,
     destination: S3PathParam,
     glob_filters: Option<&[GlobFilter]>,
-    #[cfg(feature = "compression")] compressed: bool,
+    compressed: bool,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
 {
-    #[cfg(not(feature = "compression"))]
-    let compressed = false;
-
     let filters: Vec<GlobFilter> = match glob_filters {
         Some(filters) => {
             let mut filters = filters.to_vec();
@@ -211,63 +208,51 @@ where
     input_stream.map(move |params| async move {
         let (path, metadata) = params?;
         let path = PathBuf::from_str(&path)?;
-        #[cfg(feature = "compression")]
-        {
-            use crate::compression::{
-                compress_and_replace, compress_to_tempfile, compressed_path_to_path,
-            };
 
-            let (path, local_etag) = match compressed {
-                SyncCompressionDirection::None => {
+        use crate::compression::{
+            compress_and_replace, compress_to_tempfile, compressed_path_to_path,
+        };
+
+        let (path, local_etag) = match compressed {
+            SyncCompressionDirection::None => {
+                let local_etag = compute_etag(&path).await;
+                (path, local_etag)
+            }
+            SyncCompressionDirection::Up => {
+                if path.extension().map(|e| e == "gz").unwrap_or(false) {
+                    let local_etag = compute_etag(&path).await;
+                    (path, local_etag)
+                } else {
+                    info!("compressing and replacing: {}", path.display());
+                    let path = compress_and_replace(path).await?;
                     let local_etag = compute_etag(&path).await;
                     (path, local_etag)
                 }
-                SyncCompressionDirection::Up => {
-                    if path.extension().map(|e| e == "gz").unwrap_or(false) {
-                        let local_etag = compute_etag(&path).await;
-                        (path, local_etag)
-                    } else {
-                        info!("compressing and replacing: {}", path.display());
-                        let path = compress_and_replace(path).await?;
-                        let local_etag = compute_etag(&path).await;
-                        (path, local_etag)
-                    }
-                }
-                SyncCompressionDirection::Down => {
-                    if path.extension().map(|e| e == "gz").unwrap_or(false) {
-                        let uncompressed_path =
-                            compressed_path_to_path(&path).expect("Path should be compressed");
-
-                        if !uncompressed_path.exists() {
-                            (path, Err(Error::ETagNotPresent))
-                        } else {
-                            // Check if we already have a copy locally
-                            // of the uncompressed file by recompressing
-                            // the local file to see if it matches with
-                            // the compressed version
-                            let (temp_compressed, _) =
-                                compress_to_tempfile(&uncompressed_path).await?;
-                            let local_etag = compute_etag(&temp_compressed).await;
-                            (path, local_etag)
-                        }
-                    } else {
-                        let local_etag = compute_etag(&path).await;
-                        (path, local_etag)
-                    }
-                }
-            };
-
-            Ok((path, local_etag, metadata))
-        }
-        #[cfg(not(feature = "compression"))]
-        {
-            if matches!(compressed, SyncCompressionDirection::None) {
-                let local_etag = compute_etag(&path).await;
-                Ok((path, local_etag, metadata))
-            } else {
-                panic!("compression feature not enabled");
             }
-        }
+            SyncCompressionDirection::Down => {
+                if path.extension().map(|e| e == "gz").unwrap_or(false) {
+                    let uncompressed_path =
+                        compressed_path_to_path(&path).expect("Path should be compressed");
+
+                    if !uncompressed_path.exists() {
+                        (path, Err(Error::ETagNotPresent))
+                    } else {
+                        // Check if we already have a copy locally
+                        // of the uncompressed file by recompressing
+                        // the local file to see if it matches with
+                        // the compressed version
+                        let (temp_compressed, _) = compress_to_tempfile(&uncompressed_path).await?;
+                        let local_etag = compute_etag(&temp_compressed).await;
+                        (path, local_etag)
+                    }
+                } else {
+                    let local_etag = compute_etag(&path).await;
+                    (path, local_etag)
+                }
+            }
+        };
+
+        Ok((path, local_etag, metadata))
     })
 }
 

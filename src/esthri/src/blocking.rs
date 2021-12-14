@@ -76,7 +76,6 @@ where
     super::upload_from_reader(s3, bucket, key, reader, file_size, None).await
 }
 
-#[cfg(feature = "compression")]
 #[tokio::main]
 pub async fn upload_compressed<T>(
     s3: &T,
@@ -103,7 +102,6 @@ where
     super::download(s3, bucket, key, file).await
 }
 
-#[cfg(feature = "compression")]
 #[tokio::main]
 pub async fn download_decompressed<T>(
     s3: &T,
@@ -123,20 +121,12 @@ pub async fn sync<T>(
     source: S3PathParam,
     destination: S3PathParam,
     filters: Option<&[GlobFilter]>,
-    #[cfg(feature = "compression")] compressed: bool,
+    compressed: bool,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
 {
-    super::sync(
-        s3,
-        source,
-        destination,
-        filters,
-        #[cfg(feature = "compression")]
-        compressed,
-    )
-    .await
+    super::sync(s3, source, destination, filters, compressed).await
 }
 
 #[tokio::main]

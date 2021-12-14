@@ -27,7 +27,6 @@ fn test_upload() {
     assert!(!obj_info.metadata.contains_key("esthri_compress_version"));
 }
 
-#[cfg(feature = "compression")]
 #[test]
 fn test_upload_compressed() {
     let s3client = crate::get_s3client();

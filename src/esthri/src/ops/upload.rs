@@ -125,24 +125,17 @@ where
     if path.exists() {
         let stat = fs::metadata(&path)?;
         if compressed {
-            #[cfg(feature = "compression")]
-            {
-                use crate::compression::compress_to_tempfile;
-                let (compressed, size) = compress_to_tempfile(path.clone()).await?;
-                upload_from_reader(
-                    s3,
-                    bucket,
-                    key,
-                    compressed,
-                    size,
-                    Some(crate::compression::compressed_file_metadata()),
-                )
-                .await
-            }
-            #[cfg(not(feature = "compression"))]
-            {
-                panic!("compression feature not enabled");
-            }
+            use crate::compression::compress_to_tempfile;
+            let (compressed, size) = compress_to_tempfile(path.clone()).await?;
+            upload_from_reader(
+                s3,
+                bucket,
+                key,
+                compressed,
+                size,
+                Some(crate::compression::compressed_file_metadata()),
+            )
+            .await
         } else {
             let size = stat.len();
             debug!("upload: file size: {}", size);
@@ -175,7 +168,6 @@ where
     upload_helper(s3, bucket, key, file, compressed).await
 }
 
-#[cfg(feature = "compression")]
 #[logfn(err = "ERROR")]
 pub async fn upload_compressed<T>(
     s3: &T,
