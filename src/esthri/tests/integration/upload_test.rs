@@ -32,7 +32,7 @@ fn test_upload_compressed() {
     let s3client = crate::get_s3client();
     let filename = "27-185232-msg.csv";
     let filepath = format!("tests/data/{}", filename);
-    let s3_key = format!("test_upload/{}.gz", filename);
+    let s3_key = format!("test_upload/{}", filename);
 
     let res =
         blocking::upload_compressed(s3client.as_ref(), crate::TEST_BUCKET, &s3_key, &filepath);

@@ -115,11 +115,7 @@ where
             .to_str()
             .ok_or(Error::CouldNotParseS3Filename)?;
 
-        if compressed {
-            format!("{}{}.gz", key, filename)
-        } else {
-            format!("{}{}", key, filename)
-        }
+        format!("{}{}", key, filename)
     };
 
     if path.exists() {
