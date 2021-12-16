@@ -37,11 +37,11 @@ fn from_rusoto_err<E>(err: RusotoError<E>) -> backoff::Error<RusotoError<E>> {
     match err {
         RusotoError::HttpDispatch(_) => {
             debug!("Retrying S3 dispatch error");
-            Error::Transient(err)
+            Error::transient(err)
         }
         RusotoError::Unknown(ref res) if res.status.is_server_error() => {
             debug!("Retrying S3 server error: {}", res.body_as_str());
-            Error::Transient(err)
+            Error::transient(err)
         }
         _ => Error::Permanent(err),
     }
