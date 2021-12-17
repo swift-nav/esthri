@@ -15,7 +15,7 @@
 use crate::errors::{Error, Result};
 use crate::{download, upload, S3PathParam};
 
-use crate::{download_decompressed, upload_compressed};
+use crate::{download_with_transparent_decompression, upload_compressed};
 use log_derive::logfn;
 use rusoto_s3::S3;
 
@@ -24,7 +24,7 @@ pub async fn copy<T>(
     s3: &T,
     source: S3PathParam,
     destination: S3PathParam,
-    compress: bool,
+    transparent_compression: bool,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
@@ -32,17 +32,8 @@ where
     match source {
         S3PathParam::Bucket { bucket, key } => match destination {
             S3PathParam::Local { path } => {
-                if compress {
-                    match download_decompressed(s3, &bucket, &key, &path).await {
-                        Ok(_) => Ok(()),
-                        Err(error) => match error {
-                            Error::GetObjectInvalidKey(_) => {
-                                let compressed_key = key + ".gz";
-                                download_decompressed(s3, bucket, compressed_key, path).await
-                            }
-                            _ => Err(error),
-                        },
-                    }
+                if transparent_compression {
+                    download_with_transparent_decompression(s3, bucket, key, path).await
                 } else {
                     download(s3, bucket, key, path).await
                 }
@@ -53,7 +44,7 @@ where
         },
         S3PathParam::Local { path } => match destination {
             S3PathParam::Bucket { bucket, key } => {
-                if compress {
+                if transparent_compression {
                     upload_compressed(s3, bucket, key, path).await
                 } else {
                     upload(s3, bucket, key, path).await

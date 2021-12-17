@@ -407,17 +407,17 @@ async fn download_helper<T>(
     bucket: impl AsRef<str>,
     key: impl AsRef<str>,
     download_path: impl AsRef<Path>,
-    decompress: bool,
+    transparent_decompression: bool,
 ) -> Result<()>
 where
     T: S3 + Send + Sync + Clone,
 {
     let (bucket, key, download_path) = (bucket.as_ref(), key.as_ref(), download_path.as_ref());
 
-    let stat = head_object_request(s3, bucket, key).await?;
-    let total_size = stat
-        .ok_or_else(|| Error::GetObjectInvalidKey(key.into()))?
-        .size as u64;
+    let obj_info = head_object_request(s3, bucket, key)
+        .await?
+        .ok_or_else(|| Error::GetObjectInvalidKey(key.into()))?;
+    let total_size = obj_info.size as u64;
 
     fn run_downloader<'a, T: Downloader + Send + 'a, ClientT>(
         s3: ClientT,
@@ -473,6 +473,9 @@ where
 
     let tempfile = bio::NamedTempFile::new_in(directory_path)?;
 
+    let is_compressed = obj_info.is_esthri_compressed();
+    let decompress = transparent_decompression && is_compressed;
+
     if decompress {
         let file_output: Box<dyn bio::Write + Send + Sync + Unpin> =
             Box::new(GzDecoder::new(bio::File::create(tempfile.path())?));
@@ -493,16 +496,6 @@ where
             .split('/')
             .next_back()
             .ok_or(Error::CouldNotParseS3Filename)?;
-
-        let s3filename = if decompress {
-            // The caller hasn't specified a filename to download to
-            // (only a directory). Because we're decompressing, we
-            // should strip the compression suffix if there is one
-            s3filename.strip_suffix(".gz").unwrap_or(s3filename)
-        } else {
-            s3filename
-        };
-
         download_path.join(s3filename)
     };
 
@@ -553,7 +546,7 @@ pub(in crate) async fn download_with_dir<T>(
     s3_prefix: &str,
     s3_suffix: &str,
     local_dir: impl AsRef<Path>,
-    decompress: bool,
+    transparent_decompress: bool,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
@@ -567,13 +560,8 @@ where
     let key = format!("{}", Path::new(s3_prefix).join(s3_suffix).display());
     let dest_path = format!("{}", dest_path.display());
 
-    let file_is_compressed = dest_path.ends_with(".gz");
-
-    if decompress && file_is_compressed {
-        let dest_path = dest_path
-            .strip_suffix(".gz")
-            .expect("Should have a gz suffix");
-        download_decompressed(s3, bucket, &key, dest_path).await?;
+    if transparent_decompress {
+        download_with_transparent_decompression(s3, bucket, &key, &dest_path).await?;
     } else {
         download(s3, bucket, &key, &dest_path).await?;
     }
@@ -611,12 +599,11 @@ where
         file.as_ref().display()
     );
 
-    let decompress = false;
-    download_helper(s3, bucket, key, file, decompress).await
+    download_helper(s3, bucket, key, file, false).await
 }
 
 #[logfn(err = "ERROR")]
-pub async fn download_decompressed<T>(
+pub async fn download_with_transparent_decompression<T>(
     s3: &T,
     bucket: impl AsRef<str>,
     key: impl AsRef<str>,
@@ -632,6 +619,5 @@ where
         file.as_ref().display()
     );
 
-    let decompress = true;
-    download_helper(s3, bucket, key, file, decompress).await
+    download_helper(s3, bucket, key, file, true).await
 }

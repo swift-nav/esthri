@@ -123,36 +123,6 @@ fn test_aws_fallthrough_cp_option() {
 }
 
 #[test]
-fn test_cp_falls_back_with_compression() {
-    let mut cmd = Command::cargo_bin("esthri").unwrap();
-    let local_dir = TempDir::new("esthri_cli").unwrap();
-    let local_dir_path = local_dir.path().to_str().unwrap();
-    // this file doesn't exist on S3, but
-    // s3://esthri-test/test_download/27-185232-msg.csv.gz does. In
-    // compression mode, esthri should fall back to downloading (and
-    // decompressing) the compressed version transparently.
-    let key = "s3://esthri-test/test_download/27-185232-msg.csv";
-    let assert = cmd
-        .env("ESTHRI_AWS_COMPAT_MODE", "1")
-        .env("ESTHRI_AWS_COMPAT_MODE_COMPRESSION", "1")
-        .arg("s3")
-        .arg("cp")
-        .arg(key)
-        .arg(local_dir_path)
-        .assert();
-
-    assert.success();
-
-    validate_key_hash_pairs(
-        local_dir_path,
-        &[KeyHashPair(
-            "27-185232-msg.csv",
-            "e8b32017e42f2e727316d68ea72c2832",
-        )],
-    );
-}
-
-#[test]
 fn test_aws_sync_down_filter() {
     let sync_from = "s3://esthri-test/test_sync_down_default";
     let local_dir = TempDir::new("esthri_cli").unwrap();

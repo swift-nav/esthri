@@ -311,7 +311,7 @@ fn test_sync_up_compressed() {
 #[test]
 fn test_sync_down_compressed() {
     let s3client = crate::get_s3client();
-    let s3_key = "test_sync_down_compressed/";
+    let s3_key = "test_sync_down_compressed_v7/";
 
     sync_test_files_up_compressed(s3client.as_ref(), s3_key);
 
@@ -348,34 +348,78 @@ fn test_sync_down_compressed() {
 #[test]
 fn test_sync_down_compressed_mixed() {
     let s3client = crate::get_s3client();
+    let s3_key = "test_sync_down_compressed_mixed_v7/";
+
+    blocking::upload(
+        s3client.as_ref(),
+        crate::TEST_BUCKET,
+        s3_key,
+        "tests/data/index.html",
+    )
+    .unwrap();
+    blocking::upload_compressed(
+        s3client.as_ref(),
+        crate::TEST_BUCKET,
+        s3_key,
+        "tests/data/test_file.txt",
+    )
+    .unwrap();
 
     let local_directory = "tests/data/sync_down/d";
-    let sync_dir_meta = fs::metadata(local_directory);
 
-    if let Ok(sync_dir_meta) = sync_dir_meta {
-        assert!(sync_dir_meta.is_dir());
-        assert!(fs::remove_dir_all(local_directory).is_ok());
+    // Syncing down without compression should give the files as they are on S3
+    // ie, "index.html" uncompressed and "test_file.txt" compressed
+    {
+        let sync_dir_meta = fs::metadata(local_directory);
+
+        if let Ok(sync_dir_meta) = sync_dir_meta {
+            assert!(sync_dir_meta.is_dir());
+            assert!(fs::remove_dir_all(local_directory).is_ok());
+        }
+        let destination = S3PathParam::new_local(local_directory);
+
+        let res = blocking::sync(
+            s3client.as_ref(),
+            S3PathParam::new_bucket(crate::TEST_BUCKET, s3_key),
+            destination,
+            FILTER_EMPTY,
+            false,
+        );
+        assert!(res.is_ok());
+
+        let key_hash_pairs = [
+            KeyHashPair("index.html", "b4e3f354e8575e2fa5f489ab6078917c"),
+            KeyHashPair("test_file.txt", "9648fc00e6a6c4b68127ca6547f15eb6"),
+        ];
+
+        validate_key_hash_pairs(local_directory, &key_hash_pairs);
     }
-    let destination = S3PathParam::new_local(local_directory);
 
-    // Test was data populated with the following command:
-    //
-    //     aws s3 cp compressed.html.gz s3://esthri-test/test_sync_down_mixed_compressed/
-    //     aws s3 cp test_file.txt      s3://esthri-test/test_sync_down_mixed_compressed/
-    //
-    let res = blocking::sync(
-        s3client.as_ref(),
-        S3PathParam::new_bucket(crate::TEST_BUCKET, "test_sync_down_mixed_compressed"),
-        destination,
-        FILTER_EMPTY,
-        true,
-    );
-    assert!(res.is_ok());
+    // Syncing down with transparent compression should get the uncompressed version
+    // of both files
+    {
+        let sync_dir_meta = fs::metadata(local_directory);
 
-    let key_hash_pairs = [
-        KeyHashPair("compressed.html", "b4e3f354e8575e2fa5f489ab6078917c"),
-        KeyHashPair("test_file.txt", "8fd41740698064016b7daaddddd3531a"),
-    ];
+        if let Ok(sync_dir_meta) = sync_dir_meta {
+            assert!(sync_dir_meta.is_dir());
+            assert!(fs::remove_dir_all(local_directory).is_ok());
+        }
+        let destination = S3PathParam::new_local(local_directory);
 
-    validate_key_hash_pairs(local_directory, &key_hash_pairs);
+        let res = blocking::sync(
+            s3client.as_ref(),
+            S3PathParam::new_bucket(crate::TEST_BUCKET, s3_key),
+            destination,
+            FILTER_EMPTY,
+            true,
+        );
+        assert!(res.is_ok());
+
+        let key_hash_pairs = [
+            KeyHashPair("index.html", "b4e3f354e8575e2fa5f489ab6078917c"),
+            KeyHashPair("test_file.txt", "8fd41740698064016b7daaddddd3531a"),
+        ];
+
+        validate_key_hash_pairs(local_directory, &key_hash_pairs);
+    }
 }

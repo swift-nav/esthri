@@ -403,7 +403,7 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
                     ..
                 }
             ) {
-                download_decompressed(s3, bucket, key, file).await?;
+                download_with_transparent_decompression(s3, bucket, key, file).await?;
             } else {
                 download(s3, bucket, key, file).await?;
             }

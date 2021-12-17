@@ -103,7 +103,7 @@ where
 }
 
 #[tokio::main]
-pub async fn download_decompressed<T>(
+pub async fn download_with_transparent_decompression<T>(
     s3: &T,
     bucket: impl AsRef<str>,
     key: impl AsRef<str>,
@@ -112,7 +112,7 @@ pub async fn download_decompressed<T>(
 where
     T: S3 + Sync + Send + Clone,
 {
-    super::download_decompressed(s3, bucket, key, file).await
+    super::download_with_transparent_decompression(s3, bucket, key, file).await
 }
 
 #[tokio::main]
@@ -121,12 +121,12 @@ pub async fn sync<T>(
     source: S3PathParam,
     destination: S3PathParam,
     filters: Option<&[GlobFilter]>,
-    compressed: bool,
+    transparent_compression: bool,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
 {
-    super::sync(s3, source, destination, filters, compressed).await
+    super::sync(s3, source, destination, filters, transparent_compression).await
 }
 
 #[tokio::main]

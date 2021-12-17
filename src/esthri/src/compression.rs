@@ -12,11 +12,7 @@
 
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
-use std::{
-    collections::HashMap,
-    ffi::OsString,
-    path::{Path, PathBuf},
-};
+use std::{collections::HashMap, path::Path};
 
 use flate2::{read::GzEncoder, Compression};
 use futures::Future;
@@ -25,10 +21,8 @@ use tokio::task;
 
 use super::{Error, Result, EXPECT_SPAWN_BLOCKING};
 
-use crate::Error::FileNotCompressed;
 /// Internal module used to call out operations that may block.
 mod bio {
-    pub(super) use std::fs;
     pub(super) use std::fs::File;
     pub(super) use std::io::BufReader;
     pub(super) use std::io::Seek;
@@ -36,10 +30,12 @@ mod bio {
     pub(super) use tempfile::NamedTempFile;
 }
 
+pub const ESTHRI_METADATA_COMPRESS_KEY: &str = "esthri_compress_version";
+
 pub(crate) fn compressed_file_metadata() -> HashMap<String, String> {
     let mut m = HashMap::new();
     m.insert(
-        "esthri_compress_version".to_string(),
+        ESTHRI_METADATA_COMPRESS_KEY.to_string(),
         env!("CARGO_PKG_VERSION").to_string(),
     );
     m
@@ -80,68 +76,5 @@ pub(crate) fn compress_to_tempfile(
         })
         .await
         .expect(EXPECT_SPAWN_BLOCKING)
-    }
-}
-
-pub(crate) async fn compress_and_replace(path: impl AsRef<Path>) -> Result<PathBuf> {
-    use bio::*;
-    let path = path.as_ref();
-    debug!("compressing (and renaming): {}", path.display());
-    let temp_path = {
-        let (temp_file, _size) = compress_to_tempfile(path).await?;
-        let (_temp_file, temp_path) = temp_file.keep()?;
-        temp_path
-    };
-    let file_gz = path_to_compressed_path(path);
-    debug!("renaming {} to {}", path.display(), file_gz.display());
-    fs::rename(temp_path, &file_gz)?;
-    let permissions = path.metadata()?.permissions();
-    fs::set_permissions(&file_gz, permissions)?;
-    fs::remove_file(path)?;
-    Ok(file_gz)
-}
-
-pub(crate) fn path_to_compressed_path(path: &Path) -> PathBuf {
-    let file_gz = path
-        .extension()
-        .map(OsString::from)
-        .map(|mut ext| {
-            ext.push(".gz");
-            path.to_path_buf().with_extension(ext)
-        })
-        .unwrap_or_else(|| path.to_path_buf().with_extension("gz"));
-    file_gz
-}
-
-pub(crate) fn compressed_path_to_path(path: &Path) -> Result<PathBuf> {
-    let mut pathbuf = path.to_path_buf();
-    let ext = path.extension().ok_or(FileNotCompressed)?;
-    let filename = path.file_name().ok_or(FileNotCompressed)?;
-    if ext == "gz" {
-        pathbuf.set_file_name(filename.to_string_lossy().strip_suffix(".gz").unwrap());
-        Ok(pathbuf)
-    } else {
-        Err(FileNotCompressed)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_compressed_path_to_path() {
-        assert_eq!(
-            Path::new("myfile.tar"),
-            compressed_path_to_path(Path::new("myfile.tar.gz")).unwrap()
-        );
-        assert!(matches!(
-            compressed_path_to_path(Path::new("myfile.tar")),
-            Err(FileNotCompressed),
-        ));
-        assert_eq!(
-            Path::new("/tmp/path/to/mycode.rs"),
-            compressed_path_to_path(Path::new("/tmp/path/to/mycode.rs.gz")).unwrap()
-        );
     }
 }

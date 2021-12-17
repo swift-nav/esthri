@@ -61,7 +61,7 @@ pub use crate::types::{ObjectInfo, S3ListingItem, S3Object, S3PathParam};
 
 pub use ops::download::download;
 
-pub use ops::download::download_decompressed;
+pub use ops::download::download_with_transparent_decompression;
 
 pub use ops::upload::upload_compressed;
 
