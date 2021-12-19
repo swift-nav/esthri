@@ -222,3 +222,38 @@ fn test_fetch_archive_prefixes() {
         key_hash_pairs,
     );
 }
+
+#[test]
+fn test_fetch_archive_with_compressed_files() {
+    let prefix = "test_fetch_archive_compressed";
+
+    let filename = "tests/data/index.html".to_owned();
+    let s3client = crate::get_s3client();
+    let s3_key = format!("{}/{}", prefix, "index_compressed.html");
+    let res =
+        blocking::upload_compressed(s3client.as_ref(), crate::TEST_BUCKET, &s3_key, &filename);
+    assert!(res.is_ok());
+
+    let filename = "tests/data/index.html".to_owned();
+    let s3client = crate::get_s3client();
+    let s3_key = format!("{}/{}", prefix, "index_notcompressed.html");
+    let res = blocking::upload(s3client.as_ref(), crate::TEST_BUCKET, &s3_key, &filename);
+    assert!(res.is_ok());
+
+    let key_hash_pairs: Vec<KeyHashPair> = vec![
+        KeyHashPair(
+            "index_compressed.html.gz",
+            "3f945ffd0cf39f07d927d8752526caad",
+        ),
+        KeyHashPair(
+            "index_notcompressed.html",
+            "b4e3f354e8575e2fa5f489ab6078917c",
+        ),
+    ];
+
+    test_fetch_archive_helper(
+        "/test_fetch_archive_compressed/?archive=true",
+        "test_fetch_archive_compressed",
+        key_hash_pairs,
+    );
+}

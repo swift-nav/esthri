@@ -344,6 +344,16 @@ async fn stream_object_to_archive<T: S3 + Send + Clone>(
     header.set_mode(ARCHIVE_ENTRY_MODE);
     header.set_mtime(obj_info.last_modified.timestamp() as u64);
     header.set_size(obj_info.size as u64);
+
+    // Appending the suffix to the path within the archive should
+    // hopefully make dealing with (transparently) compressed files less
+    // confusing
+    let path = if obj_info.is_esthri_compressed() {
+        format!("{}.gz", path)
+    } else {
+        path.to_string()
+    };
+
     let mut stream_reader = stream.into_async_read().compat();
     if let Err(err) = archive
         .append_data(&mut header, path, &mut stream_reader)
