@@ -75,14 +75,12 @@ use serde_derive::{Deserialize, Serialize};
 
 const ARCHIVE_ENTRY_MODE: u32 = 0o0644;
 const LAST_MODIFIED_TIME_FMT: &str = "%a, %d %b %Y %H:%M:%S GMT";
-const COMPRESSION_SUFFIX: &str = ".gz";
 
 #[derive(Deserialize)]
 struct DownloadParams {
     archive: Option<bool>,
     archive_name: Option<String>,
     prefixes: Option<S3PrefixList>,
-    from_gz_compressed: Option<bool>,
 }
 
 #[derive(Debug)]
@@ -469,30 +467,12 @@ fn format_prefix_link(prefix: &str) -> Markup {
 
 #[allow(clippy::branches_sharing_code)]
 fn format_object_link(path: &str) -> Markup {
-    let is_gzip_compressed = path.ends_with(COMPRESSION_SUFFIX);
-    let uncompressed_path = match is_gzip_compressed {
-        true => path.strip_suffix(COMPRESSION_SUFFIX).unwrap(),
-        false => path,
-    };
-
     html! {
         div {
             i class="far fa-file fa-fw pe-4" { }
-            @if is_gzip_compressed {
-                a href=(format!("{}?from_gz_compressed=true", uncompressed_path)) {
-                    (uncompressed_path)
-                }
-                span style="color: lightgrey" {
-                    ".gz"
-                }
-            } @else {
                 a href=(path) {
                     (path)
                 }
-            }
-        }
-        @if is_gzip_compressed {
-            (format_archive_download_button(path, &format!("Download {}" ,path)))
         }
     }
 }
@@ -636,26 +616,10 @@ async fn item_pre_response<'a, T: S3 + Send>(
     s3: &T,
     bucket: String,
     path: String,
-    serve_compressed: bool,
     if_none_match: Option<String>,
     mut resp_builder: response::Builder,
 ) -> Result<(response::Builder, Option<(String, String)>), warp::Rejection> {
-    let (obj_info, path, serve_compressed) = match get_obj_info(s3, &bucket, &path).await {
-        Ok(info) => Ok((info, path, serve_compressed)),
-        Err(error) => {
-            if error.is_not_found() && !path.ends_with(COMPRESSION_SUFFIX) {
-                // Allows automatic fallback to the compressed version, if the
-                // non compressed version is requested. This is useful for users
-                // who might be using esthri in 'transparent compression mode',
-                // where they want to embed links between files and are unaware
-                // the files they have uploaded have been compressed.
-                let gz_path = format!("{}{}", &path, COMPRESSION_SUFFIX);
-                Ok((get_obj_info(s3, &bucket, &gz_path).await?, gz_path, true))
-            } else {
-                Err(error)
-            }
-        }
-    }?;
+    let obj_info = get_obj_info(s3, &bucket, &path).await?;
 
     let not_modified = if_none_match
         .map(|etag| etag.strip_prefix("W/").map(String::from).unwrap_or(etag))
@@ -667,7 +631,7 @@ async fn item_pre_response<'a, T: S3 + Send>(
         Ok((resp_builder, None))
     } else {
         resp_builder = resp_builder.header(CONTENT_LENGTH, obj_info.size);
-        resp_builder = resp_builder.header(ETAG, obj_info.e_tag);
+        resp_builder = resp_builder.header(ETAG, &obj_info.e_tag);
         resp_builder = resp_builder.header(CACHE_CONTROL, "private,max-age=0");
         resp_builder = resp_builder.header(
             LAST_MODIFIED,
@@ -677,17 +641,11 @@ async fn item_pre_response<'a, T: S3 + Send>(
                 .to_string(),
         );
 
-        if serve_compressed {
+        if obj_info.is_esthri_compressed() {
             resp_builder = resp_builder.header(CONTENT_ENCODING, "gzip");
         }
 
-        let content_path = if serve_compressed {
-            path.strip_suffix(COMPRESSION_SUFFIX).unwrap_or(&path)
-        } else {
-            &path
-        };
-
-        let mime = mime_guess::from_path(content_path);
+        let mime = mime_guess::from_path(&path);
         let mime = mime.first();
         if let Some(mime) = mime {
             resp_builder = resp_builder.header(CONTENT_TYPE, mime.essence_str());
@@ -808,23 +766,8 @@ async fn download(
             Err(e) => (Some(Body::from(e.to_string())), header),
         }
     } else {
-        let serve_compressed = params.from_gz_compressed.unwrap_or(false);
-
-        let path = if serve_compressed {
-            format!("{}{}", path, COMPRESSION_SUFFIX)
-        } else {
-            path
-        };
-
-        let (resp_builder, create_stream) = item_pre_response(
-            &s3,
-            bucket,
-            path,
-            serve_compressed,
-            if_none_match,
-            resp_builder,
-        )
-        .await?;
+        let (resp_builder, create_stream) =
+            item_pre_response(&s3, bucket, path, if_none_match, resp_builder).await?;
         if let Some((bucket, path)) = create_stream {
             let stream = create_item_stream(s3.clone(), bucket, path).await;
             (Some(Body::wrap_stream(stream)), resp_builder)
