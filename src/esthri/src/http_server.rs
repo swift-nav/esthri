@@ -12,6 +12,7 @@
 
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
+use std::borrow::Cow;
 use std::cell::Cell;
 use std::convert::Infallible;
 use std::net::SocketAddr;
@@ -349,14 +350,14 @@ async fn stream_object_to_archive<T: S3 + Send + Clone>(
     // hopefully make dealing with (transparently) compressed files less
     // confusing
     let path = if obj_info.is_esthri_compressed() {
-        format!("{}.gz", path)
+        Cow::Owned(format!("{}.gz", path))
     } else {
-        path.to_string()
+        Cow::Borrowed(path)
     };
 
     let mut stream_reader = stream.into_async_read().compat();
     if let Err(err) = archive
-        .append_data(&mut header, path, &mut stream_reader)
+        .append_data(&mut header, &*path, &mut stream_reader)
         .await
     {
         abort_with_error(
