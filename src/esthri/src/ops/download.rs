@@ -16,7 +16,6 @@ use std::fs::create_dir_all;
 use std::marker::Unpin;
 use std::path::Path;
 use std::pin::Pin;
-
 use std::sync::{Arc, Mutex};
 
 use futures::future::BoxFuture;
@@ -30,7 +29,6 @@ use flate2::write::GzDecoder;
 /// Internal module used to call out operations that may block.
 mod bio {
     pub(super) use std::fs::File;
-
     pub(super) use std::io::prelude::*;
     pub(super) use std::io::ErrorKind;
     pub(super) use tempfile::NamedTempFile;
@@ -44,7 +42,6 @@ use crate::{handle_dispatch_error, head_object_request};
 
 /// Unique (locked) pointer to a type that implements the [std::io::Write] trait used here to hold a
 /// pointer to an object that implements gzip decompression transparently.
-
 type LockedBoxedWrite = Arc<Mutex<Box<dyn bio::Write + Unpin + Send + Sync>>>;
 
 async fn get_object_request<T>(
@@ -248,7 +245,6 @@ impl Downloader for DownloadMultiple {
 
 /// `DownloadCompressedChunk` uses multiple readers and 1 writer concurrently to download compressed
 /// files and uncompress them transparently.
-
 struct DownloadCompressedChunk {
     writer: LockedBoxedWrite,
     buffer: Vec<u8>,

@@ -30,7 +30,6 @@ pub const DOWNLOAD_BUFFER_SIZE: usize = 8 * 1024 * 1024;
 pub const CONCURRENT_DOWNLOADER_TASKS: u16 = 32;
 /// The default number of concurrent tasks run when receiving compressed data
 /// from S3.  Each task represents a connection to S3.
-
 pub const CONCURRENT_COMPRESSED_DOWNLOADER_TASKS: u16 = 2;
 /// The default number of concurrent tasks run when writing download data to disk.
 pub const CONCURRENT_WRITER_TASKS: u16 = 64;
@@ -48,7 +47,6 @@ pub struct Config {
     download_buffer_size: DownloadBufferSize,
     #[serde(default)]
     concurrent_downloader_tasks: ConcurrentDownloaderTasks,
-
     #[serde(default)]
     concurrent_compressed_downloader_tasks: ConcurrentCompressedDownloaderTasks,
     #[serde(default)]
@@ -95,7 +93,6 @@ impl Default for ConcurrentDownloaderTasks {
 
 /// Wrapper type for [CONCURRENT_COMPRESSED_DOWNLOADER_TASKS] which allows
 /// [Config::concurrent_compressed_downloader_tasks()] to bind a default value.
-
 #[derive(Deserialize)]
 #[serde(transparent)]
 struct ConcurrentCompressedDownloaderTasks(u16);
@@ -191,7 +188,6 @@ impl Config {
 
     /// The number of concurrent tasks run when receiving compressed data from S3.  Each task
     /// represents a connection to S3.  Defaults to [CONCURRENT_COMPRESSED_DOWNLOADER_TASKS].
-
     pub fn concurrent_compressed_downloader_tasks(&self) -> usize {
         self.concurrent_compressed_downloader_tasks.0 as usize
     }

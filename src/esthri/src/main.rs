@@ -119,7 +119,6 @@ enum EsthriCommand {
     /// Upload an object to S3
     Put {
         /// Should the file be compressed during upload
-
         #[structopt(long)]
         compress: bool,
         /// The target bucket (example: my-bucket)
@@ -134,7 +133,6 @@ enum EsthriCommand {
     /// Download an object from S3
     Get {
         /// Should the file be decompressed during download
-
         #[structopt(long)]
         transparent_compression: bool,
         /// The target bucket (example: my-bucket)
@@ -173,9 +171,8 @@ enum EsthriCommand {
         /// Optional exclude glob pattern (see `man 3 glob`)
         #[structopt(long)]
         exclude: Option<Vec<Pattern>>,
-
-        #[structopt(long)]
         /// Enable compression, only valid on upload
+        #[structopt(long)]
         transparent_compression: bool,
     },
     /// Retreive the ETag for a remote object
@@ -281,7 +278,6 @@ async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
                     ref destination,
                     ref include,
                     ref exclude,
-
                     transparent_compression: compress,
                     ..
                 } => {
