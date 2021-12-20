@@ -482,37 +482,52 @@ where
     async_stream::stream! {
         let mut stream = list_objects_stream(s3, bucket, key);
         loop {
-            let entries_result = stream.try_next().await;
-            if let Ok(entries_option) = entries_result {
-                if let Some(entries) = entries_option {
-                    for entry in entries {
-                        let entry = entry.unwrap_object();
-                        debug!("key={}", entry.key);
-
-                        let compressed = if transparent_decompress {
-                            head_object_request(s3, bucket, &entry.key).await?.expect("No head info?").is_esthri_compressed()
-                        } else {
-                            false
-                        };
-
-                        let path_result = Path::new(&entry.key).strip_prefix(key);
-                        if let Ok(s3_suffix) = path_result {
-                            if process_globs(&s3_suffix, filters).is_some() {
-                                let local_path: String = directory.join(&s3_suffix).to_string_lossy().into();
-                                let s3_suffix = s3_suffix.to_string_lossy().into();
-                                yield Ok((local_path, ListingMetadata::some(s3_suffix, entry.e_tag, compressed)));
-                            }
-                        } else {
-                            yield Err(path_result.err().unwrap().into());
-                            return;
-                        }
+            let entries = match stream.try_next().await {
+                Ok(Some(entries)) => entries,
+                Ok(None) => break,
+                Err(err) => {
+                    yield Err(err);
+                    return;
+                }
+            };
+            let mut entries = futures::stream::iter(entries)
+                .map(|entry| async move {
+                    let entry = entry.unwrap_object();
+                    debug!("key={}", entry.key);
+                    let compressed = if transparent_decompress {
+                        head_object_request(s3, bucket, &entry.key)
+                            .await?
+                            .expect("No head info?")
+                            .is_esthri_compressed()
+                    } else {
+                        false
+                    };
+                    Ok((entry, compressed))
+                })
+                .buffered(Config::global().concurrent_sync_tasks());
+            loop {
+                let (entry, compressed) = match entries.try_next().await {
+                    Ok(Some(entry)) => entry,
+                    Ok(None) => break,
+                    Err(err) => {
+                        yield Err(err);
+                        return;
+                    }
+                };
+                let path_result = Path::new(&entry.key).strip_prefix(key);
+                if let Ok(s3_suffix) = path_result {
+                    if process_globs(&s3_suffix, filters).is_some() {
+                        let local_path: String = directory.join(&s3_suffix).to_string_lossy().into();
+                        let s3_suffix = s3_suffix.to_string_lossy().into();
+                        yield Ok((
+                            local_path,
+                            ListingMetadata::some(s3_suffix, entry.e_tag, compressed),
+                        ));
                     }
                 } else {
-                    break;
+                    yield Err(path_result.err().unwrap().into());
+                    return;
                 }
-            } else {
-                yield Err(entries_result.err().unwrap());
-                return;
             }
         }
     }
