@@ -12,6 +12,7 @@
 
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
+use std::borrow::Cow;
 use std::sync::Mutex;
 use std::{collections::HashMap, path::Path};
 
@@ -107,7 +108,7 @@ where
     // key="s3://mybucket/myprefix1/myprefix/" then the file will be uploaded as
     // s3://mybucket/myprefix1/myprefix/{filename from path}.
     let key = if !key.ends_with('/') {
-        key.to_string()
+        Cow::Borrowed(key)
     } else {
         let filename = path
             .file_name()
@@ -115,7 +116,7 @@ where
             .to_str()
             .ok_or(Error::CouldNotParseS3Filename)?;
 
-        format!("{}{}", key, filename)
+        Cow::Owned(format!("{}{}", key, filename))
     };
 
     if path.exists() {
