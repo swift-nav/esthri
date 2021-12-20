@@ -91,11 +91,12 @@ where
 {
     let read_expected = range.read_size();
     let mut blob = vec![0u8; read_expected as usize];
+    let stat = head_object_request(s3, bucket.clone(), key.clone())
+        .await?
+        .ok_or_else(|| Error::GetObjectInvalidKey(key.clone()))?;
     loop {
         let result = reader.read_exact(&mut blob).await;
-        let stat = head_object_request(s3, bucket.clone(), key.clone())
-            .await?
-            .ok_or_else(|| Error::GetObjectInvalidKey(key.clone()))?;
+
         if stat.size as u64 != range.total() {
             break Err(Error::GetObjectSizeChanged);
         }
