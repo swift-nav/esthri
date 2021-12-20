@@ -216,3 +216,64 @@ fn test_aws_sync_down_filter_include_only() {
     validate_key_hash_pairs(sync_to, &key_hash_pairs);
     assert!(fs::remove_dir_all(sync_to).is_ok());
 }
+
+#[test]
+fn test_sync_transparent_compression() {
+    let local_dir = TempDir::new("esthri_cli").unwrap();
+    let local_path = local_dir.path().to_str().unwrap();
+    let s3_path = "s3://esthri-test/test-syncup-compress/";
+
+    let mut cmd = Command::cargo_bin("esthri").unwrap();
+    let assert = cmd
+        .env("ESTHRI_AWS_COMPAT_MODE", "1")
+        .arg("s3")
+        .arg("sync")
+        .arg("--transparent-compression")
+        .arg("tests/data/sync_up/")
+        .arg(s3_path)
+        .assert();
+    assert.success();
+
+    // Downloading with transparent compression should get the uncompressed files
+    let mut cmd = Command::cargo_bin("esthri").unwrap();
+    let assert = cmd
+        .env("ESTHRI_AWS_COMPAT_MODE", "1")
+        .arg("s3")
+        .arg("sync")
+        .arg("--transparent-compression")
+        .arg(s3_path)
+        .arg(local_path)
+        .assert();
+    assert.success();
+
+    let key_hash_pairs = [
+        KeyHashPair("1-one.data", "827aa1b392c93cb25d2348bdc9b907b0"),
+        KeyHashPair("2-two.bin", "35500e07a35b413fc5f434397a4c6bfa"),
+        KeyHashPair("3-three.junk", "388f9763d78cecece332459baecb4b85"),
+        KeyHashPair("nested/2MiB.bin", "64a2635e42ef61c69d62feebdbf118d4"),
+    ];
+
+    validate_key_hash_pairs(local_path, &key_hash_pairs);
+
+    // But downloading without transparent compression should get the compressed files
+    let local_dir = TempDir::new("esthri_cli").unwrap();
+    let local_path = local_dir.path().to_str().unwrap();
+    let mut cmd = Command::cargo_bin("esthri").unwrap();
+    let assert = cmd
+        .env("ESTHRI_AWS_COMPAT_MODE", "1")
+        .arg("s3")
+        .arg("sync")
+        .arg(s3_path)
+        .arg(local_path)
+        .assert();
+    assert.success();
+
+    let key_hash_pairs = [
+        KeyHashPair("1-one.data", "276ebe187bb53cb68e484e8c0c0fef68"),
+        KeyHashPair("2-two.bin", "2b08f95817755fc00c1cc1e528dc7db8"),
+        KeyHashPair("3-three.junk", "12bc292b0d53b61203b839588213a9a1"),
+        KeyHashPair("nested/2MiB.bin", "da4b426cae11741846271040d9b4dc71"),
+    ];
+
+    validate_key_hash_pairs(local_path, &key_hash_pairs);
+}

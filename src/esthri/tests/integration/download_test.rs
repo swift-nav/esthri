@@ -3,6 +3,8 @@
 use esthri::{blocking, download};
 use tempdir::TempDir;
 
+use crate::{validate_key_hash_pairs, KeyHashPair};
+
 #[test]
 fn test_download() {
     let s3client = crate::get_s3client();
@@ -115,4 +117,29 @@ fn test_download_decompressed_to_directory() {
 
     let etag = blocking::compute_etag(filename).unwrap();
     assert_eq!(etag, "\"6dbb4258fa16030c2daf6f1eac93dddd-8\"");
+}
+
+#[test]
+fn test_download_transparent_with_non_compressed() {
+    let s3client = crate::get_s3client();
+
+    let local_dir = TempDir::new("esthri_cli").unwrap();
+    let local_dir_path = local_dir.path().as_os_str().to_str().unwrap();
+    let filename = "test_file.txt";
+    let s3_key = format!("test_folder/{}", filename);
+
+    let res = blocking::download_with_transparent_decompression(
+        s3client.as_ref(),
+        crate::TEST_BUCKET,
+        &s3_key,
+        local_dir_path,
+    );
+    assert!(res.is_ok());
+
+    let key_hash_pairs = [KeyHashPair(
+        "test_file.txt",
+        "8fd41740698064016b7daaddddd3531a",
+    )];
+
+    validate_key_hash_pairs(local_dir_path, &key_hash_pairs);
 }
