@@ -6,7 +6,7 @@ Extremely simple (memory stable) S3 client that supports get, put, head, list,
 and sync.
 
 ```
-esthri 6.0.1
+esthri 6.3.0
 Simple S3 file transfer utility.
 
 USAGE:
@@ -33,7 +33,7 @@ SUBCOMMANDS:
 The esthri CLI tool additionally provides a AWS CLI compatibility mode where it
 is able to handle `cp` and `sync` operations with an identical CLI interface as
 the `aws s3` tool. Currently, only the basic case is implemented for these
-commands and no no optional arguments are handled.
+commands and only some optional arguments are handled.
 
 To use, the esthri binary must either be:
 
@@ -52,13 +52,20 @@ $ ESTHRI_AWS_COMPAT_MODE=1 esthri s3 help # prints the S3 help text, as generate
 ```
 
 ### Transparent Sync Compression
-For `sync` commands in the AWS compatibility mode, esthri can
-transparently compress files such that they are compressed within S3 but
-not when downloaded. The one drawback of this is that syncing up with
-compression currently causes local files to be compressed.
+esthri can transparently compress files such that they are compressed within S3
+but not on the local filesystem. To enable, either set the
+`ESTHRI_AWS_COMPAT_MODE_COMPRESSION` environment variable or use the
+`--transparent-compression` CLI option. For example:
 
-To enable, either set the `ESTHRI_AWS_COMPAT_MODE_COMPRESSION`
-environment variable or pass the `--compress` CLI option.
+```
+ESTHRI_AWS_COMPAT_MODE=1 esthri s3 sync mydirectory/ s3://esthri-test/myfiles/ --transparent-compression # syncs as normal, however files in S3 are gzipped
+ESTHRI_AWS_COMPAT_MODE=1 esthri s3 sync s3://esthri-test/myfiles/ mynewdirectory/ --transparent-compression # syncs and decompresses files as they are synced down. mydirectory and mynewdirectory will now contain the same files
+```
+
+esthri makes use of S3 metadata to do this transparent compression, storing the
+esthri version number in the metadata of files it has compressed. For this
+reason, the decompression will only work for files that esthri has compressed
+itself.
 
 ## Releasing
 

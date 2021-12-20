@@ -244,6 +244,12 @@ fn is_aws_compatibility_mode() -> bool {
     is_run_as_aws || has_aws_env_var
 }
 
+/// Allows for an escape hatch to be set that triggers always falling back from
+/// esthri into the real aws tool.
+fn should_always_fallback_to_aws() -> bool {
+    env::var("ESTHRI_AWS_ALWAYS_FALLBACK").is_ok()
+}
+
 async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
     match cmd {
         AwsCommand::S3 { cmd } => {
@@ -489,6 +495,12 @@ async fn async_main() -> Result<()> {
     env_logger::init();
 
     let aws_compat_mode = is_aws_compatibility_mode();
+    let always_fallback = should_always_fallback_to_aws();
+
+    if always_fallback && aws_compat_mode {
+        info!("Set to always fallback to AWS executable");
+        call_real_aws();
+    }
 
     let cli = match aws_compat_mode {
         false => Cli::Esthri(EsthriCli::from_args()),
