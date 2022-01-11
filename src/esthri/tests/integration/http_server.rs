@@ -9,9 +9,9 @@ use tar::Archive;
 
 use tokio::runtime::Runtime;
 
-use esthri::blocking;
 use esthri::http_server::esthri_filter;
 use esthri::upload;
+use esthri::{blocking, upload_compressed};
 
 use crate::{validate_key_hash_pairs, DateTime, KeyHashPair};
 
@@ -40,38 +40,11 @@ async fn test_fetch_object() {
 }
 
 async fn upload_compressed_html_file() {
-    let filename = "tests/data/compressed.html.gz".to_owned();
+    let filename = "tests/data/index.html".to_owned();
     let s3client = crate::get_s3client();
-    let s3_key = "compressed.html.gz".to_owned();
-    let res = upload(s3client.as_ref(), crate::TEST_BUCKET, &s3_key, &filename).await;
+    let s3_key = "index_compressed.html".to_owned();
+    let res = upload_compressed(s3client.as_ref(), crate::TEST_BUCKET, &s3_key, &filename).await;
     assert!(res.is_ok());
-}
-
-/// Ensures that an object path will fallback to the gzipped version, if the
-/// path doesn't exist
-#[tokio::test]
-async fn test_fetch_compressed_object_fallback() {
-    upload_compressed_html_file().await;
-    let s3client = crate::get_s3client();
-    let filter = esthri_filter((*s3client).clone(), crate::TEST_BUCKET);
-
-    let mut result = warp::test::request()
-        .path("/compressed.html")
-        .filter(&filter)
-        .await
-        .unwrap();
-
-    let headers = result.headers();
-    assert_eq!(headers["content-type"], "text/html");
-    assert_eq!(headers["content-encoding"], "gzip");
-
-    let body = hyper::body::to_bytes(result.body_mut()).await.unwrap();
-    let digest = md5::compute(body);
-    assert_eq!(
-        format!("{:x}", digest),
-        "14ca7578687b016e4633be7fc26fa05e",
-        "md5 digest did not match"
-    );
 }
 
 /// Ensures that getting an object with `from_gz_compressed` specified sets the
@@ -84,7 +57,7 @@ async fn test_fetch_compressed_object_encoding() {
     let filter = esthri_filter((*s3client).clone(), crate::TEST_BUCKET);
 
     let mut result = warp::test::request()
-        .path("/compressed.html?from_gz_compressed=true")
+        .path("/index_compressed.html")
         .filter(&filter)
         .await
         .unwrap();
@@ -97,34 +70,7 @@ async fn test_fetch_compressed_object_encoding() {
     let digest = md5::compute(body);
     assert_eq!(
         format!("{:x}", digest),
-        "14ca7578687b016e4633be7fc26fa05e",
-        "md5 digest did not match"
-    );
-}
-
-/// Tests that directly accessing the compressed path will allow downloading the
-/// compressed file
-#[tokio::test]
-async fn test_fetch_compresed_object_as_compressed() {
-    upload_compressed_html_file().await;
-    let s3client = crate::get_s3client();
-
-    let filter = esthri_filter((*s3client).clone(), crate::TEST_BUCKET);
-
-    let mut result = warp::test::request()
-        .path("/compressed.html.gz")
-        .filter(&filter)
-        .await
-        .unwrap();
-
-    let headers = result.headers();
-    assert_eq!(headers["content-type"], "application/x-gzip");
-
-    let body = hyper::body::to_bytes(result.body_mut()).await.unwrap();
-    let digest = md5::compute(body);
-    assert_eq!(
-        format!("{:x}", digest),
-        "14ca7578687b016e4633be7fc26fa05e",
+        "3f945ffd0cf39f07d927d8752526caad",
         "md5 digest did not match"
     );
 }
@@ -273,6 +219,41 @@ fn test_fetch_archive_prefixes() {
     test_fetch_archive_helper(
         "/?prefixes=test_fetch_archive/1-one.data|test_fetch_archive/2-two.bin&archive=true",
         "test_fetch_archive",
+        key_hash_pairs,
+    );
+}
+
+#[test]
+fn test_fetch_archive_with_compressed_files() {
+    let prefix = "test_fetch_archive_compressed";
+
+    let filename = "tests/data/index.html".to_owned();
+    let s3client = crate::get_s3client();
+    let s3_key = format!("{}/{}", prefix, "index_compressed.html");
+    let res =
+        blocking::upload_compressed(s3client.as_ref(), crate::TEST_BUCKET, &s3_key, &filename);
+    assert!(res.is_ok());
+
+    let filename = "tests/data/index.html".to_owned();
+    let s3client = crate::get_s3client();
+    let s3_key = format!("{}/{}", prefix, "index_notcompressed.html");
+    let res = blocking::upload(s3client.as_ref(), crate::TEST_BUCKET, &s3_key, &filename);
+    assert!(res.is_ok());
+
+    let key_hash_pairs: Vec<KeyHashPair> = vec![
+        KeyHashPair(
+            "index_compressed.html.gz",
+            "3f945ffd0cf39f07d927d8752526caad",
+        ),
+        KeyHashPair(
+            "index_notcompressed.html",
+            "b4e3f354e8575e2fa5f489ab6078917c",
+        ),
+    ];
+
+    test_fetch_archive_helper(
+        "/test_fetch_archive_compressed/?archive=true",
+        "test_fetch_archive_compressed",
         key_hash_pairs,
     );
 }

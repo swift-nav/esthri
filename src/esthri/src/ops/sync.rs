@@ -12,7 +12,11 @@
 
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
-use std::path::{Path, PathBuf};
+use std::{
+    fs::{self, File},
+    io::BufReader,
+    path::{Path, PathBuf},
+};
 
 use futures::{Future, Stream, StreamExt, TryStreamExt};
 use glob::Pattern;
@@ -21,6 +25,7 @@ use log_derive::logfn;
 use walkdir::WalkDir;
 
 use crate::{
+    compression::compress_to_tempfile,
     compute_etag,
     config::Config,
     errors::{Error, Result},
@@ -30,7 +35,14 @@ use crate::{
     types::{S3ListingItem, S3PathParam},
 };
 
-type MapEtagResult = Result<(PathBuf, Result<String>, Option<ListingMetadata>)>;
+struct MappedPathResult {
+    file_path: Box<dyn AsRef<Path>>,
+    source_path: PathBuf,
+    local_etag: Result<String>,
+    metadata: Option<ListingMetadata>,
+}
+
+type MapPathResult = Result<MappedPathResult>;
 
 #[derive(Debug, Clone)]
 pub enum GlobFilter {
@@ -56,14 +68,11 @@ pub async fn sync<T>(
     source: S3PathParam,
     destination: S3PathParam,
     glob_filters: Option<&[GlobFilter]>,
-    #[cfg(feature = "compression")] compressed: bool,
+    compressed: bool,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
 {
-    #[cfg(not(feature = "compression"))]
-    let compressed = false;
-
     let filters: Vec<GlobFilter> = match glob_filters {
         Some(filters) => {
             let mut filters = filters.to_vec();
@@ -200,74 +209,68 @@ enum SyncCompressionDirection {
     Down,
 }
 
-fn map_paths_to_etags<StreamT>(
+fn translate_paths<StreamT>(
     input_stream: StreamT,
     compressed: SyncCompressionDirection,
-) -> impl Stream<Item = impl Future<Output = MapEtagResult>>
+) -> impl Stream<Item = impl Future<Output = MapPathResult>>
 where
     StreamT: Stream<Item = Result<(String, Option<ListingMetadata>)>>,
 {
     use std::str::FromStr;
     input_stream.map(move |params| async move {
         let (path, metadata) = params?;
-        let path = PathBuf::from_str(&path)?;
-        #[cfg(feature = "compression")]
-        {
-            use crate::compression::{
-                compress_and_replace, compress_to_tempfile, compressed_path_to_path,
-            };
+        let source_path = PathBuf::from_str(&path)?;
+        let file_path: Box<dyn AsRef<Path>> = Box::new(path);
 
-            let (path, local_etag) = match compressed {
-                SyncCompressionDirection::None => {
-                    let local_etag = compute_etag(&path).await;
-                    (path, local_etag)
-                }
-                SyncCompressionDirection::Up => {
-                    if path.extension().map(|e| e == "gz").unwrap_or(false) {
-                        let local_etag = compute_etag(&path).await;
-                        (path, local_etag)
-                    } else {
-                        info!("compressing and replacing: {}", path.display());
-                        let path = compress_and_replace(path).await?;
-                        let local_etag = compute_etag(&path).await;
-                        (path, local_etag)
-                    }
-                }
-                SyncCompressionDirection::Down => {
-                    if path.extension().map(|e| e == "gz").unwrap_or(false) {
-                        let uncompressed_path =
-                            compressed_path_to_path(&path).expect("Path should be compressed");
-
-                        if !uncompressed_path.exists() {
-                            (path, Err(Error::ETagNotPresent))
-                        } else {
-                            // Check if we already have a copy locally
-                            // of the uncompressed file by recompressing
-                            // the local file to see if it matches with
-                            // the compressed version
-                            let (temp_compressed, _) =
-                                compress_to_tempfile(&uncompressed_path).await?;
-                            let local_etag = compute_etag(&temp_compressed).await;
-                            (path, local_etag)
-                        }
-                    } else {
-                        let local_etag = compute_etag(&path).await;
-                        (path, local_etag)
-                    }
-                }
-            };
-
-            Ok((path, local_etag, metadata))
-        }
-        #[cfg(not(feature = "compression"))]
-        {
-            if matches!(compressed, SyncCompressionDirection::None) {
-                let local_etag = compute_etag(&path).await;
-                Ok((path, local_etag, metadata))
-            } else {
-                panic!("compression feature not enabled");
+        let (file_path, source_path, local_etag) = match compressed {
+            SyncCompressionDirection::None => {
+                let local_etag = compute_etag(&source_path).await;
+                (file_path, source_path, local_etag)
             }
-        }
+            SyncCompressionDirection::Up => {
+                // If we're syncing up with compression, then everything
+                // should be compressed
+                let (temp_compressed, _) = compress_to_tempfile(&source_path).await?;
+                let local_etag = compute_etag(&temp_compressed).await;
+
+                let temp_path = temp_compressed.into_temp_path();
+                let path: Box<dyn AsRef<Path>> = Box::new(temp_path);
+                (path, source_path, local_etag)
+            }
+            SyncCompressionDirection::Down => {
+                // if we're syncing down with compression, then there
+                // could be both esthri compressed files and non
+                // compressed files within the prefix. We should only
+                // try to decompress the esthri compressed files
+                if metadata
+                    .as_ref()
+                    .expect("Should have metadata")
+                    .esthri_compressed
+                {
+                    if !source_path.exists() {
+                        (file_path, source_path, Err(Error::ETagNotPresent))
+                    } else {
+                        // Check if we already have a copy locally
+                        // of the uncompressed file by recompressing
+                        // the local file to see if it matches with
+                        // the compressed version
+                        let (temp_compressed, _) = compress_to_tempfile(&source_path).await?;
+                        let local_etag = compute_etag(&temp_compressed).await;
+                        (file_path, source_path, local_etag)
+                    }
+                } else {
+                    let local_etag = compute_etag(&source_path).await;
+                    (file_path, source_path, local_etag)
+                }
+            }
+        };
+
+        Ok(MappedPathResult {
+            file_path,
+            source_path,
+            local_etag,
+            metadata,
+        })
     })
 }
 
@@ -277,12 +280,13 @@ fn local_to_remote_sync_tasks<ClientT, StreamT>(
     key: String,
     directory: PathBuf,
     dirent_stream: StreamT,
+    transparent_compression: bool,
 ) -> impl Stream<Item = impl Future<Output = Result<()>>>
 where
     ClientT: S3 + Send + Clone,
-    StreamT: Stream<Item = MapEtagResult>,
+    StreamT: Stream<Item = MapPathResult>,
 {
-    use super::upload::upload;
+    use super::upload::upload_from_reader;
     dirent_stream
         .map(move |entry| {
             (
@@ -295,13 +299,21 @@ where
         })
         .map(move |clones| async move {
             let (s3, bucket, key, directory, entry) = clones;
-            let (path, local_etag, _metadata) = entry;
-            let path = Path::new(&path);
+            let MappedPathResult {
+                file_path: filepath,
+                source_path,
+                local_etag,
+                ..
+            } = entry;
+            let path = Path::new(&source_path);
             let remote_path = Path::new(&key);
             let stripped_path = path.strip_prefix(&directory);
             let stripped_path = match stripped_path {
                 Err(e) => {
-                    warn!("unexpected: failed to strip prefix: {}", e);
+                    warn!(
+                        "unexpected: failed to strip prefix: {}, {:?}, {:?}",
+                        e, &path, &directory
+                    );
                     return Ok(());
                 }
                 Ok(result) => result,
@@ -311,6 +323,12 @@ where
             debug!("checking remote: {}", remote_path);
             let local_etag = local_etag?;
             let object_info = head_object_request(&s3, &bucket, &remote_path).await?;
+            let metadata = if transparent_compression {
+                Some(crate::compression::compressed_file_metadata())
+            } else {
+                None
+            };
+
             if let Some(object_info) = object_info {
                 let remote_etag = object_info.e_tag;
                 if remote_etag != local_etag {
@@ -318,7 +336,9 @@ where
                         "etag mis-match: {}, remote_etag={}, local_etag={}",
                         remote_path, remote_etag, local_etag
                     );
-                    upload(&s3, bucket, &remote_path, &path).await?;
+                    let reader = BufReader::new(File::open(&*filepath)?);
+                    let size = fs::metadata(&*filepath)?.len();
+                    upload_from_reader(&s3, bucket, remote_path, reader, size, metadata).await?;
                 } else {
                     debug!(
                         "etags matched: {}, remote_etag={}, local_etag={}",
@@ -327,7 +347,9 @@ where
                 }
             } else {
                 info!("file did not exist remotely: {}", remote_path);
-                upload(&s3, bucket, &remote_path, &path).await?;
+                let reader = BufReader::new(File::open(&*filepath)?);
+                let size = fs::metadata(&*filepath)?.len();
+                upload_from_reader(&s3, bucket, remote_path, reader, size, metadata).await?;
             }
             Ok(())
         })
@@ -353,13 +375,14 @@ where
         SyncCompressionDirection::None
     };
 
-    let etag_stream = map_paths_to_etags(dirent_stream, compression).buffer_unordered(task_count);
+    let etag_stream = translate_paths(dirent_stream, compression).buffer_unordered(task_count);
     let sync_tasks = local_to_remote_sync_tasks(
         s3.clone(),
         bucket.into(),
         key.into(),
         directory.into(),
         etag_stream,
+        compressed,
     );
 
     sync_tasks
@@ -451,6 +474,7 @@ fn flattened_object_listing<'a, ClientT>(
     key: &'a str,
     directory: &'a Path,
     filters: &'a [GlobFilter],
+    transparent_decompress: bool,
 ) -> impl Stream<Item = Result<(String, Option<ListingMetadata>)>> + 'a
 where
     ClientT: S3 + Send + Clone,
@@ -458,30 +482,52 @@ where
     async_stream::stream! {
         let mut stream = list_objects_stream(s3, bucket, key);
         loop {
-            let entries_result = stream.try_next().await;
-            if let Ok(entries_option) = entries_result {
-                if let Some(entries) = entries_option {
-                    for entry in entries {
-                        let entry = entry.unwrap_object();
-                        debug!("key={}", entry.key);
-                        let path_result = Path::new(&entry.key).strip_prefix(key);
-                        if let Ok(s3_suffix) = path_result {
-                            if process_globs(&s3_suffix, filters).is_some() {
-                                let local_path: String = directory.join(&s3_suffix).to_string_lossy().into();
-                                let s3_suffix = s3_suffix.to_string_lossy().into();
-                                yield Ok((local_path, ListingMetadata::some(s3_suffix, entry.e_tag)));
-                            }
-                        } else {
-                            yield Err(path_result.err().unwrap().into());
-                            return;
-                        }
+            let entries = match stream.try_next().await {
+                Ok(Some(entries)) => entries,
+                Ok(None) => break,
+                Err(err) => {
+                    yield Err(err);
+                    return;
+                }
+            };
+            let mut entries = futures::stream::iter(entries)
+                .map(|entry| async move {
+                    let entry = entry.unwrap_object();
+                    debug!("key={}", entry.key);
+                    let compressed = if transparent_decompress {
+                        head_object_request(s3, bucket, &entry.key)
+                            .await?
+                            .expect("No head info?")
+                            .is_esthri_compressed()
+                    } else {
+                        false
+                    };
+                    Ok((entry, compressed))
+                })
+                .buffered(Config::global().concurrent_sync_tasks());
+            loop {
+                let (entry, compressed) = match entries.try_next().await {
+                    Ok(Some(entry)) => entry,
+                    Ok(None) => break,
+                    Err(err) => {
+                        yield Err(err);
+                        return;
+                    }
+                };
+                let path_result = Path::new(&entry.key).strip_prefix(key);
+                if let Ok(s3_suffix) = path_result {
+                    if process_globs(&s3_suffix, filters).is_some() {
+                        let local_path: String = directory.join(&s3_suffix).to_string_lossy().into();
+                        let s3_suffix = s3_suffix.to_string_lossy().into();
+                        yield Ok((
+                            local_path,
+                            ListingMetadata::some(s3_suffix, entry.e_tag, compressed),
+                        ));
                     }
                 } else {
-                    break;
+                    yield Err(path_result.err().unwrap().into());
+                    return;
                 }
-            } else {
-                yield Err(entries_result.err().unwrap());
-                return;
             }
         }
     }
@@ -493,11 +539,11 @@ fn remote_to_local_sync_tasks<ClientT, StreamT>(
     key: String,
     directory: PathBuf,
     input_stream: StreamT,
-    decompress: bool,
+    transparent_decompress: bool,
 ) -> impl Stream<Item = impl Future<Output = Result<()>>>
 where
     ClientT: S3 + Sync + Send + Clone,
-    StreamT: Stream<Item = MapEtagResult>,
+    StreamT: Stream<Item = MapPathResult>,
 {
     use super::download::download_with_dir;
     input_stream
@@ -507,20 +553,25 @@ where
                 bucket.clone(),
                 key.clone(),
                 directory.clone(),
-                decompress,
+                transparent_decompress,
                 entry.unwrap(),
             )
         })
         .map(
             |(s3, bucket, key, directory, decompress, entry)| async move {
-                let (path, local_etag, metadata) = entry;
+                let MappedPathResult {
+                    source_path,
+                    local_etag,
+                    metadata,
+                    ..
+                } = entry;
                 let metadata = metadata.unwrap();
                 match local_etag {
                     Ok(local_etag) => {
                         if local_etag != metadata.e_tag {
                             debug!(
                                 "etag mismatch: {}, local etag={}, remote etag={}",
-                                path.display(),
+                                source_path.display(),
                                 local_etag,
                                 metadata.e_tag
                             );
@@ -534,12 +585,12 @@ where
                             )
                             .await?;
                         } else {
-                            debug!("etag match: {}", path.display());
+                            debug!("etag match: {}", source_path.display());
                         }
                     }
                     Err(err) => match err {
                         Error::ETagNotPresent => {
-                            debug!("file did not exist locally: {}", path.display());
+                            debug!("file did not exist locally: {}", source_path.display());
                             download_with_dir(
                                 &s3,
                                 &bucket,
@@ -566,29 +617,30 @@ async fn sync_remote_to_local<T>(
     key: &str,
     directory: impl AsRef<Path>,
     filters: &[GlobFilter],
-    decompress: bool,
+    transparent_decompress: bool,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
 {
     let directory = directory.as_ref();
     let task_count = Config::global().concurrent_sync_tasks();
-    let object_listing = flattened_object_listing(s3, bucket, key, directory, filters);
+    let object_listing =
+        flattened_object_listing(s3, bucket, key, directory, filters, transparent_decompress);
 
-    let compression = if decompress {
+    let compression = if transparent_decompress {
         SyncCompressionDirection::Down
     } else {
         SyncCompressionDirection::None
     };
 
-    let etag_stream = map_paths_to_etags(object_listing, compression).buffer_unordered(task_count);
+    let etag_stream = translate_paths(object_listing, compression).buffer_unordered(task_count);
     let sync_tasks = remote_to_local_sync_tasks(
         s3.clone(),
         bucket.into(),
         key.into(),
         directory.into(),
         etag_stream,
-        decompress,
+        transparent_decompress,
     );
 
     sync_tasks

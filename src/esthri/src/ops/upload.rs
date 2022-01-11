@@ -12,6 +12,7 @@
 
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
+use std::borrow::Cow;
 use std::sync::Mutex;
 use std::{collections::HashMap, path::Path};
 
@@ -107,7 +108,7 @@ where
     // key="s3://mybucket/myprefix1/myprefix/" then the file will be uploaded as
     // s3://mybucket/myprefix1/myprefix/{filename from path}.
     let key = if !key.ends_with('/') {
-        key.to_string()
+        Cow::Borrowed(key)
     } else {
         let filename = path
             .file_name()
@@ -115,34 +116,23 @@ where
             .to_str()
             .ok_or(Error::CouldNotParseS3Filename)?;
 
-        if compressed {
-            format!("{}{}.gz", key, filename)
-        } else {
-            format!("{}{}", key, filename)
-        }
+        Cow::Owned(format!("{}{}", key, filename))
     };
 
     if path.exists() {
         let stat = fs::metadata(&path)?;
         if compressed {
-            #[cfg(feature = "compression")]
-            {
-                use crate::compression::compress_to_tempfile;
-                let (compressed, size) = compress_to_tempfile(path.clone()).await?;
-                upload_from_reader(
-                    s3,
-                    bucket,
-                    key,
-                    compressed,
-                    size,
-                    Some(crate::compression::compressed_file_metadata()),
-                )
-                .await
-            }
-            #[cfg(not(feature = "compression"))]
-            {
-                panic!("compression feature not enabled");
-            }
+            use crate::compression::compress_to_tempfile;
+            let (compressed, size) = compress_to_tempfile(path.clone()).await?;
+            upload_from_reader(
+                s3,
+                bucket,
+                key,
+                compressed,
+                size,
+                Some(crate::compression::compressed_file_metadata()),
+            )
+            .await
         } else {
             let size = stat.len();
             debug!("upload: file size: {}", size);
@@ -175,7 +165,6 @@ where
     upload_helper(s3, bucket, key, file, compressed).await
 }
 
-#[cfg(feature = "compression")]
 #[logfn(err = "ERROR")]
 pub async fn upload_compressed<T>(
     s3: &T,

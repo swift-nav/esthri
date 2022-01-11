@@ -94,7 +94,7 @@ enum S3Command {
         #[allow(dead_code)]
         acl: Option<String>,
         #[structopt(long)]
-        compress: bool,
+        transparent_compression: bool,
     },
     Sync {
         source: S3PathParam,
@@ -110,7 +110,7 @@ enum S3Command {
         #[allow(dead_code)]
         acl: Option<String>,
         #[structopt(long)]
-        compress: bool,
+        transparent_compression: bool,
     },
 }
 
@@ -119,7 +119,6 @@ enum EsthriCommand {
     /// Upload an object to S3
     Put {
         /// Should the file be compressed during upload
-        #[cfg(feature = "compression")]
         #[structopt(long)]
         compress: bool,
         /// The target bucket (example: my-bucket)
@@ -134,9 +133,8 @@ enum EsthriCommand {
     /// Download an object from S3
     Get {
         /// Should the file be decompressed during download
-        #[cfg(feature = "compression")]
         #[structopt(long)]
-        decompress: bool,
+        transparent_compression: bool,
         /// The target bucket (example: my-bucket)
         #[structopt(long)]
         bucket: String,
@@ -173,10 +171,9 @@ enum EsthriCommand {
         /// Optional exclude glob pattern (see `man 3 glob`)
         #[structopt(long)]
         exclude: Option<Vec<Pattern>>,
-        #[cfg(feature = "compression")]
-        #[structopt(long)]
         /// Enable compression, only valid on upload
-        compress: bool,
+        #[structopt(long)]
+        transparent_compression: bool,
     },
     /// Retreive the ETag for a remote object
     HeadObject {
@@ -244,6 +241,12 @@ fn is_aws_compatibility_mode() -> bool {
     is_run_as_aws || has_aws_env_var
 }
 
+/// Allows for an escape hatch to be set that triggers always falling back from
+/// esthri into the real aws tool.
+fn should_always_fallback_to_aws() -> bool {
+    env::var("ESTHRI_AWS_ALWAYS_FALLBACK").is_ok()
+}
+
 async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
     match cmd {
         AwsCommand::S3 { cmd } => {
@@ -251,10 +254,9 @@ async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
                 S3Command::Copy {
                     ref source,
                     ref destination,
-                    compress,
+                    transparent_compression: compress,
                     ..
                 } => {
-                    #[cfg(feature = "compression")]
                     // Works around structopt/clap not supporting flag values from environment variables
                     let compress =
                         compress || env::var("ESTHRI_AWS_COMPAT_MODE_COMPRESSION").is_ok();
@@ -276,8 +278,7 @@ async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
                     ref destination,
                     ref include,
                     ref exclude,
-                    #[cfg(feature = "compression")]
-                    compress,
+                    transparent_compression: compress,
                     ..
                 } => {
                     setup_upload_termination_handler();
@@ -303,7 +304,6 @@ async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
                     // https://docs.aws.amazon.com/cli/latest/reference/s3/index.html#use-of-exclude-and-include-filters
                     filters.push(GlobFilter::Include(Pattern::new("*")?));
 
-                    #[cfg(feature = "compression")]
                     // Works around structopt/clap not supporting flag values from environment variables
                     let compress =
                         compress || env::var("ESTHRI_AWS_COMPAT_MODE_COMPRESSION").is_ok();
@@ -313,7 +313,6 @@ async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
                         source.clone(),
                         destination.clone(),
                         Some(&filters),
-                        #[cfg(feature = "compression")]
                         compress,
                     )
                     .await?;
@@ -385,16 +384,10 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
             ..
         } => {
             setup_upload_termination_handler();
-            #[cfg(feature = "compression")]
-            {
-                if matches!(cmd, Put { compress: true, .. }) {
-                    upload_compressed(s3, bucket, key, file).await?;
-                } else {
-                    upload(s3, bucket, key, file).await?;
-                }
-            }
-            #[cfg(not(feature = "compression"))]
-            {
+
+            if matches!(cmd, Put { compress: true, .. }) {
+                upload_compressed(s3, bucket, key, file).await?;
+            } else {
                 upload(s3, bucket, key, file).await?;
             }
         }
@@ -405,22 +398,15 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
             ref file,
             ..
         } => {
-            #[cfg(feature = "compression")]
-            {
-                if matches!(
-                    cmd,
-                    Get {
-                        decompress: true,
-                        ..
-                    }
-                ) {
-                    download_decompressed(s3, bucket, key, file).await?;
-                } else {
-                    download(s3, bucket, key, file).await?;
+            if matches!(
+                cmd,
+                Get {
+                    transparent_compression: true,
+                    ..
                 }
-            }
-            #[cfg(not(feature = "compression"))]
-            {
+            ) {
+                download_with_transparent_decompression(s3, bucket, key, file).await?;
+            } else {
                 download(s3, bucket, key, file).await?;
             }
         }
@@ -444,11 +430,16 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
             ref exclude,
             ..
         } => {
-            #[cfg(feature = "compression")]
             let compress;
-            #[cfg(feature = "compression")]
+
             {
-                compress = matches!(cmd, Sync { compress: true, .. });
+                compress = matches!(
+                    cmd,
+                    Sync {
+                        transparent_compression: true,
+                        ..
+                    }
+                );
 
                 if compress && (source.is_bucket() && destination.is_bucket()) {
                     return Err(errors::Error::InvalidSyncCompress);
@@ -470,7 +461,6 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
                 source.clone(),
                 destination.clone(),
                 filters.as_deref(),
-                #[cfg(feature = "compression")]
                 compress,
             )
             .await?;
@@ -501,6 +491,12 @@ async fn async_main() -> Result<()> {
     env_logger::init();
 
     let aws_compat_mode = is_aws_compatibility_mode();
+    let always_fallback = should_always_fallback_to_aws();
+
+    if always_fallback && aws_compat_mode {
+        info!("Set to always fallback to AWS executable");
+        call_real_aws();
+    }
 
     let cli = match aws_compat_mode {
         false => Cli::Esthri(EsthriCli::from_args()),

@@ -16,7 +16,6 @@ use std::fs::create_dir_all;
 use std::marker::Unpin;
 use std::path::Path;
 use std::pin::Pin;
-#[cfg(feature = "compression")]
 use std::sync::{Arc, Mutex};
 
 use futures::future::BoxFuture;
@@ -25,13 +24,11 @@ use log::info;
 use log_derive::logfn;
 use tokio::io::{AsyncRead, AsyncReadExt};
 
-#[cfg(feature = "compression")]
 use flate2::write::GzDecoder;
 
 /// Internal module used to call out operations that may block.
 mod bio {
     pub(super) use std::fs::File;
-    #[cfg(feature = "compression")]
     pub(super) use std::io::prelude::*;
     pub(super) use std::io::ErrorKind;
     pub(super) use tempfile::NamedTempFile;
@@ -45,7 +42,6 @@ use crate::{handle_dispatch_error, head_object_request};
 
 /// Unique (locked) pointer to a type that implements the [std::io::Write] trait used here to hold a
 /// pointer to an object that implements gzip decompression transparently.
-#[cfg(feature = "compression")]
 type LockedBoxedWrite = Arc<Mutex<Box<dyn bio::Write + Unpin + Send + Sync>>>;
 
 async fn get_object_request<T>(
@@ -92,11 +88,12 @@ where
 {
     let read_expected = range.read_size();
     let mut blob = vec![0u8; read_expected as usize];
+    let stat = head_object_request(s3, bucket.clone(), key.clone())
+        .await?
+        .ok_or_else(|| Error::GetObjectInvalidKey(key.clone()))?;
     loop {
         let result = reader.read_exact(&mut blob).await;
-        let stat = head_object_request(s3, bucket.clone(), key.clone())
-            .await?
-            .ok_or_else(|| Error::GetObjectInvalidKey(key.clone()))?;
+
         if stat.size as u64 != range.total() {
             break Err(Error::GetObjectSizeChanged);
         }
@@ -248,14 +245,12 @@ impl Downloader for DownloadMultiple {
 
 /// `DownloadCompressedChunk` uses multiple readers and 1 writer concurrently to download compressed
 /// files and uncompress them transparently.
-#[cfg(feature = "compression")]
 struct DownloadCompressedChunk {
     writer: LockedBoxedWrite,
     buffer: Vec<u8>,
     length: usize,
 }
 
-#[cfg(feature = "compression")]
 impl DownloadCompressedChunk {
     fn new(writer: LockedBoxedWrite, buffer: Vec<u8>, length: usize) -> Self {
         Self {
@@ -266,7 +261,6 @@ impl DownloadCompressedChunk {
     }
 }
 
-#[cfg(feature = "compression")]
 impl DownloaderChunk for DownloadCompressedChunk {
     fn bio_write_chunk(self) -> Result<()> {
         let mut writer = self.writer.lock().unwrap();
@@ -275,7 +269,6 @@ impl DownloaderChunk for DownloadCompressedChunk {
     }
 }
 
-#[cfg(feature = "compression")]
 struct DownloadCompressed {
     file: LockedBoxedWrite,
     bucket: String,
@@ -284,7 +277,6 @@ struct DownloadCompressed {
     read_size: usize,
 }
 
-#[cfg(feature = "compression")]
 impl DownloadCompressed {
     fn new(
         file: LockedBoxedWrite,
@@ -304,7 +296,6 @@ impl DownloadCompressed {
     }
 }
 
-#[cfg(feature = "compression")]
 impl Downloader for DownloadCompressed {
     type Chunk = DownloadCompressedChunk;
 
@@ -363,7 +354,6 @@ where
     }))
 }
 
-#[cfg(feature = "compression")]
 fn write_all(writer: &mut dyn bio::Write, buffer: Vec<u8>, length: usize) -> Result<()> {
     writer.write_all(&buffer[..length]).map_err(Error::from)
 }
@@ -414,17 +404,17 @@ async fn download_helper<T>(
     bucket: impl AsRef<str>,
     key: impl AsRef<str>,
     download_path: impl AsRef<Path>,
-    decompress: bool,
+    transparent_decompression: bool,
 ) -> Result<()>
 where
     T: S3 + Send + Sync + Clone,
 {
     let (bucket, key, download_path) = (bucket.as_ref(), key.as_ref(), download_path.as_ref());
 
-    let stat = head_object_request(s3, bucket, key).await?;
-    let total_size = stat
-        .ok_or_else(|| Error::GetObjectInvalidKey(key.into()))?
-        .size as u64;
+    let obj_info = head_object_request(s3, bucket, key)
+        .await?
+        .ok_or_else(|| Error::GetObjectInvalidKey(key.into()))?;
+    let total_size = obj_info.size as u64;
 
     fn run_downloader<'a, T: Downloader + Send + 'a, ClientT>(
         s3: ClientT,
@@ -480,19 +470,15 @@ where
 
     let tempfile = bio::NamedTempFile::new_in(directory_path)?;
 
+    let is_compressed = obj_info.is_esthri_compressed();
+    let decompress = transparent_decompression && is_compressed;
+
     if decompress {
-        #[cfg(feature = "compression")]
-        {
-            let file_output: Box<dyn bio::Write + Send + Sync + Unpin> =
-                Box::new(GzDecoder::new(bio::File::create(tempfile.path())?));
-            let file_output = Arc::new(Mutex::new(file_output));
-            let downloader = DownloadCompressed::new(file_output, bucket, key, total_size);
-            run_downloader(s3.clone(), downloader, decompress).await?;
-        }
-        #[cfg(not(feature = "compression"))]
-        {
-            panic!("compression feature not enabled");
-        }
+        let file_output: Box<dyn bio::Write + Send + Sync + Unpin> =
+            Box::new(GzDecoder::new(bio::File::create(tempfile.path())?));
+        let file_output = Arc::new(Mutex::new(file_output));
+        let downloader = DownloadCompressed::new(file_output, bucket, key, total_size);
+        run_downloader(s3.clone(), downloader, decompress).await?;
     } else {
         let downloader =
             DownloadMultiple::new(bio::File::create(tempfile.path())?, bucket, key, total_size);
@@ -507,16 +493,6 @@ where
             .split('/')
             .next_back()
             .ok_or(Error::CouldNotParseS3Filename)?;
-
-        let s3filename = if decompress {
-            // The caller hasn't specified a filename to download to
-            // (only a directory). Because we're decompressing, we
-            // should strip the compression suffix if there is one
-            s3filename.strip_suffix(".gz").unwrap_or(s3filename)
-        } else {
-            s3filename
-        };
-
         download_path.join(s3filename)
     };
 
@@ -567,7 +543,7 @@ pub(in crate) async fn download_with_dir<T>(
     s3_prefix: &str,
     s3_suffix: &str,
     local_dir: impl AsRef<Path>,
-    decompress: bool,
+    transparent_decompress: bool,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
@@ -581,20 +557,8 @@ where
     let key = format!("{}", Path::new(s3_prefix).join(s3_suffix).display());
     let dest_path = format!("{}", dest_path.display());
 
-    let file_is_compressed = dest_path.ends_with(".gz");
-
-    if decompress && file_is_compressed {
-        #[cfg(feature = "compression")]
-        {
-            let dest_path = dest_path
-                .strip_suffix(".gz")
-                .expect("Should have a gz suffix");
-            download_decompressed(s3, bucket, &key, dest_path).await?;
-        }
-        #[cfg(not(feature = "compression"))]
-        {
-            panic!("compression feature not enabled");
-        }
+    if transparent_decompress {
+        download_with_transparent_decompression(s3, bucket, &key, &dest_path).await?;
     } else {
         download(s3, bucket, &key, &dest_path).await?;
     }
@@ -632,13 +596,11 @@ where
         file.as_ref().display()
     );
 
-    let decompress = false;
-    download_helper(s3, bucket, key, file, decompress).await
+    download_helper(s3, bucket, key, file, false).await
 }
 
-#[cfg(feature = "compression")]
 #[logfn(err = "ERROR")]
-pub async fn download_decompressed<T>(
+pub async fn download_with_transparent_decompression<T>(
     s3: &T,
     bucket: impl AsRef<str>,
     key: impl AsRef<str>,
@@ -654,6 +616,5 @@ where
         file.as_ref().display()
     );
 
-    let decompress = true;
-    download_helper(s3, bucket, key, file, decompress).await
+    download_helper(s3, bucket, key, file, true).await
 }

@@ -31,6 +31,13 @@ pub struct ObjectInfo {
     pub metadata: HashMap<String, String>,
 }
 
+impl ObjectInfo {
+    pub fn is_esthri_compressed(&self) -> bool {
+        self.metadata
+            .contains_key(crate::compression::ESTHRI_METADATA_COMPRESS_KEY)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum S3PathParam {
     Local { path: PathBuf },
@@ -197,11 +204,16 @@ impl ReadState {
 pub(super) struct ListingMetadata {
     pub(super) s3_suffix: String,
     pub(super) e_tag: String,
+    pub(super) esthri_compressed: bool,
 }
 
 impl ListingMetadata {
-    pub(super) fn some(s3_suffix: String, e_tag: String) -> Option<Self> {
-        Some(Self { s3_suffix, e_tag })
+    pub(super) fn some(s3_suffix: String, e_tag: String, esthri_compressed: bool) -> Option<Self> {
+        Some(Self {
+            s3_suffix,
+            e_tag,
+            esthri_compressed,
+        })
     }
     pub(super) fn none() -> Option<Self> {
         None

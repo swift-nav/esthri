@@ -21,7 +21,7 @@ TLS_PROVIDER = "nativetls"
 command = "cargo"
 args = [
         "check",
-        "--features=${TLS_PROVIDER},blocking,cli,compression,http_server",
+        "--features=${TLS_PROVIDER},blocking,cli,http_server",
         "@@remove-empty(BUILD_FLAVOR)",
         "@@remove-empty(TARGET)"
         ]
@@ -31,7 +31,7 @@ cwd = "src/esthri"
 command = "cargo"
 args = [
         "build",
-        "--features=${TLS_PROVIDER},blocking,cli,compression,http_server",
+        "--features=${TLS_PROVIDER},blocking,cli,http_server",
         "--no-default-features",
         "@@remove-empty(BUILD_FLAVOR)",
         "@@remove-empty(TARGET)"
@@ -66,7 +66,7 @@ cwd = "src/esthri"
 command = "cargo"
 args = [
         "test",
-        "--features=${TLS_PROVIDER},blocking,cli,compression,http_server",
+        "--features=${TLS_PROVIDER},blocking,cli,http_server",
         "--no-default-features",
         "@@remove-empty(BUILD_FLAVOR)",
         "--",
@@ -89,4 +89,4 @@ args = [
 [tasks.lint]
 command = "cargo"
 cwd = "src/esthri"
-args = ["clippy", "--no-default-features", "--features=${TLS_PROVIDER},aggressive_lint,blocking,cli,compression,http_server"]
+args = ["clippy", "--no-default-features", "--features=${TLS_PROVIDER},aggressive_lint,blocking,cli,http_server"]
