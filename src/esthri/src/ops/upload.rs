@@ -40,9 +40,9 @@ mod bio {
     pub(super) use std::io::BufReader;
 }
 
-const EXPECT_GLOBAL_DATA: &str = "failed to lock global data";
+pub(crate) const EXPECT_GLOBAL_DATA: &str = "failed to lock global data";
 
-static GLOBAL_DATA: Lazy<Mutex<GlobalData>> = Lazy::new(|| {
+pub(crate) static GLOBAL_DATA: Lazy<Mutex<GlobalData>> = Lazy::new(|| {
     Mutex::new(GlobalData {
         bucket: None,
         key: None,

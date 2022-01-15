@@ -408,7 +408,7 @@ where
     let res = handle_dispatch_error(|| async {
         let cor = CopyObjectRequest {
             bucket: dest_bucket.to_string(),
-            copy_source: format!("{}/{}", source_bucket.to_string(), &file_name),
+            copy_source: format!("{}/{}", source_bucket, &file_name),
             key: file_name.replace(source_key, dest_key),
             ..Default::default()
         };

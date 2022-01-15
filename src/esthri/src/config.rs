@@ -18,6 +18,11 @@
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
 
+/// Default redis server url. Fallback if REDIS_SERVER_URL env var not found.
+/// Expecting url to include `redis://` prefix.
+pub const DEFAULT_REDIS_SERVER_URL: &str = "redis://127.0.0.1";
+/// The multipart stream default size. 4 kiB is the default chunk.
+pub const STREAM_PART_SIZE: usize = 4 * 1024;
 /// The default size of parts in a multipart upload to S3.  8 MiB is the default chunk
 /// size from awscli, changing this size will affect the calculation of ETags.
 pub const UPLOAD_PART_SIZE: u64 = 8 * 1024 * 1024;
@@ -40,6 +45,10 @@ pub const CONCURRENT_SYNC_TASKS: u16 = 16;
 #[derive(Deserialize)]
 pub struct Config {
     #[serde(default)]
+    default_redis_server_url: DefaultRedisServerUrl,
+    #[serde(default)]
+    stream_part_size: StreamPartSize,
+    #[serde(default)]
     upload_part_size: UploadPartSize,
     #[serde(default)]
     concurrent_upload_tasks: ConcurrentUploadTasks,
@@ -53,6 +62,30 @@ pub struct Config {
     concurrent_writer_tasks: ConcurrentWriterTasks,
     #[serde(default)]
     concurrent_sync_tasks: ConcurrentSyncTasks,
+}
+
+/// Wrapper type for [DEFAULT_REDIS_SERVER_URL] which allows [Config::default_redis_server_url()] to bind a default
+/// value.
+#[derive(Deserialize)]
+#[serde(transparent)]
+struct DefaultRedisServerUrl(String);
+
+impl Default for DefaultRedisServerUrl {
+    fn default() -> Self {
+        DefaultRedisServerUrl(DEFAULT_REDIS_SERVER_URL.to_string())
+    }
+}
+
+/// Wrapper type for [STREAM_PART_SIZE] which allows [Config::stream_part_size()] to bind a default
+/// value.
+#[derive(Deserialize)]
+#[serde(transparent)]
+struct StreamPartSize(usize);
+
+impl Default for StreamPartSize {
+    fn default() -> Self {
+        StreamPartSize(STREAM_PART_SIZE)
+    }
 }
 
 /// Wrapper type for [UPLOAD_PART_SIZE] which allows [Config::upload_part_size()] to bind a default
@@ -147,6 +180,7 @@ impl Config {
     /// Fetches the global config object, values are either defaulted or populated
     /// from the environment:
     ///
+    /// - `ESTHRI_STREAM_PART_SIZE` - [Config::stream_part_size()]
     /// - `ESTHRI_UPLOAD_PART_SIZE` - [Config::upload_part_size()]
     /// - `ESTHRI_CONCURRENT_DOWNLOADER_TASKS` - [Config::concurrent_downloader_tasks()]
     /// - `ESTHRI_CONCURRENT_COMPRESSED_DOWNLOADER_TASKS` - [Config::concurrent_compressed_downloader_tasks()]
@@ -159,6 +193,18 @@ impl Config {
                 .from_env::<Config>()
                 .expect(EXPECT_GLOBAL_CONFIG)
         })
+    }
+
+    /// The default redis server url. Defaults to DEFAULT_REDIS_SERVER_URL.
+    /// [DEFAULT_REDIS_SERVER_URL].
+    pub fn default_redis_server_url(&self) -> String {
+        self.default_redis_server_url.0.to_string()
+    }
+
+    /// The multipart stream default size. Defaults to
+    /// [STREAM_PART_SIZE].
+    pub fn stream_part_size(&self) -> usize {
+        self.stream_part_size.0
     }
 
     /// The default size of parts in a multipart upload to S3.  8 MiB is the default chunk size

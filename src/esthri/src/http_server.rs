@@ -70,6 +70,7 @@ use crate::download_streaming;
 use crate::head_object;
 use crate::list_directory_stream;
 use crate::list_objects_stream;
+use crate::stream_download_helper;
 use crate::S3ListingItem;
 
 use serde_derive::{Deserialize, Serialize};
@@ -736,7 +737,9 @@ async fn download(
         "path: {}, params: archive: {:?}, prefixes: {:?}",
         path, params.archive, params.prefixes
     );
+    debug!("sanity");
     let (body, resp_builder) = if params.archive.unwrap_or(false) {
+        info!("herro1");
         let (archive_filename, prefixes) = if !path.is_empty() && params.prefixes.is_none() {
             let archive_filename = sanitize_filename(path.clone());
             (format!("{}.tgz", archive_filename), Some(vec![path]))
@@ -769,6 +772,7 @@ async fn download(
             (None, resp_builder)
         }
     } else if path.ends_with('/') || path.is_empty() {
+        info!("herro2");
         let listing_page = create_listing_page(s3.clone(), bucket, path).await;
         let header = resp_builder.header(CONTENT_TYPE, TEXT_HTML_UTF_8.essence_str());
 
@@ -777,16 +781,33 @@ async fn download(
             Err(e) => (Some(Body::from(e.to_string())), header),
         }
     } else {
+        info!("herro3");
         let (resp_builder, create_stream) =
-            item_pre_response(&s3, bucket, path, if_none_match, resp_builder).await?;
-        if let Some((bucket, path)) = create_stream {
-            let stream = create_item_stream(s3.clone(), bucket, path).await;
+            item_pre_response(&s3, bucket, path.clone(), if_none_match, resp_builder).await?;
+        if let Some((bucket, path_)) = create_stream {
+            let stream = create_item_stream(s3.clone(), bucket, path_).await;
             (Some(Body::wrap_stream(stream)), resp_builder)
         } else {
-            (None, resp_builder)
+            let body = if path.clone().ends_with(".log") {
+                debug!("We are here");
+                match stream_download_helper(path).await {
+                    Ok(output) => {
+                        let bytes = Bytes::from(output);
+                        Some(Body::from(bytes))
+                    }
+                    Err(err) => {
+                        debug!("Error {}", err);
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+
+            (body, resp_builder)
         }
     };
-
+    debug!("is this even working");
     resp_builder
         .body(body.unwrap_or_else(Body::empty))
         .map_err(|err| EsthriRejection::warp_rejection(format!("{}", err)))

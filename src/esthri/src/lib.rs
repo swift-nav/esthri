@@ -14,18 +14,28 @@
 #![recursion_limit = "256"]
 extern crate regex;
 
-use std::marker::Unpin;
+use core::{
+    pin::Pin,
+    task::{Context, Poll},
+};
 use std::path::Path;
+use std::{env, marker::Unpin};
 
 use crypto::digest::Digest;
 use crypto::md5::Md5;
 
 use futures::{stream, Future, TryStream, TryStreamExt};
 
+use redis::Commands;
+
 use hyper::client::connect::HttpConnector;
 use log::{info, warn};
 use log_derive::logfn;
-use tokio::task;
+use tokio::{
+    fs,
+    io::{self, AsyncWrite},
+    task,
+};
 
 #[cfg(feature = "blocking")]
 pub mod blocking;
@@ -59,7 +69,7 @@ use crate::types::S3Listing;
 
 pub use crate::types::{ObjectInfo, S3ListingItem, S3Object, S3PathParam};
 
-pub use ops::download::download;
+pub use ops::download::{download, stream_download_helper};
 
 pub use ops::download::download_with_transparent_decompression;
 pub use ops::upload::upload_compressed;
@@ -456,4 +466,138 @@ pub fn new_https_connector() -> HttpsConnector<HttpConnector> {
 #[cfg(feature = "nativetls")]
 pub fn new_https_connector() -> HttpsConnector<HttpConnector> {
     HttpsConnector::new()
+}
+
+pub struct StreamWriter {
+    pub path: String,
+    file: fs::File,
+    stream_key: String,
+    stream_part_size: usize,
+    client: Option<redis::Client>,
+}
+impl StreamWriter {
+    pub async fn create(path: String, stream_key: String) -> Result<Self> {
+        let file = fs::File::create(path.clone()).await?;
+        let stream_part_size = Config::global().stream_part_size();
+
+        let redis_url = if let Ok(mut url) = env::var("REDIS_SERVER_URL") {
+            if !url.starts_with("redis://") {
+                url = format!("redis://{}", url);
+            }
+            url
+        } else {
+            let default_url = Config::global().default_redis_server_url();
+            info!(
+                "REDIS_SERVER_URL env var not set. Falling back to {}",
+                default_url
+            );
+            default_url
+        };
+        let client = redis::Client::open(redis_url).map_or_else(
+            |err| {
+                warn!("Redis client failure, {}. No streaming available.", err);
+                None
+            },
+            Some,
+        );
+        Ok(Self {
+            path: path.to_string(),
+            file,
+            stream_key,
+            stream_part_size,
+            client,
+        })
+    }
+}
+impl AsyncWrite for StreamWriter {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        let mut buf = buf;
+        let mut written = 0;
+        if let Some(client) = &self.client {
+            let mut con = client.get_connection().map_err(|err| {
+                io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("Issue establishing connection to redis server, {}.", err),
+                )
+            })?;
+            let buf_len_max = self.stream_part_size;
+            while !buf.len() > 0 {
+                let to_write = std::cmp::min(buf.len(), buf_len_max);
+                let f = Pin::new(&mut self.file);
+                written = match f.poll_write(cx, &buf[..to_write])? {
+                    Poll::Ready(t) => t,
+                    Poll::Pending => return Poll::Pending,
+                };
+
+                let items = vec![(0_u8, &buf[..to_write])];
+                con.xadd(self.stream_key.clone(), "*", &items)
+                    .map_err(|err| {
+                        io::Error::new(
+                            io::ErrorKind::Other,
+                            format!("Issue pushing to redis server, {}.", err),
+                        )
+                    })?;
+                buf = &buf[written..];
+            }
+        } else {
+            let f = Pin::new(&mut self.file);
+            written = match f.poll_write(cx, buf)? {
+                Poll::Ready(t) => t,
+                Poll::Pending => return Poll::Pending,
+            };
+        }
+        Poll::Ready(Ok(written))
+    }
+
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        let f = Pin::new(&mut self.file);
+        f.poll_flush(cx)
+    }
+
+    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        let f = Pin::new(&mut self.file);
+        f.poll_flush(cx)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::process::Stdio;
+    use tempfile::tempdir;
+    use tokio::process::Command;
+
+    #[tokio::test]
+    async fn stream_writer_test() {
+        env_logger::init();
+        let command: &str = "for i in {0..5};do echo ${i};sleep 1;done";
+        let dir = tempdir().unwrap();
+        let log_path = dir.path().join("test.txt").to_string_lossy().to_string();
+        {
+            let mut cmd = Command::new("bash");
+            cmd.arg("-c").arg(command);
+            let mut writer = StreamWriter::create(log_path.clone(), log_path.clone())
+                .await
+                .unwrap();
+            cmd.stdout(Stdio::piped());
+            cmd.stderr(Stdio::piped());
+            let mut child = cmd.spawn().unwrap();
+
+            let mut stdout = child.stdout.take().unwrap();
+            tokio::io::copy(&mut stdout, &mut writer).await.unwrap();
+            child.wait_with_output().await.unwrap();
+        }
+
+        println!(
+            "{}",
+            std::fs::read_to_string(log_path)
+                .unwrap()
+                .parse::<String>()
+                .unwrap()
+        );
+    }
 }

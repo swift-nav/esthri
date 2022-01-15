@@ -13,10 +13,10 @@
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
 use std::fs::create_dir_all;
-use std::marker::Unpin;
 use std::path::Path;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
+use std::{env, marker::Unpin};
 
 use futures::future::BoxFuture;
 use futures::{stream, Future, Stream, StreamExt, TryStreamExt};
@@ -29,8 +29,9 @@ use flate2::write::GzDecoder;
 /// Internal module used to call out operations that may block.
 mod bio {
     pub(super) use std::fs::File;
+    #[cfg(feature = "compression")]
     pub(super) use std::io::prelude::*;
-    pub(super) use std::io::ErrorKind;
+    pub(super) use std::io::{ErrorKind, Write};
     pub(super) use tempfile::NamedTempFile;
 }
 
@@ -617,4 +618,35 @@ where
     );
 
     download_helper(s3, bucket, key, file, true).await
+}
+
+pub async fn stream_download_helper(stream_key: String) -> Result<Vec<u8>> {
+    use redis::AsyncCommands;
+    let redis_url = env::var("REDIS_SERVER_URL")?;
+    let client = redis::Client::open(redis_url)?;
+    let mut con = client.get_async_connection().await?;
+    let mut start = "-".to_string();
+    let end = "+".to_string();
+    let mut output: Vec<u8> = vec![];
+    loop {
+        let result: redis::streams::StreamRangeReply = con
+            .xrange_count(stream_key.clone(), &start, &end, 2_u8)
+            .await?;
+        if result.ids.is_empty() {
+            break;
+        }
+        for stream_id in result.ids {
+            let buffer: Option<Vec<u8>> = stream_id.get(&"0".to_string());
+            if let Some(buffer_) = buffer {
+                output.extend_from_slice(buffer_.as_ref());
+                let next_start_end = stream_id.id.splitn(2, '-').collect::<Vec<_>>();
+                start = format!(
+                    "{}-{}",
+                    next_start_end[0],
+                    1 + next_start_end[1].parse::<u32>()?
+                );
+            }
+        }
+    }
+    Ok(output)
 }

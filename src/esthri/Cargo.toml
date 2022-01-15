@@ -99,7 +99,7 @@ optional = true
 
 [dependencies.tokio]
 version = "1.6"
-features = [ "rt",]
+features = [ "fs","io-util","process","rt","macros",]
 
 [dependencies.backoff]
 version = "0.4"
@@ -151,3 +151,7 @@ optional = true
 [dependencies.maud]
 version = "0.22"
 optional = true
+
+[dependencies.redis]
+version = "0.21"
+features = ["tokio-comp", "streams"]
