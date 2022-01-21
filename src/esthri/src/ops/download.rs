@@ -16,13 +16,11 @@ use std::path::Path;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
-use futures::future::BoxFuture;
-use futures::{stream, Future, Stream, StreamExt, TryStreamExt};
+use flate2::write::GzDecoder;
+use futures::{future::BoxFuture, stream, Future, Stream, StreamExt, TryStreamExt};
 use log::info;
 use log_derive::logfn;
 use tokio::io::{AsyncRead, AsyncReadExt};
-
-use flate2::write::GzDecoder;
 
 /// Internal module used to call out operations that may block.
 mod bio {
