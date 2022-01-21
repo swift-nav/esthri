@@ -12,7 +12,6 @@
 
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 #![recursion_limit = "256"]
-extern crate regex;
 
 use std::marker::Unpin;
 use std::path::Path;
