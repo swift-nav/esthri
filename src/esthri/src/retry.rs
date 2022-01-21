@@ -16,7 +16,7 @@ use backoff::ExponentialBackoff;
 use futures::Future;
 use log::debug;
 
-use crate::rusoto::*;
+use crate::rusoto::{RusotoError, RusotoResult};
 
 pub async fn handle_dispatch_error<'a, T, E, F>(func: impl Fn() -> F + 'a) -> RusotoResult<T, E>
 where

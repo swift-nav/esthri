@@ -448,9 +448,15 @@ where
 }
 
 #[cfg(feature = "rustls")]
+pub use hyper_rustls::HttpsConnector;
+
+#[cfg(feature = "rustls")]
 pub fn new_https_connector() -> HttpsConnector<HttpConnector> {
     HttpsConnector::with_webpki_roots()
 }
+
+#[cfg(feature = "nativetls")]
+pub use hyper_tls::HttpsConnector;
 
 #[cfg(feature = "nativetls")]
 pub fn new_https_connector() -> HttpsConnector<HttpConnector> {

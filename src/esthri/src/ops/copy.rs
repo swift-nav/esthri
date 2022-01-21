@@ -10,12 +10,12 @@
  * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-use crate::errors::{Error, Result};
-use crate::{download, upload, S3PathParam};
-
-use crate::{download_with_transparent_decompression, upload_compressed};
 use log_derive::logfn;
-use rusoto_s3::S3;
+
+use crate::errors::{Error, Result};
+use crate::rusoto::S3;
+use crate::{download, upload, S3PathParam};
+use crate::{download_with_transparent_decompression, upload_compressed};
 
 #[logfn(err = "ERROR")]
 pub async fn copy<T>(
