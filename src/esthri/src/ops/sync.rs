@@ -71,7 +71,6 @@ pub async fn sync<T>(
 where
     T: S3 + Sync + Send + Clone,
 {
-    let x = 1;
     let filters: Vec<GlobFilter> = match glob_filters {
         Some(filters) => {
             let mut filters = filters.to_vec();
@@ -407,7 +406,7 @@ where
     let res = handle_dispatch_error(|| async {
         let cor = CopyObjectRequest {
             bucket: dest_bucket.to_string(),
-            copy_source: format!("{}/{}", source_bucket.to_string(), &file_name),
+            copy_source: format!("{}/{}", source_bucket, file_name),
             key: file_name.replace(source_key, dest_key),
             ..Default::default()
         };
