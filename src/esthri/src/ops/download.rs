@@ -10,8 +10,6 @@
  * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-#![cfg_attr(feature = "aggressive_lint", deny(warnings))]
-
 use std::fs::create_dir_all;
 use std::marker::Unpin;
 use std::path::Path;

@@ -10,8 +10,6 @@
 * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
 */
 
-#![cfg_attr(feature = "aggressive_lint", deny(warnings))]
-
 use std::env;
 use std::ffi::OsStr;
 use std::os::unix::process::CommandExt;

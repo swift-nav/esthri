@@ -10,8 +10,6 @@
  * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-#![cfg_attr(feature = "aggressive_lint", deny(warnings))]
-
 use std::time::Duration;
 
 use backoff::ExponentialBackoff;

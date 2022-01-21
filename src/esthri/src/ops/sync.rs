@@ -10,8 +10,6 @@
  * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-#![cfg_attr(feature = "aggressive_lint", deny(warnings))]
-
 use std::{
     fs::{self, File},
     io::BufReader,
@@ -73,6 +71,7 @@ pub async fn sync<T>(
 where
     T: S3 + Sync + Send + Clone,
 {
+    let x = 1;
     let filters: Vec<GlobFilter> = match glob_filters {
         Some(filters) => {
             let mut filters = filters.to_vec();
