@@ -64,8 +64,7 @@ pub use ops::download::download;
 pub use ops::download::download_with_transparent_decompression;
 pub use ops::upload::upload_compressed;
 
-#[cfg(feature = "http_server")]
-pub(crate) use ops::download::download_streaming;
+pub use ops::download::download_streaming;
 
 #[cfg(feature = "cli")]
 pub use ops::upload::setup_upload_termination_handler;
