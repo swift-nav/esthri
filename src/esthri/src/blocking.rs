@@ -71,7 +71,7 @@ pub async fn upload_from_reader<T, R>(
 ) -> Result<()>
 where
     T: S3 + Send + Clone,
-    R: Read + Send + 'static,
+    R: Read + Send + Seek + 'static,
 {
     super::upload_from_reader(s3, bucket, key, reader, file_size, None).await
 }

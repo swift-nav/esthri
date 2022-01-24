@@ -13,14 +13,21 @@
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
 use std::borrow::Cow;
-use std::sync::Mutex;
+use std::convert::TryInto;
+
+use std::io::SeekFrom;
+
+use std::sync::{Arc, Mutex};
 use std::{collections::HashMap, path::Path};
+
+use bytes::{Bytes, BytesMut};
 
 use futures::{stream, Future, Stream, StreamExt, TryStreamExt};
 
 use log::{debug, info, warn};
 use log_derive::logfn;
 use once_cell::sync::Lazy;
+
 use tokio::task;
 
 use crate::{
@@ -186,41 +193,66 @@ where
     upload_helper(s3, bucket, key, file, compressed).await
 }
 
-async fn create_file_chunk_stream<R>(
-    reader: R,
+// Creates a stream of smaller chunks for a larger chunk of data. This
+// is to reduce memory usage when uploading, as we currently do
+// multipart uploads of 8MB. Giving the rusuto uploading a stream that
+// it can consume causes less memory to be used than giving it whole 8MB
+// chunks as there is less data waiting around to be uploaded.
+fn create_stream_for_chunk<R>(
+    reader: Arc<Mutex<R>>,
     file_size: u64,
-) -> impl Stream<Item = Result<(i64, Vec<u8>)>>
+    chunk_number: u64,
+) -> (u64, impl Stream<Item = Result<Bytes>>)
 where
-    R: bio::Read + Send + 'static,
+    R: bio::Read + Send + bio::Seek + 'static,
 {
-    let upload_part_size = Config::global().upload_part_size();
-    let init_state = (file_size, /* part_number = */ 1, Some(reader));
-    Box::pin(stream::unfold(
+    let chunk_size = Config::global().upload_part_size();
+    let read_size = Config::global().upload_read_size();
+
+    // The total amount to read for this chunk
+    let to_read = u64::min(file_size - (chunk_size * chunk_number), chunk_size);
+
+    let init_state = (to_read, /* part_number = */ 0, Some(reader));
+
+    let stream = Box::pin(stream::unfold(
         init_state,
         move |(remaining, part_number, reader)| async move {
             let done_state = (0, 0, None);
             if remaining == 0 {
                 None
             } else {
-                let upload_part_size = u64::min(remaining, upload_part_size);
-                let mut buf = vec![0u8; upload_part_size as usize];
-                let result: Result<(Vec<u8>, usize, R)> = task::spawn_blocking(move || {
-                    let mut reader = reader.unwrap();
-                    let read_size = reader.read(&mut buf)?;
-                    Ok((buf, read_size, reader))
-                })
-                .await
-                .expect(EXPECT_SPAWN_BLOCKING);
+                let read_size = u64::min(remaining, read_size);
+
+                let mut buf = BytesMut::with_capacity(read_size as usize);
+                buf.resize(read_size as usize, 0);
+
+                let reader = reader.unwrap();
+
+                let result: Result<Bytes> = {
+                    let reader = reader.clone();
+                    let mut reader = reader.lock().unwrap();
+                    let reader = &mut *reader;
+
+                    let seek = chunk_size * chunk_number + part_number * read_size;
+                    reader.seek(SeekFrom::Start(seek)).ok()?;
+
+                    let slice = buf.as_mut();
+                    reader.read_exact(&mut slice[..read_size as usize]).ok()?;
+
+                    let body = buf.freeze();
+                    Ok(body)
+                };
+
                 match result {
-                    Ok((buf, read_size, reader)) => {
+                    Ok(buf) => {
                         if read_size == 0 {
                             let err = Err(Error::ReadZero);
                             Some((err, done_state))
                         } else {
-                            let result = Ok((part_number, buf));
+                            let result = Ok(buf);
                             Some((
                                 result,
-                                (remaining - upload_part_size, part_number + 1, Some(reader)),
+                                (remaining - read_size, part_number + 1, Some(reader)),
                             ))
                         }
                     }
@@ -228,58 +260,82 @@ where
                 }
             }
         },
-    ))
+    ));
+
+    (to_read, stream)
 }
 
-async fn create_chunk_upload_stream<StreamT, ClientT>(
-    source_stream: StreamT,
+fn get_number_of_upload_chunks_for_file_size(file_size: u64) -> u64 {
+    let chunk_size = Config::global().upload_part_size();
+
+    // Rounds up as the last chunk may be smaller than the chunk size
+    (file_size + (chunk_size - 1)) / chunk_size
+}
+
+async fn create_chunk_upload_stream<ClientT, R>(
     s3: ClientT,
     upload_id: impl Into<String> + Clone,
     bucket: impl Into<String> + Clone,
     key: impl Into<String> + Clone,
+    reader: Arc<Mutex<R>>,
+    file_size: u64,
 ) -> impl Stream<Item = impl Future<Output = Result<CompletedPart>>>
 where
-    StreamT: Stream<Item = Result<(i64, Vec<u8>)>>,
     ClientT: S3 + Send + Clone,
+    R: bio::Read + Send + bio::Seek + 'static,
 {
-    source_stream
-        .map(move |value| {
+    stream::iter(0..get_number_of_upload_chunks_for_file_size(file_size))
+        .map(move |chunk_number| {
             let s3 = s3.clone();
             let bucket: String = bucket.clone().into();
             let key: String = key.clone().into();
             let upload_id: String = upload_id.clone().into();
-            (s3, bucket, key, upload_id, value)
+            let reader = reader.clone();
+            (s3, bucket, key, upload_id, chunk_number, reader)
         })
-        .map(|(s3, bucket, key, upload_id, value)| async move {
-            let (part_number, buf) = value?;
-            let cp = handle_dispatch_error(|| async {
-                let body: StreamingBody = buf.clone().into();
-                let upr = UploadPartRequest {
-                    bucket: bucket.clone(),
-                    key: key.clone(),
-                    part_number,
-                    upload_id: upload_id.clone(),
-                    body: Some(body),
-                    ..Default::default()
-                };
-                s3.upload_part(upr).await
-            })
-            .await
-            .map(|upo| {
-                if upo.e_tag.is_none() {
-                    warn!(
-                        "upload_part e_tag was not present (part_number: {})",
-                        part_number
-                    );
-                }
-                CompletedPart {
-                    e_tag: upo.e_tag,
-                    part_number: Some(part_number),
-                }
-            })
-            .map_err(Error::UploadPartFailed)?;
-            Ok(cp)
-        })
+        .map(
+            move |(s3, bucket, key, upload_id, chunk_number, reader)| async move {
+                // AWS part numbers are 1 indexed
+                let part_number: i64 = (chunk_number + 1).try_into().expect("part_number too big");
+
+                let cp = handle_dispatch_error(|| async {
+                    let (chunk_size, chunk_stream) =
+                        create_stream_for_chunk(reader.clone(), file_size, chunk_number);
+
+                    let chunk_stream = chunk_stream
+                        .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err));
+
+                    let body: StreamingBody =
+                        ByteStream::new_with_size(chunk_stream, chunk_size as usize);
+
+                    let upr = UploadPartRequest {
+                        bucket: bucket.clone(),
+                        key: key.clone(),
+                        part_number,
+                        upload_id: upload_id.clone(),
+                        body: Some(body),
+                        ..Default::default()
+                    };
+                    s3.upload_part(upr).await
+                })
+                .await
+                .map(|upo| {
+                    if upo.e_tag.is_none() {
+                        warn!(
+                            "upload_part e_tag was not present (part_number: {})",
+                            part_number
+                        );
+                    }
+                    CompletedPart {
+                        e_tag: upo.e_tag,
+                        part_number: Some(part_number),
+                    }
+                })
+                .map_err(Error::UploadPartFailed)?;
+
+                Ok(cp)
+            },
+        )
 }
 
 #[logfn(err = "ERROR")]
@@ -293,7 +349,7 @@ pub async fn upload_from_reader<T, R>(
 ) -> Result<()>
 where
     T: S3 + Send + Clone,
-    R: bio::Read + Send + 'static,
+    R: bio::Read + Send + bio::Seek + 'static,
 {
     let upload_part_size = Config::global().upload_part_size();
     let (bucket, key) = (bucket.as_ref(), key.as_ref());
@@ -304,6 +360,8 @@ where
     );
 
     if file_size >= upload_part_size {
+        let shared_reader = Arc::new(Mutex::new(reader));
+
         let cmuo = handle_dispatch_error(|| async {
             let cmur = CreateMultipartUploadRequest {
                 bucket: bucket.into(),
@@ -330,10 +388,15 @@ where
             global_data.upload_id = Some(upload_id.clone());
         }
 
-        let chunk_stream = create_file_chunk_stream(reader, file_size).await;
-        let upload_stream =
-            create_chunk_upload_stream(chunk_stream, s3.clone(), upload_id.clone(), bucket, key)
-                .await;
+        let upload_stream = create_chunk_upload_stream(
+            s3.clone(),
+            upload_id.clone(),
+            bucket,
+            key,
+            shared_reader,
+            file_size,
+        )
+        .await;
 
         let uploaders_count = Config::global().concurrent_upload_tasks();
 

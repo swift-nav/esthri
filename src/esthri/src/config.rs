@@ -21,6 +21,8 @@ use serde::Deserialize;
 /// The default size of parts in a multipart upload to S3.  8 MiB is the default chunk
 /// size from awscli, changing this size will affect the calculation of ETags.
 pub const UPLOAD_PART_SIZE: u64 = 8 * 1024 * 1024;
+/// The default amount of data to read out of a file at a time.
+pub const UPLOAD_READ_SIZE: u64 = 1024 * 1024;
 /// The default number of concurrent tasks run when sending data to S3.
 pub const CONCURRENT_UPLOAD_TASKS: u16 = 16;
 /// When downloading or receiving data from S3, this sizes a task's download buffer.
@@ -41,6 +43,8 @@ pub const CONCURRENT_SYNC_TASKS: u16 = 16;
 pub struct Config {
     #[serde(default)]
     upload_part_size: UploadPartSize,
+    #[serde(default)]
+    upload_read_size: UploadReadSize,
     #[serde(default)]
     concurrent_upload_tasks: ConcurrentUploadTasks,
     #[serde(default)]
@@ -64,6 +68,18 @@ struct UploadPartSize(u64);
 impl Default for UploadPartSize {
     fn default() -> Self {
         UploadPartSize(UPLOAD_PART_SIZE)
+    }
+}
+
+/// Wrapper type for [UPLOAD_READ_SIZE] which allows [Config::upload_read_size()] to bind a default
+/// value.
+#[derive(Deserialize)]
+#[serde(transparent)]
+struct UploadReadSize(u64);
+
+impl Default for UploadReadSize {
+    fn default() -> Self {
+        UploadReadSize(UPLOAD_READ_SIZE)
     }
 }
 
@@ -166,6 +182,13 @@ impl Config {
     /// [UPLOAD_PART_SIZE].
     pub fn upload_part_size(&self) -> u64 {
         self.upload_part_size.0
+    }
+
+    /// The amount of data to read at a time from files being uploaded. This is set separately
+    /// to [UPLOAD_PART_SIZE] to lower memory usage, as having lots of 8MiB chunks in flight
+    /// can cause high memory usage. Defaults to [UPLOAD_READ_SIZE].
+    pub fn upload_read_size(&self) -> u64 {
+        self.upload_read_size.0
     }
 
     /// The number of concurrent tasks run when sending data to S3.  Defautls to

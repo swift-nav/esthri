@@ -36,7 +36,7 @@ fn test_download_to_current_directory() {
     let s3client = crate::get_s3client();
     let filename = "test_file.txt";
     let _tmp_dir = crate::EphemeralTempDir::pushd();
-    let filepath = format!(".");
+    let filepath = ".".to_string();
     let s3_key = format!("test_folder/{}", filename);
 
     let res = blocking::download(s3client.as_ref(), crate::TEST_BUCKET, &s3_key, &filepath);
