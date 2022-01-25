@@ -12,8 +12,9 @@ categories = ["command-line-utilities"]
 keywords = ["aws", "s3"]
 
 [features]
-default = []
-server = []
+default = ["rustls"]
+nativetls = ["esthri/nativetls"]
+rustls = ["esthri/rustls"]
 
 [[bin]]
 name = "esthri"
@@ -24,7 +25,7 @@ name = "esthri_server"
 path = "src/http_server.rs"
 
 [dependencies]
-esthri = { path = "../esthri", features = [] }
+esthri = { path = "../esthri", default-features = false }
 async-stream = "0.3"
 env_logger = "0.9"
 futures = "0.3"

@@ -9,7 +9,7 @@ homepage = "https://github.com/swift-nav/esthri/"
 readme = "../../README.md"
 
 [dependencies]
-esthri = { path = "../esthri" }
+esthri = { path = "../esthri", default-features = false }
 chrono = "0.4"
 env_logger = "0.9"
 flate2 = "1.0.22"

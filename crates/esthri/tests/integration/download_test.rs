@@ -7,7 +7,7 @@ use esthri_test::{validate_key_hash_pairs, KeyHashPair};
 fn test_download() {
     let s3client = esthri_test::get_s3client();
     let filename = "test_file.txt";
-    let filepath = format!("tests/data/{}", filename);
+    let filepath = esthri_test::test_data(filename);
     let s3_key = format!("test_folder/{}", filename);
 
     let res = blocking::download(
@@ -44,7 +44,7 @@ fn test_download_to_current_directory() {
     let s3client = esthri_test::get_s3client();
     let filename = "test_file.txt";
     let _tmp_dir = esthri_test::EphemeralTempDir::pushd();
-    let filepath = format!(".");
+    let filepath = ".";
     let s3_key = format!("test_folder/{}", filename);
 
     let res = blocking::download(
@@ -61,7 +61,7 @@ fn test_download_to_current_directory() {
 async fn test_download_async() {
     let s3client = esthri_test::get_s3client();
     let filename = "test_file.txt";
-    let filepath = format!("tests/data/{}", filename);
+    let filepath = esthri_test::test_data(filename);
     let s3_key = format!("test_folder/{}", filename);
 
     let res = download(

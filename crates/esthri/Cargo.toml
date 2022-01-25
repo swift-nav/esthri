@@ -13,7 +13,7 @@ keywords = ["aws", "s3"]
 [features]
 default = ["blocking", "rustls"]
 aggressive_lint = []
-blocking = [ "tokio/rt"]
+blocking = ["tokio/rt"]
 nativetls = ["rusoto_core/native-tls", "rusoto_s3/native-tls", "hyper-tls"]
 rustls = ["rusoto_core/rustls", "rusoto_s3/rustls", "hyper-rustls"]
 
