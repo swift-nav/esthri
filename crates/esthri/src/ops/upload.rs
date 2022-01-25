@@ -89,13 +89,13 @@ impl PendingUpload {
 
 fn remove_pending(id: &str) {
     let mut lock = PENDING_UPLOADS.lock();
-    if let Some(idx) = lock.iter().position(|u| &u.upload_id == id) {
+    if let Some(idx) = lock.iter().position(|u| u.upload_id == id) {
         lock.swap_remove(idx);
     }
 }
 
 fn add_pending(u: PendingUpload) {
-    PENDING_UPLOADS.lock().push(u.clone());
+    PENDING_UPLOADS.lock().push(u);
 }
 
 #[logfn(err = "ERROR")]

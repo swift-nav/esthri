@@ -130,9 +130,9 @@ impl From<std::convert::Infallible> for Error {
     }
 }
 
-impl Into<std::io::Error> for Error {
-    fn into(self) -> std::io::Error {
-        match self {
+impl From<Error> for std::io::Error {
+    fn from(err: Error) -> Self {
+        match err {
             Error::IoError(e) => e,
             other => std::io::Error::new(std::io::ErrorKind::Other, other),
         }

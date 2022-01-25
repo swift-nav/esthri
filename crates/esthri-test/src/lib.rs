@@ -37,7 +37,7 @@ pub fn test_data_dir() -> PathBuf {
 
 pub fn validate_key_hash_pairs(local_directory: impl AsRef<Path>, key_hash_pairs: &[KeyHashPair]) {
     let local_directory = local_directory.as_ref();
-    for key_hash_pair in &key_hash_pairs[..] {
+    for key_hash_pair in key_hash_pairs {
         let path = local_directory.join(key_hash_pair.0);
         let data = fs::read(&path).unwrap();
         let digest = md5::compute(data);

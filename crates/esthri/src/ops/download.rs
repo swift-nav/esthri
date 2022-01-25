@@ -111,7 +111,7 @@ where
         let mut dest = GzipDecoder::new(dest.file_mut());
         io::copy(&mut src, &mut dest).await?;
     } else {
-        let dest = &Arc::new(dest.into_std_file().await);
+        let dest = &Arc::new(dest.take_std_file().await);
         let part_size = obj_info.size;
         let stream = download_unordered_streaming_helper(s3, bucket, key, obj_info.parts)
             .map_ok(|(part, mut chunks)| async move {
