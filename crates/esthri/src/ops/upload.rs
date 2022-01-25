@@ -396,7 +396,6 @@ where
         } else {
             let read_size = (file_size - bytes_read).min(part_size);
             let mut buf = Pool::global().get().await;
-            // buf.resize(read_size as usize, 0);
             let slice = buf.as_mut();
             reader.read_exact(&mut slice[..read_size as usize]).await?;
             Ok(Some((buf, (reader, bytes_read + read_size))))
