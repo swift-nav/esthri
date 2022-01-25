@@ -43,7 +43,8 @@ pub fn validate_key_hash_pairs(local_directory: impl AsRef<Path>, key_hash_pairs
         let digest = md5::compute(data);
         let digest = format!("{:x}", digest);
         assert_eq!(
-            digest, key_hash_pair.1,
+            digest,
+            key_hash_pair.1,
             "md5 digest did not match: {}",
             path.display(),
         );
