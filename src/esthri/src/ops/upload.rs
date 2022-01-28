@@ -265,7 +265,7 @@ where
     (to_read, stream)
 }
 
-fn get_number_of_upload_chunks_for_file_size(file_size: u64) -> u64 {
+fn get_chunk_count(file_size: u64) -> u64 {
     let chunk_size = Config::global().upload_part_size();
 
     // Rounds up as the last chunk may be smaller than the chunk size
@@ -284,7 +284,7 @@ where
     ClientT: S3 + Send + Clone,
     R: bio::Read + Send + bio::Seek + 'static,
 {
-    stream::iter(0..get_number_of_upload_chunks_for_file_size(file_size))
+    stream::iter(0..get_chunk_count(file_size))
         .map(move |chunk_number| {
             let s3 = s3.clone();
             let bucket: String = bucket.clone().into();
