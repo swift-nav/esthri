@@ -20,12 +20,15 @@ use std::path::Path;
 use crypto::digest::Digest;
 use crypto::md5::Md5;
 
-use futures::{stream, Future, TryStream, TryStreamExt};
+use futures::{stream, TryStream, TryStreamExt};
 
 use hyper::client::connect::HttpConnector;
 use log::{info, warn};
 use log_derive::logfn;
-use tokio::task;
+use tokio::{
+    fs,
+    io::{AsyncRead, AsyncReadExt, BufReader},
+};
 
 #[cfg(feature = "blocking")]
 pub mod blocking;
@@ -40,40 +43,27 @@ pub(crate) mod types;
 mod config;
 mod ops;
 mod retry;
-
-/// Internal module used to call out operations that may block.
-mod bio {
-    pub(super) use std::fs;
-    pub(super) use std::fs::File;
-    pub(super) use std::io::prelude::*;
-    pub(super) use std::io::BufReader;
-}
-
-pub use crate::errors::{Error, Result};
-
-use crate::retry::handle_dispatch_error;
-use crate::rusoto::*;
+mod tempfile;
 
 use crate::config::Config;
+use crate::retry::handle_dispatch_error;
+use crate::rusoto::*;
 use crate::types::S3Listing;
 
+pub use crate::errors::{Error, Result};
 pub use crate::types::{ObjectInfo, S3ListingItem, S3Object, S3PathParam};
-
+pub use ops::copy::copy;
 pub use ops::download::download;
-
 pub use ops::download::download_with_transparent_decompression;
+pub use ops::sync::{sync, GlobFilter};
 pub use ops::upload::upload_compressed;
+pub use ops::upload::{abort_upload, upload, upload_from_reader};
 
 #[cfg(feature = "http_server")]
 pub(crate) use ops::download::download_streaming;
 
 #[cfg(feature = "cli")]
 pub use ops::upload::setup_upload_termination_handler;
-pub use ops::upload::{abort_upload, upload, upload_from_reader};
-
-pub use ops::sync::{sync, GlobFilter};
-
-pub use ops::copy::copy;
 
 pub const FILTER_EMPTY: Option<&[GlobFilter]> = None;
 
@@ -90,7 +80,7 @@ where
 {
     let (bucket, key) = (bucket.as_ref(), key.as_ref());
     info!("head-object: bucket={}, key={}", bucket, key);
-    head_object_request(s3, bucket, key).await
+    head_object_request(s3, bucket, key, None).await
 }
 
 #[logfn(err = "ERROR")]
@@ -233,61 +223,55 @@ pub async fn compute_etag(path: impl AsRef<Path>) -> Result<String> {
     if !path.exists() {
         return Err(Error::ETagNotPresent);
     }
-    let f = bio::File::open(path)?;
-    let stat = bio::fs::metadata(&path)?;
+    let f = fs::File::open(path).await?;
+    let stat = f.metadata().await?;
     let file_size = stat.len();
     compute_etag_from_reader(f, file_size).await
 }
 
-pub fn compute_etag_from_reader<T>(reader: T, length: u64) -> impl Future<Output = Result<String>>
+pub async fn compute_etag_from_reader<T>(reader: T, length: u64) -> Result<String>
 where
-    T: bio::Read + Send + 'static,
+    T: AsyncRead + Send + 'static,
 {
-    use bio::*;
-    async move {
-        task::spawn_blocking(move || {
-            let mut reader = BufReader::new(reader);
-            let mut hash = Md5::new();
-            let mut digests: Vec<[u8; 16]> = vec![];
-            let mut remaining = length;
-            let upload_part_size = Config::global().upload_part_size();
-            while remaining != 0 {
-                let upload_part_size: usize = (if remaining >= upload_part_size {
-                    upload_part_size
-                } else {
-                    remaining
-                }) as usize;
-                hash.reset();
-                let mut blob = vec![0u8; upload_part_size];
-                reader.read_exact(&mut blob)?;
-                hash.input(&blob);
-                let mut hash_bytes = [0u8; 16];
-                hash.result(&mut hash_bytes);
-                digests.push(hash_bytes);
-                remaining -= upload_part_size as u64;
-            }
-            if digests.is_empty() {
-                let mut hash_bytes = [0u8; 16];
-                hash.result(&mut hash_bytes);
-                let hex_digest = hex::encode(hash_bytes);
-                Ok(format!("\"{}\"", hex_digest))
-            } else if digests.len() == 1 && length < upload_part_size {
-                let hex_digest = hex::encode(digests[0]);
-                Ok(format!("\"{}\"", hex_digest))
-            } else {
-                let count = digests.len();
-                let mut etag_hash = Md5::new();
-                for digest_bytes in digests {
-                    etag_hash.input(&digest_bytes);
-                }
-                let mut final_hash = [0u8; 16];
-                etag_hash.result(&mut final_hash);
-                let hex_digest = hex::encode(final_hash);
-                Ok(format!("\"{}-{}\"", hex_digest, count))
-            }
-        })
-        .await
-        .expect(EXPECT_SPAWN_BLOCKING)
+    let reader = BufReader::new(reader);
+    futures::pin_mut!(reader);
+    let mut hash = Md5::new();
+    let mut digests: Vec<[u8; 16]> = vec![];
+    let mut remaining = length;
+    let upload_part_size = Config::global().upload_part_size();
+    while remaining != 0 {
+        let upload_part_size: usize = (if remaining >= upload_part_size {
+            upload_part_size
+        } else {
+            remaining
+        }) as usize;
+        hash.reset();
+        let mut blob = vec![0u8; upload_part_size];
+        reader.read_exact(&mut blob).await?;
+        hash.input(&blob);
+        let mut hash_bytes = [0u8; 16];
+        hash.result(&mut hash_bytes);
+        digests.push(hash_bytes);
+        remaining -= upload_part_size as u64;
+    }
+    if digests.is_empty() {
+        let mut hash_bytes = [0u8; 16];
+        hash.result(&mut hash_bytes);
+        let hex_digest = hex::encode(hash_bytes);
+        Ok(format!("\"{}\"", hex_digest))
+    } else if digests.len() == 1 && length < upload_part_size {
+        let hex_digest = hex::encode(digests[0]);
+        Ok(format!("\"{}\"", hex_digest))
+    } else {
+        let count = digests.len();
+        let mut etag_hash = Md5::new();
+        for digest_bytes in digests {
+            etag_hash.input(&digest_bytes);
+        }
+        let mut final_hash = [0u8; 16];
+        etag_hash.result(&mut final_hash);
+        let hex_digest = hex::encode(final_hash);
+        Ok(format!("\"{}-{}\"", hex_digest, count))
     }
 }
 
@@ -333,11 +317,14 @@ fn process_head_obj_resp(hoo: HeadObjectOutput) -> Result<Option<ObjectInfo>> {
         return Err(Error::HeadObjectUnexpected("no metadata found".into()));
     };
 
+    let parts = hoo.parts_count.unwrap_or(1) as u64;
+
     Ok(Some(ObjectInfo {
         e_tag,
         size,
         last_modified,
         metadata,
+        parts,
     }))
 }
 
@@ -346,6 +333,7 @@ async fn head_object_request<T>(
     s3: &T,
     bucket: impl AsRef<str>,
     key: impl AsRef<str>,
+    part_number: Option<i64>,
 ) -> Result<Option<ObjectInfo>>
 where
     T: S3,
@@ -356,6 +344,7 @@ where
             let hor = HeadObjectRequest {
                 bucket: bucket.into(),
                 key: key.into(),
+                part_number,
                 ..Default::default()
             };
 

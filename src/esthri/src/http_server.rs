@@ -12,67 +12,52 @@
 
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
-use std::borrow::Cow;
-use std::cell::Cell;
-use std::convert::Infallible;
-use std::net::SocketAddr;
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc, Mutex,
+use std::{
+    borrow::Cow,
+    cell::Cell,
+    convert::Infallible,
+    io::{self, ErrorKind},
+    net::SocketAddr,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
 };
-use std::{io, io::ErrorKind};
-
-use hyper::header::CONTENT_ENCODING;
-use log::*;
-
-use warp::http;
-use warp::http::header::{
-    CACHE_CONTROL, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_TYPE, ETAG, LAST_MODIFIED,
-};
-use warp::http::response;
-use warp::http::Response;
-use warp::hyper::Body;
-use warp::Filter;
-
-use once_cell::sync::OnceCell;
-
-use mime_guess::mime::{APPLICATION_OCTET_STREAM, TEXT_HTML_UTF_8};
-
-use crate::{rusoto::*, ObjectInfo};
-
-// Import all extensions that allow converting between futures-rs and tokio types
-use tokio_util::compat::*;
-
-use tokio_util::codec::BytesCodec;
-use tokio_util::codec::FramedRead;
-
-use tokio::sync::oneshot;
-
-use async_tar::{Builder, Header};
-
-use async_compression::futures::bufread::GzipEncoder;
-
-use futures::stream::{Stream, TryStreamExt};
-
-use sluice::{pipe, pipe::PipeWriter};
-
-use bytes::{Bytes, BytesMut};
-
-use async_stream::stream;
-
-use futures::stream::StreamExt;
 
 use anyhow::anyhow;
-
+use async_compression::tokio::bufread::GzipEncoder;
+use async_stream::stream;
+use async_tar::{Builder, Header};
+use bytes::{Bytes, BytesMut};
+use futures::stream::{Stream, StreamExt, TryStreamExt};
+use hyper::header::CONTENT_ENCODING;
+use log::*;
 use maud::{html, Markup, DOCTYPE};
-
-use crate::download_streaming;
-use crate::head_object;
-use crate::list_directory_stream;
-use crate::list_objects_stream;
-use crate::S3ListingItem;
-
+use mime_guess::mime::{APPLICATION_OCTET_STREAM, TEXT_HTML_UTF_8};
+use once_cell::sync::OnceCell;
 use serde_derive::{Deserialize, Serialize};
+use sluice::{pipe, pipe::PipeWriter};
+use tokio::sync::oneshot;
+use tokio_util::{
+    codec::{BytesCodec, FramedRead},
+    compat::*,
+};
+use warp::{
+    http::{
+        self,
+        header::{
+            CACHE_CONTROL, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_TYPE, ETAG, LAST_MODIFIED,
+        },
+        response, Response,
+    },
+    hyper::Body,
+    Filter,
+};
+
+use crate::{
+    download_streaming, head_object, list_directory_stream, list_objects_stream, rusoto::*,
+    ObjectInfo, S3ListingItem,
+};
 
 const ARCHIVE_ENTRY_MODE: u32 = 0o0644;
 const LAST_MODIFIED_TIME_FMT: &str = "%a, %d %b %Y %H:%M:%S GMT";
@@ -298,13 +283,16 @@ async fn abort_with_error(
     ErrorTracker::record_error(error_tracker, err);
 }
 
-async fn stream_object_to_archive<T: S3 + Send + Clone>(
+async fn stream_object_to_archive<T>(
     s3: &T,
     bucket: &str,
     path: &str,
     archive: &mut Builder<PipeWriter>,
     error_tracker: ErrorTrackerArc,
-) -> bool {
+) -> bool
+where
+    T: S3 + Send + Sync + Clone,
+{
     let obj_info = match head_object(s3, bucket, path).await {
         Ok(obj_info) => {
             if let Some(obj_info) = obj_info {
@@ -330,7 +318,7 @@ async fn stream_object_to_archive<T: S3 + Send + Clone>(
         }
     };
     let stream = match download_streaming(s3, bucket, path).await {
-        Ok(byte_stream) => byte_stream,
+        Ok(byte_stream) => byte_stream.map_err(into_io_error),
         Err(err) => {
             abort_with_error(
                 Some(archive),
@@ -355,7 +343,8 @@ async fn stream_object_to_archive<T: S3 + Send + Clone>(
         Cow::Borrowed(path)
     };
 
-    let mut stream_reader = stream.into_async_read().compat();
+    let stream_reader = stream.into_async_read();
+    futures::pin_mut!(stream_reader);
     if let Err(err) = archive
         .append_data(&mut header, &*path, &mut stream_reader)
         .await
@@ -442,12 +431,12 @@ async fn create_archive_stream(
             }
         }
     });
-    let gzip = GzipEncoder::new(tar_pipe_reader);
-    let framed_reader = FramedRead::new(gzip.compat(), BytesCodec::new());
+    let gzip = GzipEncoder::new(tar_pipe_reader.compat());
+    let framed_reader = FramedRead::new(gzip, BytesCodec::new());
     create_error_monitor_stream(error_tracker_reader, framed_reader).await
 }
 
-fn into_io_error(err: anyhow::Error) -> io::Error {
+fn into_io_error<E: std::error::Error>(err: E) -> io::Error {
     io::Error::new(ErrorKind::Other, format!("{}", err))
 }
 
@@ -550,7 +539,7 @@ async fn create_listing_page(s3: S3Client, bucket: String, path: String) -> io::
                 }
             }
             Err(err) => {
-                return Err(into_io_error(anyhow!(err)));
+                return Err(into_io_error(err));
             }
         }
     }
@@ -584,12 +573,12 @@ async fn create_item_stream(
     s3: S3Client,
     bucket: String,
     path: String,
-) -> impl Stream<Item = io::Result<Bytes>> {
+) -> impl Stream<Item = crate::Result<Bytes>> {
     stream! {
         let mut stream = match download_streaming(&s3, &bucket, &path).await {
             Ok(byte_stream) => byte_stream,
             Err(err) => {
-                yield Err(into_io_error(anyhow!(err)));
+                yield Err(err);
                 return;
             }
         };

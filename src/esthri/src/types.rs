@@ -29,6 +29,7 @@ pub struct ObjectInfo {
     pub size: i64,
     pub last_modified: DateTime<Utc>,
     pub metadata: HashMap<String, String>,
+    pub(crate) parts: u64,
 }
 
 impl ObjectInfo {

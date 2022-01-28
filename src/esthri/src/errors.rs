@@ -115,6 +115,9 @@ pub enum Error {
     #[error(transparent)]
     PersistError(#[from] tempfile::PersistError),
 
+    #[error(transparent)]
+    PathPersistError(#[from] tempfile::PathPersistError),
+
     #[error("cp: Local to local copy not implemented")]
     LocalToLocalCpNotImplementedError,
 

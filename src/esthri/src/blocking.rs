@@ -12,16 +12,13 @@
 
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
-use std::io::prelude::*;
 use std::path::Path;
 
-use crate::ops::sync::GlobFilter;
-
 use super::rusoto::*;
-
 use super::ObjectInfo;
 use super::Result;
 use super::S3PathParam;
+use crate::ops::sync::GlobFilter;
 
 #[tokio::main]
 pub async fn head_object<T>(
@@ -61,20 +58,21 @@ where
     super::upload(s3, bucket, key, file).await
 }
 
-#[tokio::main]
-pub async fn upload_from_reader<T, R>(
-    s3: &T,
-    bucket: impl AsRef<str>,
-    key: impl AsRef<str>,
-    reader: R,
-    file_size: u64,
-) -> Result<()>
-where
-    T: S3 + Send + Clone,
-    R: Read + Send + Seek + 'static,
-{
-    super::upload_from_reader(s3, bucket, key, reader, file_size, None).await
-}
+// TODO: Remember how to convert Read -> AsyncRead
+// #[tokio::main]
+// pub async fn upload_from_reader<T, R>(
+//     s3: &T,
+//     bucket: impl AsRef<str>,
+//     key: impl AsRef<str>,
+//     reader: R,
+//     file_size: u64,
+// ) -> Result<()>
+// where
+//     T: S3 + Send + Clone,
+//     R: Read + Send + Seek + 'static,
+// {
+//     super::upload_from_reader(s3, bucket, key, reader, file_size, None).await
+// }
 
 #[tokio::main]
 pub async fn upload_compressed<T>(

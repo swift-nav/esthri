@@ -10,18 +10,16 @@
  * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-#![cfg_attr(feature = "aggressive_lint", deny(warnings))]
-
-use std::{
-    fs::{self, File},
-    io::BufReader,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use futures::{Future, Stream, StreamExt, TryStreamExt};
 use glob::Pattern;
 use log::{debug, info, warn};
 use log_derive::logfn;
+use tokio::{
+    fs::{self, File},
+    io::BufReader,
+};
 use walkdir::WalkDir;
 
 use crate::{
@@ -29,10 +27,10 @@ use crate::{
     compute_etag,
     config::Config,
     errors::{Error, Result},
-    handle_dispatch_error, head_object_request, list_objects_stream,
+    handle_dispatch_error, list_objects_stream,
     rusoto::*,
     types::ListingMetadata,
-    types::{S3ListingItem, S3PathParam},
+    types::{S3ListingItem, S3PathParam}, head_object_request,
 };
 
 struct MappedPathResult {
@@ -230,12 +228,9 @@ where
             SyncCompressionDirection::Up => {
                 // If we're syncing up with compression, then everything
                 // should be compressed
-                let (temp_compressed, _) = compress_to_tempfile(&source_path).await?;
-                let local_etag = compute_etag(&temp_compressed).await;
-
-                let temp_path = temp_compressed.into_temp_path();
-                let path: Box<dyn AsRef<Path>> = Box::new(temp_path);
-                (path, source_path, local_etag)
+                let (tmp, _) = compress_to_tempfile(&source_path).await?;
+                let local_etag = compute_etag(tmp.path()).await;
+                (tmp.into_path(), source_path, local_etag)
             }
             SyncCompressionDirection::Down => {
                 // if we're syncing down with compression, then there
@@ -254,8 +249,8 @@ where
                         // of the uncompressed file by recompressing
                         // the local file to see if it matches with
                         // the compressed version
-                        let (temp_compressed, _) = compress_to_tempfile(&source_path).await?;
-                        let local_etag = compute_etag(&temp_compressed).await;
+                        let (tmp, _) = compress_to_tempfile(&source_path).await?;
+                        let local_etag = compute_etag(tmp.path()).await;
                         (file_path, source_path, local_etag)
                     }
                 } else {
@@ -322,7 +317,7 @@ where
             let remote_path = remote_path.to_string_lossy();
             debug!("checking remote: {}", remote_path);
             let local_etag = local_etag?;
-            let object_info = head_object_request(&s3, &bucket, &remote_path).await?;
+            let object_info = head_object_request(&s3, &bucket, &remote_path, None).await?;
             let metadata = if transparent_compression {
                 Some(crate::compression::compressed_file_metadata())
             } else {
@@ -336,8 +331,10 @@ where
                         "etag mis-match: {}, remote_etag={}, local_etag={}",
                         remote_path, remote_etag, local_etag
                     );
-                    let reader = BufReader::new(File::open(&*filepath)?);
-                    let size = fs::metadata(&*filepath)?.len();
+                    let f = File::open(&*filepath).await?;
+                    let reader = BufReader::new(f);
+                    let size = fs::metadata(&*filepath).await?.len();
+                    //upload
                     upload_from_reader(&s3, bucket, remote_path, reader, size, metadata).await?;
                 } else {
                     debug!(
@@ -347,8 +344,9 @@ where
                 }
             } else {
                 info!("file did not exist remotely: {}", remote_path);
-                let reader = BufReader::new(File::open(&*filepath)?);
-                let size = fs::metadata(&*filepath)?.len();
+                let f = File::open(&*filepath).await?;
+                let reader = BufReader::new(f);
+                let size = fs::metadata(&*filepath).await?.len();
                 upload_from_reader(&s3, bucket, remote_path, reader, size, metadata).await?;
             }
             Ok(())
@@ -408,7 +406,7 @@ where
     let res = handle_dispatch_error(|| async {
         let cor = CopyObjectRequest {
             bucket: dest_bucket.to_string(),
-            copy_source: format!("{}/{}", source_bucket.to_string(), &file_name),
+            copy_source: format!("{}/{}", source_bucket, file_name),
             key: file_name.replace(source_key, dest_key),
             ..Default::default()
         };
@@ -441,7 +439,8 @@ where
                 if let Some(_accept) = path {
                     let mut should_copy_file: bool = true;
                     let new_file = src_object.key.replace(source_prefix, destination_key);
-                    let dest_object_info = head_object_request(s3, dest_bucket, &new_file).await?;
+                    let dest_object_info =
+                        head_object_request(s3, dest_bucket, &new_file, None).await?;
 
                     if let Some(dest_object) = dest_object_info {
                         if dest_object.e_tag == src_object.e_tag {
@@ -495,7 +494,7 @@ where
                     let entry = entry.unwrap_object();
                     debug!("key={}", entry.key);
                     let compressed = if transparent_decompress {
-                        head_object_request(s3, bucket, &entry.key)
+                        head_object_request(s3, bucket, &entry.key, None)
                             .await?
                             .expect("No head info?")
                             .is_esthri_compressed()
@@ -545,7 +544,6 @@ where
     ClientT: S3 + Sync + Send + Clone,
     StreamT: Stream<Item = MapPathResult>,
 {
-    use super::download::download_with_dir;
     input_stream
         .map(move |entry| {
             (
@@ -647,6 +645,35 @@ where
         .buffer_unordered(task_count)
         .try_collect()
         .await?;
+
+    Ok(())
+}
+
+async fn download_with_dir<T>(
+    s3: &T,
+    bucket: &str,
+    s3_prefix: &str,
+    s3_suffix: &str,
+    local_dir: impl AsRef<Path>,
+    transparent_decompress: bool,
+) -> Result<()>
+where
+    T: S3 + Sync + Send + Clone,
+{
+    let local_dir = local_dir.as_ref();
+    let dest_path = local_dir.join(s3_suffix);
+
+    let parent_dir = dest_path.parent().ok_or(Error::ParentDirNone)?;
+    std::fs::create_dir_all(parent_dir)?;
+
+    let key = format!("{}", Path::new(s3_prefix).join(s3_suffix).display());
+    let dest_path = format!("{}", dest_path.display());
+
+    if transparent_decompress {
+        crate::download_with_transparent_decompression(s3, bucket, &key, &dest_path).await?;
+    } else {
+        crate::download(s3, bucket, &key, &dest_path).await?;
+    }
 
     Ok(())
 }
