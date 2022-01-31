@@ -316,7 +316,7 @@ fn create_stream_for_chunk<R>(
     reader: Arc<Mutex<R>>,
     file_size: u64,
     chunk_number: u64,
-) -> (u64, impl Stream<Item = Result<Bytes>>)
+) -> ByteStream
 where
     R: AsyncRead + AsyncSeek + Send + Unpin + 'static,
 {
@@ -325,9 +325,7 @@ where
 
     // The total amount to read for this chunk
     let to_read = u64::min(file_size - (chunk_size * chunk_number), chunk_size);
-
     let init_state = (to_read, /* part_number = */ 0, reader);
-
     let stream = Box::pin(stream::try_unfold(
         init_state,
         move |(remaining, part_number, reader)| async move {
@@ -355,8 +353,8 @@ where
             }
         },
     ));
-
-    (to_read, stream)
+    let stream = stream.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err));
+    ByteStream::new_with_size(stream, to_read as usize)
 }
 
 async fn upload_request_stream<'a, T, R>(
@@ -380,16 +378,11 @@ where
     })
     .map(move |(reader, req)| async move {
         let res = handle_dispatch_error(|| async {
-            let (chunk_size, chunk_stream) = create_stream_for_chunk(
+            let body = create_stream_for_chunk(
                 reader.clone(),
                 file_size,
                 (req.part_number - 1).try_into().expect("Part number < 0"),
             );
-
-            let chunk_stream =
-                chunk_stream.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err));
-            let body = ByteStream::new_with_size(chunk_stream, chunk_size as usize);
-
             s3.upload_part(UploadPartRequest {
                 bucket: req.bucket.clone(),
                 key: req.key.clone(),
