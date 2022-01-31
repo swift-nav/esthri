@@ -663,7 +663,7 @@ where
     let dest_path = local_dir.join(s3_suffix);
 
     let parent_dir = dest_path.parent().ok_or(Error::ParentDirNone)?;
-    std::fs::create_dir_all(parent_dir)?;
+    fs::create_dir_all(parent_dir).await?;
 
     let key = format!("{}", Path::new(s3_prefix).join(s3_suffix).display());
     let dest_path = format!("{}", dest_path.display());
