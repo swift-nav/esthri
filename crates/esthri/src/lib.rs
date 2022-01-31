@@ -18,7 +18,6 @@ pub mod blocking;
 pub mod errors;
 pub mod rusoto;
 
-pub(crate) mod bufferpool;
 pub(crate) mod compression;
 pub(crate) mod tempfile;
 pub(crate) mod types;

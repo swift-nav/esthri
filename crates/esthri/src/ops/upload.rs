@@ -10,20 +10,20 @@
  * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-use std::{borrow::Cow, collections::HashMap, path::Path};
+use std::convert::TryInto;
+use std::{borrow::Cow, collections::HashMap, io::SeekFrom, path::Path, sync::Arc};
 
 use bytes::{Bytes, BytesMut};
 use futures::{future, stream, Future, Stream, StreamExt, TryStreamExt};
 use log::{debug, info, warn};
 use log_derive::logfn;
-use parking_lot::Mutex;
 use tokio::{
     fs::File,
-    io::{AsyncRead, AsyncReadExt},
+    io::{AsyncRead, AsyncReadExt, AsyncSeek, AsyncSeekExt},
+    sync::Mutex,
 };
 
 use crate::{
-    bufferpool::{Buffer, Pool},
     compression::compress_to_tempfile,
     config::Config,
     errors::{Error, Result},
@@ -31,7 +31,8 @@ use crate::{
     rusoto::*,
 };
 
-static PENDING_UPLOADS: Mutex<Vec<PendingUpload>> = parking_lot::const_mutex(Vec::new());
+static PENDING_UPLOADS: parking_lot::Mutex<Vec<PendingUpload>> =
+    parking_lot::const_mutex(Vec::new());
 
 #[derive(Clone)]
 pub struct PendingUpload {
@@ -151,7 +152,7 @@ pub async fn upload_from_reader<T, R>(
 ) -> Result<()>
 where
     T: S3,
-    R: AsyncRead,
+    R: AsyncRead + AsyncSeek + Unpin + Send + 'static,
 {
     let (bucket, key) = (bucket.as_ref(), key.as_ref());
     info!(
@@ -188,11 +189,12 @@ where
             s3,
             bucket,
             key,
-            tmp.file_mut(),
+            tmp.take_file(),
             size,
             Some(crate::compression::compressed_file_metadata()),
         )
-        .await
+        .await?;
+        Ok(())
     } else {
         let f = File::open(path).await?;
         let size = f.metadata().await?.len();
@@ -272,7 +274,7 @@ async fn multipart_upload<T, R>(
 ) -> Result<()>
 where
     T: S3,
-    R: AsyncRead,
+    R: AsyncRead + AsyncSeek + Unpin + Send + 'static,
 {
     let upload_id = create_multipart_upload(s3, bucket, key, metadata)
         .await?
@@ -282,7 +284,6 @@ where
     add_pending(PendingUpload::new(bucket, key, &upload_id));
 
     let completed_parts = {
-        futures::pin_mut!(reader);
         let mut parts: Vec<_> = upload_request_stream(
             s3,
             bucket,
@@ -306,6 +307,56 @@ where
     Ok(())
 }
 
+// Creates a stream of smaller chunks for a larger chunk of data. This
+// is to reduce memory usage when uploading, as we currently do
+// multipart uploads of 8MB. Giving the rusuto uploading a stream that
+// it can consume causes less memory to be used than giving it whole 8MB
+// chunks as there is less data waiting around to be uploaded.
+fn create_stream_for_chunk<R>(
+    reader: Arc<Mutex<R>>,
+    file_size: u64,
+    chunk_number: u64,
+) -> ByteStream
+where
+    R: AsyncRead + AsyncSeek + Send + Unpin + 'static,
+{
+    let chunk_size = Config::global().upload_part_size();
+    let read_part_size = Config::global().upload_read_size();
+
+    // The total amount to read for this chunk
+    let to_read = u64::min(file_size - (chunk_size * chunk_number), chunk_size);
+    let init_state = (to_read, /* part_number = */ 0, reader);
+    let stream = Box::pin(stream::try_unfold(
+        init_state,
+        move |(remaining, part_number, reader)| async move {
+            if remaining == 0 {
+                Ok(None)
+            } else {
+                let read_size = u64::min(remaining, read_part_size);
+                let mut buf = BytesMut::with_capacity(read_size as usize);
+                buf.resize(read_size as usize, 0);
+                {
+                    let mut guard = reader.lock().await;
+                    let seek = chunk_size * chunk_number + part_number * read_part_size;
+                    guard.seek(SeekFrom::Start(seek)).await?;
+                    let slice = buf.as_mut();
+                    guard.read_exact(&mut slice[..read_size as usize]).await?;
+                }
+                if read_size == 0 {
+                    Err(Error::ReadZero)
+                } else {
+                    Ok(Some((
+                        buf.freeze(),
+                        (remaining - read_size, part_number + 1, reader),
+                    )))
+                }
+            }
+        },
+    ));
+    let stream = stream.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err));
+    ByteStream::new_with_size(stream, to_read as usize)
+}
+
 async fn upload_request_stream<'a, T, R>(
     s3: &'a T,
     bucket: &'a str,
@@ -317,41 +368,43 @@ async fn upload_request_stream<'a, T, R>(
 ) -> impl Stream<Item = impl Future<Output = Result<CompletedPart>> + 'a> + 'a
 where
     T: S3,
-    R: AsyncRead + Unpin + 'a,
+    R: AsyncRead + AsyncSeek + Unpin + Send + 'static,
 {
     let reqs = upload_part_requests(bucket, key, upload_id, file_size, part_size);
-    let chunks = read_file_parts(reader, file_size, part_size);
-    reqs.zip(chunks).map(move |(req, chunk)| async move {
-        match chunk {
-            Ok(chunk) => {
-                let chunk = chunk.freeze();
-                let res = handle_dispatch_error(|| async {
-                    let into_byte_stream = into_byte_stream(chunk.clone());
-                    s3.upload_part(UploadPartRequest {
-                        bucket: req.bucket.clone(),
-                        key: req.key.clone(),
-                        upload_id: req.upload_id.clone(),
-                        part_number: req.part_number,
-                        content_length: req.content_length,
-                        body: Some(into_byte_stream),
-                        ..Default::default()
-                    })
-                    .await
-                })
-                .await?;
-                if res.e_tag.is_none() {
-                    warn!(
-                        "upload_part e_tag was not present (part_number: {})",
-                        req.part_number,
-                    )
-                }
-                Ok(CompletedPart {
-                    e_tag: res.e_tag,
-                    part_number: Some(req.part_number),
-                })
-            }
-            Err(e) => Err(e),
+    let shared_reader = Arc::new(Mutex::new(reader));
+    reqs.map(move |req| {
+        let reader = shared_reader.clone();
+        (reader, req)
+    })
+    .map(move |(reader, req)| async move {
+        let res = handle_dispatch_error(|| async {
+            let body = create_stream_for_chunk(
+                reader.clone(),
+                file_size,
+                (req.part_number - 1).try_into().expect("Part number < 0"),
+            );
+            s3.upload_part(UploadPartRequest {
+                bucket: req.bucket.clone(),
+                key: req.key.clone(),
+                upload_id: req.upload_id.clone(),
+                part_number: req.part_number,
+                content_length: req.content_length,
+                body: Some(body),
+                ..Default::default()
+            })
+            .await
+        })
+        .await?;
+        if res.e_tag.is_none() {
+            warn!(
+                "upload_part e_tag was not present (part_number: {})",
+                req.part_number,
+            )
         }
+        Ok(CompletedPart {
+            e_tag: res.e_tag,
+            part_number: Some(req.part_number),
+        })
     })
 }
 
@@ -380,27 +433,6 @@ fn upload_part_requests<'a>(
         ..Default::default()
     });
     stream::iter(requests)
-}
-
-fn read_file_parts<'a, R>(
-    reader: R,
-    file_size: u64,
-    part_size: u64,
-) -> impl Stream<Item = Result<Buffer<'static>>> + 'a
-where
-    R: AsyncRead + Unpin + 'a,
-{
-    stream::try_unfold((reader, 0), move |(mut reader, bytes_read)| async move {
-        if bytes_read == file_size {
-            Ok(None)
-        } else {
-            let read_size = (file_size - bytes_read).min(part_size);
-            let mut buf = Pool::global().get().await;
-            let slice = buf.as_mut();
-            reader.read_exact(&mut slice[..read_size as usize]).await?;
-            Ok(Some((buf, (reader, bytes_read + read_size))))
-        }
-    })
 }
 
 fn into_byte_stream(chunk: Bytes) -> ByteStream {

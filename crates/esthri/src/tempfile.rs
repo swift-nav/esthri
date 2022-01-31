@@ -52,6 +52,10 @@ impl TempFile {
         self.file.as_mut().unwrap()
     }
 
+    pub fn take_file(&mut self) -> File {
+        self.file.take().unwrap()
+    }
+
     pub async fn take_std_file(&mut self) -> std::fs::File {
         self.file.take().unwrap().into_std().await
     }

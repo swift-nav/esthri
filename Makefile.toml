@@ -66,6 +66,7 @@ env = { RUST_LOG = "esthri=debug", RUST_BACKTRACE = "1" }
 command = "cargo"
 args = [
         "test",
+        "${@}",
         "--features=${TLS_PROVIDER},blocking",
         "--no-default-features",
         "@@remove-empty(BUILD_FLAVOR)",
