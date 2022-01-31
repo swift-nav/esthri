@@ -646,7 +646,6 @@ dependencies = [
  "flate2",
  "fs_extra",
  "futures",
- "futures-util",
  "glob",
  "hyper",
  "log",
