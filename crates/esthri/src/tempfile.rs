@@ -52,7 +52,7 @@ impl TempFile {
         self.file.as_mut().unwrap()
     }
 
-    pub fn get_file(&mut self) -> File {
+    pub fn take_file(&mut self) -> File {
         self.file.take().unwrap()
     }
 

@@ -189,7 +189,7 @@ where
             s3,
             bucket,
             key,
-            tmp.get_file(),
+            tmp.take_file(),
             size,
             Some(crate::compression::compressed_file_metadata()),
         )
