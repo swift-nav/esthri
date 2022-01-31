@@ -148,7 +148,7 @@ async fn test_stream_objects() {
 #[tokio::test]
 async fn test_list_directory() {
     let s3client = esthri_test::get_s3client();
-    let filename = "tests/data/test_file.txt".to_owned();
+    let filename = esthri_test::test_data("test_file.txt");
     let folder1 = "test_list_directory/folder1/file.txt".to_owned();
     let folder2 = "test_list_directory/folder2/file.txt".to_owned();
     let leaf = "test_list_directory/leaf.txt".to_owned();
