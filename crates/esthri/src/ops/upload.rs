@@ -284,7 +284,6 @@ where
     add_pending(PendingUpload::new(bucket, key, &upload_id));
 
     let completed_parts = {
-        // futures::pin_mut!(reader);
         let mut parts: Vec<_> = upload_request_stream(
             s3,
             bucket,
@@ -327,7 +326,7 @@ where
     // The total amount to read for this chunk
     let to_read = u64::min(file_size - (chunk_size * chunk_number), chunk_size);
 
-    let init_state = (to_read, /* part_number = */ 0, Some(reader));
+    let init_state = (to_read, /* part_number = */ 0, reader);
 
     let stream = Box::pin(stream::try_unfold(
         init_state,
@@ -336,39 +335,22 @@ where
                 Ok(None)
             } else {
                 let read_size = u64::min(remaining, read_part_size);
-
                 let mut buf = BytesMut::with_capacity(read_size as usize);
                 buf.resize(read_size as usize, 0);
-
-                let reader = reader.unwrap();
-
-                let result: Result<Bytes> = {
-                    let reader = reader.clone();
-                    let mut reader = reader.lock().await;
-                    let reader = &mut *reader;
-
+                {
+                    let mut guard = reader.lock().await;
                     let seek = chunk_size * chunk_number + part_number * read_part_size;
-                    reader.seek(SeekFrom::Start(seek)).await?;
-
+                    guard.seek(SeekFrom::Start(seek)).await?;
                     let slice = buf.as_mut();
-                    reader.read_exact(&mut slice[..read_size as usize]).await?;
-
-                    let body = buf.freeze();
-                    Ok(body)
-                };
-
-                match result {
-                    Ok(buf) => {
-                        if read_size == 0 {
-                            Err(Error::ReadZero)
-                        } else {
-                            Ok(Some((
-                                buf,
-                                (remaining - read_size, part_number + 1, Some(reader)),
-                            )))
-                        }
-                    }
-                    Err(err) => Err(err),
+                    guard.read_exact(&mut slice[..read_size as usize]).await?;
+                }
+                if read_size == 0 {
+                    Err(Error::ReadZero)
+                } else {
+                    Ok(Some((
+                        buf.freeze(),
+                        (remaining - read_size, part_number + 1, reader),
+                    )))
                 }
             }
         },
