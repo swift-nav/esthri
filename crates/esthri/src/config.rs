@@ -10,8 +10,6 @@
  * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-#![cfg_attr(feature = "aggressive_lint", deny(warnings))]
-
 //! Configuration module for the library, allows sizing of internal concurrent task counts,
 //! multipart upload sizes and read buffer sizes, among other things.
 
