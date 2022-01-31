@@ -413,7 +413,7 @@ where
                 key: req.key.clone(),
                 upload_id: req.upload_id.clone(),
                 part_number: req.part_number,
-                //content_length: req.content_length,
+                content_length: req.content_length,
                 body: Some(body),
                 ..Default::default()
             })
