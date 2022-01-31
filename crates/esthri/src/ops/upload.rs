@@ -14,14 +14,13 @@ use std::convert::TryInto;
 use std::{borrow::Cow, collections::HashMap, io::SeekFrom, path::Path, sync::Arc};
 
 use bytes::{Bytes, BytesMut};
-use futures::lock::Mutex as stdMutex;
 use futures::{future, stream, Future, Stream, StreamExt, TryStreamExt};
 use log::{debug, info, warn};
 use log_derive::logfn;
-use parking_lot::Mutex;
 use tokio::{
     fs::File,
     io::{AsyncRead, AsyncReadExt, AsyncSeek, AsyncSeekExt},
+    sync::Mutex,
 };
 
 use crate::{
@@ -32,7 +31,8 @@ use crate::{
     rusoto::*,
 };
 
-static PENDING_UPLOADS: Mutex<Vec<PendingUpload>> = parking_lot::const_mutex(Vec::new());
+static PENDING_UPLOADS: parking_lot::Mutex<Vec<PendingUpload>> =
+    parking_lot::const_mutex(Vec::new());
 
 #[derive(Clone)]
 pub struct PendingUpload {
@@ -314,7 +314,7 @@ where
 // it can consume causes less memory to be used than giving it whole 8MB
 // chunks as there is less data waiting around to be uploaded.
 fn create_stream_for_chunk<R>(
-    reader: Arc<stdMutex<R>>,
+    reader: Arc<Mutex<R>>,
     file_size: u64,
     chunk_number: u64,
 ) -> (u64, impl Stream<Item = Result<Bytes>>)
@@ -391,7 +391,7 @@ where
     R: AsyncRead + AsyncSeek + Unpin + Send + 'static,
 {
     let reqs = upload_part_requests(bucket, key, upload_id, file_size, part_size);
-    let shared_reader = Arc::new(stdMutex::new(reader));
+    let shared_reader = Arc::new(Mutex::new(reader));
     reqs.map(move |req| {
         let reader = shared_reader.clone();
         (reader, req)
@@ -406,7 +406,7 @@ where
 
             let chunk_stream =
                 chunk_stream.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err));
-            let body: StreamingBody = ByteStream::new_with_size(chunk_stream, chunk_size as usize);
+            let body = ByteStream::new_with_size(chunk_stream, chunk_size as usize);
 
             s3.upload_part(UploadPartRequest {
                 bucket: req.bucket.clone(),

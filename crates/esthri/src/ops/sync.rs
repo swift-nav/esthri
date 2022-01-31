@@ -334,7 +334,6 @@ where
                     let f = File::open(&*filepath).await?;
                     let reader = BufReader::new(f);
                     let size = fs::metadata(&*filepath).await?.len();
-                    //upload
                     upload_from_reader(&s3, bucket, remote_path, reader, size, metadata).await?;
                 } else {
                     debug!(
