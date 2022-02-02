@@ -35,6 +35,8 @@ pub const CONCURRENT_COMPRESSED_DOWNLOADER_TASKS: u16 = 2;
 pub const CONCURRENT_WRITER_TASKS: u16 = 64;
 /// The default number of concurrent tasks run when running a sync operation
 pub const CONCURRENT_SYNC_TASKS: u16 = 16;
+/// The default number of times to retry a request if it fails with a transient error.
+pub const REQUEST_RETRIES: u16 = 5;
 
 /// Holds configuration information for the library.
 #[derive(Debug, Deserialize)]
@@ -55,6 +57,8 @@ pub struct Config {
     concurrent_writer_tasks: ConcurrentWriterTasks,
     #[serde(default)]
     concurrent_sync_tasks: ConcurrentSyncTasks,
+    #[serde(default)]
+    request_retries: RequestRetries,
 }
 
 /// Wrapper type for [UPLOAD_PART_SIZE] which allows [Config::upload_part_size()] to bind a default
@@ -153,6 +157,18 @@ impl Default for ConcurrentSyncTasks {
     }
 }
 
+/// Wrapper type for [REQUEST_RETRIES] which allows [Config::request_retries()] to bind
+/// a default value.
+#[derive(Debug, Deserialize)]
+#[serde(transparent)]
+struct RequestRetries(u16);
+
+impl Default for RequestRetries {
+    fn default() -> Self {
+        RequestRetries(REQUEST_RETRIES)
+    }
+}
+
 static CONFIG: OnceCell<Config> = OnceCell::new();
 
 const EXPECT_GLOBAL_CONFIG: &str = "failed to parse config from environment";
@@ -167,6 +183,7 @@ impl Config {
     /// - `ESTHRI_DOWNLOAD_BUFFER_SIZE` - [Config::download_buffer_size()]
     /// - `ESTHRI_CONCURRENT_DOWNLOADER_TASKS` - [Config::concurrent_downloader_tasks()]
     /// - `ESTHRI_CONCURRENT_WRITER_TASKS` - [Config::concurrent_writer_tasks()]
+    /// - `ESTHRI_REQUEST_RETRIES` - [Config::request_retries()]
     pub fn global() -> &'static Config {
         CONFIG.get_or_init(|| {
             envy::prefixed("ESTHRI_")
@@ -223,5 +240,11 @@ impl Config {
     /// [CONCURRENT_SYNC_TASKS].
     pub fn concurrent_sync_tasks(&self) -> usize {
         self.concurrent_sync_tasks.0 as usize
+    }
+
+    /// The number of times to retry a request before giving up.  Defaults to
+    /// [REQUEST_RETRIES].
+    pub fn request_retries(&self) -> usize {
+        self.request_retries.0 as usize
     }
 }
