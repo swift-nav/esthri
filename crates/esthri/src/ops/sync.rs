@@ -29,6 +29,7 @@ use crate::{
     errors::{Error, Result},
     handle_dispatch_error, list_objects_stream,
     rusoto::*,
+    tempfile::TEMP_FILE_PREFIX,
     types::ListingMetadata,
     types::{S3ListingItem, S3PathParam},
 };
@@ -177,6 +178,9 @@ fn create_dirent_stream<'a>(
                 yield Err(entry.err().unwrap().into());
                 return;
             };
+            if entry.file_name().to_string_lossy().contains(TEMP_FILE_PREFIX) {
+                continue;
+            }
             let metadata = entry.metadata();
             let stat = if let Ok(stat) = metadata {
                 stat
