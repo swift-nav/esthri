@@ -11,7 +11,7 @@
  */
 
 use futures::Future;
-use log::warn;
+use log::{error, warn};
 use std::time::Duration;
 
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
@@ -37,15 +37,15 @@ where
 fn is_transient_err<E>(err: &RusotoError<E>) -> bool {
     match err {
         RusotoError::HttpDispatch(ref res) => {
-            warn!("Retrying S3 dispatch error {}", res);
+            warn!("Transient S3 dispatch error {}", res);
             true
         }
         RusotoError::Unknown(ref res) if res.status.is_server_error() => {
-            warn!("Retrying S3 server error: {}", res.body_as_str());
+            warn!("Transient S3 server error: {}", res.body_as_str());
             true
         }
         _ => {
-            warn!("Permanent error, not retrying");
+            error!("Permanent error, not retrying");
             false
         }
     }
