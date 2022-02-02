@@ -44,8 +44,6 @@ fn is_transient_err<E>(err: &RusotoError<E>) -> bool {
             warn!("Transient S3 server error: {}", res.body_as_str());
             true
         }
-        _ => {
-            false
-        }
+        _ => false,
     }
 }
