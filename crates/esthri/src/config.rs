@@ -22,19 +22,19 @@ pub const UPLOAD_PART_SIZE: u64 = 8 * 1024 * 1024;
 /// The default amount of data to read out of a file at a time.
 pub const UPLOAD_READ_SIZE: u64 = 1024 * 1024;
 /// The default number of concurrent tasks run when sending data to S3.
-pub const CONCURRENT_UPLOAD_TASKS: u16 = 16;
+pub const CONCURRENT_UPLOAD_TASKS: u16 = 8;
 /// When downloading or receiving data from S3, this sizes a task's download buffer.
 pub const DOWNLOAD_BUFFER_SIZE: usize = 8 * 1024 * 1024;
 /// The default number of concurrent tasks run when receiving data from S3.  Each task
 /// represents a connection to S3.
-pub const CONCURRENT_DOWNLOADER_TASKS: u16 = 32;
+pub const CONCURRENT_DOWNLOADER_TASKS: u16 = 8;
 /// The default number of concurrent tasks run when receiving compressed data
 /// from S3.  Each task represents a connection to S3.
 pub const CONCURRENT_COMPRESSED_DOWNLOADER_TASKS: u16 = 2;
 /// The default number of concurrent tasks run when writing download data to disk.
 pub const CONCURRENT_WRITER_TASKS: u16 = 64;
 /// The default number of concurrent tasks run when running a sync operation
-pub const CONCURRENT_SYNC_TASKS: u16 = 16;
+pub const CONCURRENT_SYNC_TASKS: u16 = 4;
 /// The default number of times to retry a request if it fails with a transient error.
 pub const REQUEST_RETRIES: u16 = 5;
 
