@@ -11,7 +11,7 @@
  */
 
 use futures::Future;
-use log::{error, warn};
+use log::warn;
 use std::time::Duration;
 
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
@@ -45,7 +45,6 @@ fn is_transient_err<E>(err: &RusotoError<E>) -> bool {
             true
         }
         _ => {
-            error!("Permanent error, not retrying");
             false
         }
     }
