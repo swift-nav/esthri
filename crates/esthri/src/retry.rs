@@ -42,7 +42,7 @@ fn is_transient_err<E>(err: &RusotoError<E>) -> bool {
         }
         RusotoError::Unknown(ref res) if res.status.is_server_error() => {
             warn!("Retrying S3 server error: {}", res.body_as_str());
-            false
+            true
         }
         _ => {
             warn!("Permanent error, not retrying");
