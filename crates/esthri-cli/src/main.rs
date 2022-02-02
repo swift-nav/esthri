@@ -466,7 +466,7 @@ fn setup_upload_termination_handler(s3: S3Client) {
         eprintln!("ctrl-c");
         for p in esthri::PendingUpload::all() {
             if let Err(e) = p.abort(&s3).await {
-                log::error!("failed to cancel multipart upload failed: {}", e);
+                log::error!("failed to cancel multipart upload: {}", e);
             }
         }
         info!("\ncancelled");
