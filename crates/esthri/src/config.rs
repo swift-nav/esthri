@@ -23,16 +23,9 @@ pub const UPLOAD_PART_SIZE: u64 = 8 * 1024 * 1024;
 pub const UPLOAD_READ_SIZE: u64 = 1024 * 1024;
 /// The default number of concurrent tasks run when sending data to S3.
 pub const CONCURRENT_UPLOAD_TASKS: u16 = 8;
-/// When downloading or receiving data from S3, this sizes a task's download buffer.
-pub const DOWNLOAD_BUFFER_SIZE: usize = 8 * 1024 * 1024;
 /// The default number of concurrent tasks run when receiving data from S3.  Each task
 /// represents a connection to S3.
 pub const CONCURRENT_DOWNLOADER_TASKS: u16 = 8;
-/// The default number of concurrent tasks run when receiving compressed data
-/// from S3.  Each task represents a connection to S3.
-pub const CONCURRENT_COMPRESSED_DOWNLOADER_TASKS: u16 = 2;
-/// The default number of concurrent tasks run when writing download data to disk.
-pub const CONCURRENT_WRITER_TASKS: u16 = 64;
 /// The default number of concurrent tasks run when running a sync operation
 pub const CONCURRENT_SYNC_TASKS: u16 = 4;
 /// The default number of times to retry a request if it fails with a transient error.
@@ -48,13 +41,7 @@ pub struct Config {
     #[serde(default)]
     concurrent_upload_tasks: ConcurrentUploadTasks,
     #[serde(default)]
-    download_buffer_size: DownloadBufferSize,
-    #[serde(default)]
     concurrent_downloader_tasks: ConcurrentDownloaderTasks,
-    #[serde(default)]
-    concurrent_compressed_downloader_tasks: ConcurrentCompressedDownloaderTasks,
-    #[serde(default)]
-    concurrent_writer_tasks: ConcurrentWriterTasks,
     #[serde(default)]
     concurrent_sync_tasks: ConcurrentSyncTasks,
     #[serde(default)]
@@ -109,42 +96,6 @@ impl Default for ConcurrentDownloaderTasks {
     }
 }
 
-/// Wrapper type for [CONCURRENT_COMPRESSED_DOWNLOADER_TASKS] which allows
-/// [Config::concurrent_compressed_downloader_tasks()] to bind a default value.
-#[derive(Debug, Deserialize)]
-#[serde(transparent)]
-struct ConcurrentCompressedDownloaderTasks(u16);
-
-impl Default for ConcurrentCompressedDownloaderTasks {
-    fn default() -> Self {
-        ConcurrentCompressedDownloaderTasks(CONCURRENT_COMPRESSED_DOWNLOADER_TASKS)
-    }
-}
-
-/// Wrapper type for [DOWNLOAD_BUFFER_SIZE] which allows [Config::download_buffer_size()] to bind a
-/// default value.
-#[derive(Debug, Deserialize)]
-#[serde(transparent)]
-struct DownloadBufferSize(usize);
-
-impl Default for DownloadBufferSize {
-    fn default() -> Self {
-        DownloadBufferSize(DOWNLOAD_BUFFER_SIZE)
-    }
-}
-
-/// Wrapper type for [CONCURRENT_WRITER_TASKS] which allows [Config::concurrent_writer_tasks()] to
-/// bind a default value.
-#[derive(Debug, Deserialize)]
-#[serde(transparent)]
-struct ConcurrentWriterTasks(u16);
-
-impl Default for ConcurrentWriterTasks {
-    fn default() -> Self {
-        ConcurrentWriterTasks(CONCURRENT_WRITER_TASKS)
-    }
-}
-
 /// Wrapper type for [CONCURRENT_SYNC_TASKS] which allows [Config::concurrent_sync_tasks()] to bind
 /// a default value.
 #[derive(Debug, Deserialize)]
@@ -178,11 +129,10 @@ impl Config {
     /// from the environment:
     ///
     /// - `ESTHRI_UPLOAD_PART_SIZE` - [Config::upload_part_size()]
+    /// - `ESTHRI_UPLOAD_READ_SIZE` - [Config::upload_read_size()]
+    /// - `ESTHRI_CONCURRENT_UPLOAD_TASKS` - [Config::concurrent_upload_tasks()]
     /// - `ESTHRI_CONCURRENT_DOWNLOADER_TASKS` - [Config::concurrent_downloader_tasks()]
-    /// - `ESTHRI_CONCURRENT_COMPRESSED_DOWNLOADER_TASKS` - [Config::concurrent_compressed_downloader_tasks()]
-    /// - `ESTHRI_DOWNLOAD_BUFFER_SIZE` - [Config::download_buffer_size()]
-    /// - `ESTHRI_CONCURRENT_DOWNLOADER_TASKS` - [Config::concurrent_downloader_tasks()]
-    /// - `ESTHRI_CONCURRENT_WRITER_TASKS` - [Config::concurrent_writer_tasks()]
+    /// - `ESTHRI_CONCURRENT_SYNC_TASKS` - [Config::concurrent_sync_tasks()]
     /// - `ESTHRI_REQUEST_RETRIES` - [Config::request_retries()]
     pub fn global() -> &'static Config {
         CONFIG.get_or_init(|| {
@@ -206,34 +156,16 @@ impl Config {
         self.upload_read_size.0
     }
 
-    /// The number of concurrent tasks run when sending data to S3.  Defautls to
+    /// The number of concurrent tasks run when sending data to S3.  Defaults to
     /// [CONCURRENT_UPLOAD_TASKS].
     pub fn concurrent_upload_tasks(&self) -> usize {
         self.concurrent_upload_tasks.0 as usize
-    }
-
-    /// When downloading or receiving data from S3, this sizes a task's download buffer.  Defaults
-    /// to [DOWNLOAD_BUFFER_SIZE].
-    pub fn download_buffer_size(&self) -> usize {
-        self.download_buffer_size.0
     }
 
     /// The number of concurrent tasks run when receiving data from S3.  Each task represents a
     /// connection to S3.  Defaults to [CONCURRENT_DOWNLOADER_TASKS].
     pub fn concurrent_downloader_tasks(&self) -> usize {
         self.concurrent_downloader_tasks.0 as usize
-    }
-
-    /// The number of concurrent tasks run when receiving compressed data from S3.  Each task
-    /// represents a connection to S3.  Defaults to [CONCURRENT_COMPRESSED_DOWNLOADER_TASKS].
-    pub fn concurrent_compressed_downloader_tasks(&self) -> usize {
-        self.concurrent_compressed_downloader_tasks.0 as usize
-    }
-
-    /// The number of concurrent tasks run when writing download data to disk.  Defaults to
-    /// [CONCURRENT_WRITER_TASKS].
-    pub fn concurrent_writer_tasks(&self) -> usize {
-        self.concurrent_writer_tasks.0 as usize
     }
 
     /// The number of concurrent tasks run when running a sync operation.  Defaults to
