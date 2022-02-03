@@ -10,7 +10,10 @@
  * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-use std::path::{Path, PathBuf};
+use std::{
+    borrow::Cow,
+    path::{Path, PathBuf},
+};
 
 use futures::{Future, Stream, StreamExt, TryStreamExt};
 use glob::Pattern;
@@ -481,8 +484,14 @@ fn flattened_object_listing<'a, ClientT>(
 where
     ClientT: S3 + Send + Clone,
 {
+    let prefix = if key.ends_with('/') {
+        Cow::Borrowed(key)
+    } else {
+        Cow::Owned(format!("{}/", key))
+    };
+
     async_stream::stream! {
-        let mut stream = list_objects_stream(s3, bucket, key);
+        let mut stream = list_objects_stream(s3, bucket, prefix);
         loop {
             let entries = match stream.try_next().await {
                 Ok(Some(entries)) => entries,
