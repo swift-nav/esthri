@@ -20,7 +20,6 @@ rustls = ["rusoto_core/rustls", "rusoto_s3/rustls", "hyper-rustls"]
 [dependencies]
 async-compression = { version = "0.3", features = ["gzip", "tokio"] }
 async-stream = "0.3"
-backoff = { version = "0.4", features = ["tokio"] }
 bytes = "1"
 chrono = "0.4"
 envy = "0.4"
@@ -44,6 +43,7 @@ thiserror = "1"
 tokio = { version = "1", features = ["fs", "io-util", "sync", "parking_lot"] }
 tokio-util = { version = "0.6", features = ["io"] }
 walkdir = "2"
+tokio-retry = "0.3"
 
 [dependencies.hyper-tls]
 version = "0.5"
