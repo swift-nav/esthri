@@ -5,6 +5,7 @@ default_to_workspace = false
 BUILD_FLAVOR = ""
 TLS_PROVIDER = "rustls"
 TARGET = ""
+WORKSPACE = "${CARGO_MAKE_WORKING_DIRECTORY}"
 
 [env.release]
 BUILD_FLAVOR = "--release"
@@ -21,33 +22,34 @@ TLS_PROVIDER = "nativetls"
 command = "cargo"
 args = [
         "check",
-        "--features=${TLS_PROVIDER},blocking,cli,http_server",
+        "--features=${TLS_PROVIDER},blocking",
         "@@remove-empty(BUILD_FLAVOR)",
         "@@remove-empty(TARGET)"
         ]
-cwd = "src/esthri"
+
+[tasks.lint]
+command = "cargo"
+args = ["clippy", "--no-default-features", "--features=${TLS_PROVIDER},aggressive_lint,blocking"]
 
 [tasks.build]
 command = "cargo"
 args = [
         "build",
-        "--features=${TLS_PROVIDER},blocking,cli,http_server",
+        "--features=${TLS_PROVIDER},blocking",
         "--no-default-features",
         "@@remove-empty(BUILD_FLAVOR)",
         "@@remove-empty(TARGET)"
         ]
-cwd = "src/esthri"
 
 [tasks.build-min-cli]
 command = "cargo"
 args = [
         "build",
-        "--features=${TLS_PROVIDER},aggressive_lint,cli",
+        "--features=${TLS_PROVIDER},aggressive_lint",
         "--no-default-features",
         "@@remove-empty(BUILD_FLAVOR)",
         "@@remove-empty(TARGET)"
         ]
-cwd = "src/esthri"
 
 [tasks.build-lib]
 command = "cargo"
@@ -58,15 +60,14 @@ args = [
         "@@remove-empty(BUILD_FLAVOR)",
         "@@remove-empty(TARGET)"
         ]
-cwd = "src/esthri"
 
 [tasks.test]
 env = { RUST_LOG = "esthri=debug", RUST_BACKTRACE = "1" }
-cwd = "src/esthri"
 command = "cargo"
 args = [
         "test",
-        "--features=${TLS_PROVIDER},blocking,cli,http_server",
+        "${@}",
+        "--features=${TLS_PROVIDER},blocking",
         "--no-default-features",
         "@@remove-empty(BUILD_FLAVOR)",
         "--",
@@ -75,7 +76,6 @@ args = [
 
 [tasks.test-min]
 env = { RUST_LOG = "esthri=debug", RUST_BACKTRACE = "1" }
-cwd = "src/esthri"
 command = "cargo"
 args = [
         "test",
@@ -85,8 +85,3 @@ args = [
         "--",
         "--nocapture"
         ]
-
-[tasks.lint]
-command = "cargo"
-cwd = "src/esthri"
-args = ["clippy", "--no-default-features", "--features=${TLS_PROVIDER},aggressive_lint,blocking,cli,http_server"]
