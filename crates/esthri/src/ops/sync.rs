@@ -40,7 +40,7 @@ use crate::{
 struct MappedPathResult {
     file_path: Box<dyn AsRef<Path>>,
     source_path: PathBuf,
-    local_etag: Result<String>,
+    local_etag: Result<Option<String>>,
     metadata: Option<ListingMetadata>,
 }
 
@@ -208,15 +208,17 @@ fn create_dirent_stream<'a>(
 }
 
 #[derive(Debug, Clone, Copy)]
-enum SyncCompressionDirection {
-    None,
+enum SyncDirection {
     Up,
+    UpCompressed,
     Down,
+
+    DownCompressed,
 }
 
 fn translate_paths<StreamT>(
     input_stream: StreamT,
-    compressed: SyncCompressionDirection,
+    compressed: SyncDirection,
 ) -> impl Stream<Item = impl Future<Output = MapPathResult>>
 where
     StreamT: Stream<Item = Result<(String, Option<ListingMetadata>)>>,
@@ -228,18 +230,30 @@ where
         let file_path: Box<dyn AsRef<Path>> = Box::new(path);
 
         let (file_path, source_path, local_etag) = match compressed {
-            SyncCompressionDirection::None => {
-                let local_etag = compute_etag(&source_path).await;
+            SyncDirection::Up => {
+                let local_etag = if metadata.is_some() {
+                    compute_etag(&source_path).await.map(Option::Some)
+                } else {
+                    Ok(None)
+                };
                 (file_path, source_path, local_etag)
             }
-            SyncCompressionDirection::Up => {
+            SyncDirection::UpCompressed => {
                 // If we're syncing up with compression, then everything
                 // should be compressed
                 let (tmp, _) = compress_to_tempfile(&source_path).await?;
-                let local_etag = compute_etag(tmp.path()).await;
+                let local_etag = if metadata.is_some() {
+                    compute_etag(&source_path).await.map(Option::Some)
+                } else {
+                    Ok(None)
+                };
                 (tmp.into_path(), source_path, local_etag)
             }
-            SyncCompressionDirection::Down => {
+            SyncDirection::Down => {
+                let local_etag = compute_etag(&source_path).await.map(Option::Some);
+                (file_path, source_path, local_etag)
+            }
+            SyncDirection::DownCompressed => {
                 // if we're syncing down with compression, then there
                 // could be both esthri compressed files and non
                 // compressed files within the prefix. We should only
@@ -257,11 +271,11 @@ where
                         // the local file to see if it matches with
                         // the compressed version
                         let (tmp, _) = compress_to_tempfile(&source_path).await?;
-                        let local_etag = compute_etag(tmp.path()).await;
+                        let local_etag = compute_etag(tmp.path()).await.map(Option::Some);
                         (file_path, source_path, local_etag)
                     }
                 } else {
-                    let local_etag = compute_etag(&source_path).await;
+                    let local_etag = compute_etag(&source_path).await.map(Option::Some);
                     (file_path, source_path, local_etag)
                 }
             }
@@ -305,7 +319,7 @@ where
                 file_path: filepath,
                 source_path,
                 local_etag,
-                ..
+                metadata: object_info,
             } = entry;
             let path = Path::new(&source_path);
             let remote_path = Path::new(&key);
@@ -324,7 +338,6 @@ where
             let remote_path = remote_path.to_string_lossy();
             debug!("checking remote: {}", remote_path);
             let local_etag = local_etag?;
-            let object_info = head_object_request(&s3, &bucket, &remote_path, None).await?;
             let metadata = if transparent_compression {
                 Some(crate::compression::compressed_file_metadata())
             } else {
@@ -333,6 +346,7 @@ where
 
             if let Some(object_info) = object_info {
                 let remote_etag = object_info.e_tag;
+                let local_etag = local_etag.unwrap();
                 if remote_etag != local_etag {
                     info!(
                         "etag mis-match: {}, remote_etag={}, local_etag={}",
@@ -372,11 +386,37 @@ where
 {
     let directory = directory.as_ref();
     let task_count = Config::global().concurrent_sync_tasks();
-    let dirent_stream = create_dirent_stream(directory, filters);
+
+    let dirent_stream = create_dirent_stream(directory, filters).and_then(|(filename, _)| async {
+        let path = Path::new(&filename);
+        let remote_path = Path::new(&key);
+        let stripped_path = match path.strip_prefix(&directory) {
+            Ok(result) => result,
+            Err(e) => {
+                unreachable!(
+                    "unexpected: failed to strip prefix: {}, {:?}, {:?}",
+                    e, &path, &directory
+                );
+            }
+        };
+        let remote_path = remote_path.join(&stripped_path);
+        let remote_path = remote_path.to_string_lossy();
+        match head_object_request(s3, bucket, &remote_path, None).await? {
+            Some(metadata) => {
+                let esthri_compressed = metadata.is_esthri_compressed();
+                Ok((
+                    filename,
+                    ListingMetadata::some(key.to_owned(), metadata.e_tag, esthri_compressed),
+                ))
+            }
+            None => Ok((filename, ListingMetadata::none())),
+        }
+    });
+
     let compression = if compressed {
-        SyncCompressionDirection::Up
+        SyncDirection::UpCompressed
     } else {
-        SyncCompressionDirection::None
+        SyncDirection::Up
     };
 
     let etag_stream = translate_paths(dirent_stream, compression).buffer_unordered(task_count);
@@ -577,7 +617,7 @@ where
                 } = entry;
                 let metadata = metadata.unwrap();
                 match local_etag {
-                    Ok(local_etag) => {
+                    Ok(Some(local_etag)) => {
                         if local_etag != metadata.e_tag {
                             debug!(
                                 "etag mismatch: {}, local etag={}, remote etag={}",
@@ -598,6 +638,7 @@ where
                             debug!("etag match: {}", source_path.display());
                         }
                     }
+                    Ok(None) => panic!("asdf"),
                     Err(err) => match err {
                         Error::ETagNotPresent => {
                             debug!("file did not exist locally: {}", source_path.display());
@@ -638,9 +679,9 @@ where
         flattened_object_listing(s3, bucket, key, directory, filters, transparent_decompress);
 
     let compression = if transparent_decompress {
-        SyncCompressionDirection::Down
+        SyncDirection::DownCompressed
     } else {
-        SyncCompressionDirection::None
+        SyncDirection::Down
     };
 
     let etag_stream = translate_paths(object_listing, compression).buffer_unordered(task_count);
