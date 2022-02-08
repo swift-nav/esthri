@@ -23,6 +23,7 @@ use tokio::{
     fs::{self, File},
     io::BufReader,
 };
+use tokio_stream::wrappers::UnboundedReceiverStream;
 use walkdir::WalkDir;
 
 use crate::{
@@ -169,42 +170,39 @@ fn process_globs<'a, P: AsRef<Path> + 'a>(path: P, filters: &[GlobFilter]) -> Op
     }
 }
 
-fn create_dirent_stream<'a>(
-    directory: &'a Path,
-    filters: &'a [GlobFilter],
-) -> impl Stream<Item = Result<(String, Option<ListingMetadata>)>> + 'a {
-    async_stream::stream! {
-        for entry in WalkDir::new(directory) {
-            let entry = if let Ok(entry) = entry {
-                entry
-            } else {
-                yield Err(entry.err().unwrap().into());
-                return;
-            };
-            if entry.file_name().to_string_lossy().contains(TEMP_FILE_PREFIX) {
-                continue;
-            }
-            let metadata = entry.metadata();
-            let stat = if let Ok(stat) = metadata {
-                stat
-            } else {
-                yield Err(metadata.err().unwrap().into());
-                return;
-            };
-            if stat.is_dir() {
-                continue;
-            }
-            if entry.path_is_symlink() {
-                warn!("symlinks are ignored");
-                continue;
-            }
-            let path = entry.path();
-            debug!("local path={}", path.display());
-            if process_globs(&path, filters).is_some() {
-                yield Ok((path.to_string_lossy().into(), ListingMetadata::none()));
+fn read_dir(directory: &Path, filters: &[GlobFilter]) -> impl Stream<Item = Result<PathBuf>> {
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    let walk_dir = WalkDir::new(directory);
+    let filters = filters.to_vec();
+    tokio::task::spawn_blocking(move || async move {
+        for entry in walk_dir {
+            match entry {
+                Ok(entry) => {
+                    if entry
+                        .file_name()
+                        .to_string_lossy()
+                        .contains(TEMP_FILE_PREFIX)
+                    {
+                        continue;
+                    }
+                    if entry.path_is_symlink() {
+                        warn!("symlinks are ignored");
+                        continue;
+                    }
+                    debug!("local path={}", entry.path().display());
+                    if process_globs(entry.path(), &filters).is_some() {
+                        tx.send(Ok(entry.into_path()))
+                            .expect("failed to send file path");
+                    }
+                }
+                Err(e) => {
+                    tx.send(Err(e.into())).expect("failed to send error");
+                    break;
+                }
             }
         }
-    }
+    });
+    UnboundedReceiverStream::new(rx)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -221,13 +219,11 @@ fn translate_paths<StreamT>(
     sync_cmd: SyncCmd,
 ) -> impl Stream<Item = impl Future<Output = MapPathResult>>
 where
-    StreamT: Stream<Item = Result<(String, Option<ListingMetadata>)>>,
+    StreamT: Stream<Item = Result<(PathBuf, Option<ListingMetadata>)>>,
 {
-    use std::str::FromStr;
     input_stream.map(move |params| async move {
-        let (path, metadata) = params?;
-        let source_path = PathBuf::from_str(&path)?;
-        let file_path: Box<dyn AsRef<Path>> = Box::new(path);
+        let (source_path, metadata) = params?;
+        let file_path: Box<dyn AsRef<Path>> = Box::new(source_path.clone());
 
         let (file_path, source_path, local_etag) = match sync_cmd {
             SyncCmd::Up => {
@@ -387,8 +383,7 @@ where
     let directory = directory.as_ref();
     let task_count = Config::global().concurrent_sync_tasks();
 
-    let dirent_stream = create_dirent_stream(directory, filters).and_then(|(filename, _)| async {
-        let path = Path::new(&filename);
+    let dirent_stream = read_dir(directory, filters).and_then(|path| async {
         let remote_path = Path::new(&key);
         let stripped_path = match path.strip_prefix(&directory) {
             Ok(result) => result,
@@ -405,11 +400,11 @@ where
             Some(metadata) => {
                 let esthri_compressed = metadata.is_esthri_compressed();
                 Ok((
-                    filename,
+                    path,
                     ListingMetadata::some(key.to_owned(), metadata.e_tag, esthri_compressed),
                 ))
             }
-            None => Ok((filename, ListingMetadata::none())),
+            None => Ok((path, ListingMetadata::none())),
         }
     });
 
@@ -520,7 +515,7 @@ fn flattened_object_listing<'a, ClientT>(
     directory: &'a Path,
     filters: &'a [GlobFilter],
     transparent_decompress: bool,
-) -> impl Stream<Item = Result<(String, Option<ListingMetadata>)>> + 'a
+) -> impl Stream<Item = Result<(PathBuf, Option<ListingMetadata>)>> + 'a
 where
     ClientT: S3 + Send + Clone,
 {
@@ -568,7 +563,7 @@ where
                 let path_result = Path::new(&entry.key).strip_prefix(key);
                 if let Ok(s3_suffix) = path_result {
                     if process_globs(&s3_suffix, filters).is_some() {
-                        let local_path: String = directory.join(&s3_suffix).to_string_lossy().into();
+                        let local_path = directory.join(&s3_suffix);
                         let s3_suffix = s3_suffix.to_string_lossy().into();
                         yield Ok((
                             local_path,
