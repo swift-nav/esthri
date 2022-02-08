@@ -208,7 +208,7 @@ fn create_dirent_stream<'a>(
 }
 
 #[derive(Debug, Clone, Copy)]
-enum SyncDirection {
+enum SyncCmd {
     Up,
     UpCompressed,
     Down,
@@ -218,7 +218,7 @@ enum SyncDirection {
 
 fn translate_paths<StreamT>(
     input_stream: StreamT,
-    compressed: SyncDirection,
+    sync_cmd: SyncCmd,
 ) -> impl Stream<Item = impl Future<Output = MapPathResult>>
 where
     StreamT: Stream<Item = Result<(String, Option<ListingMetadata>)>>,
@@ -229,8 +229,8 @@ where
         let source_path = PathBuf::from_str(&path)?;
         let file_path: Box<dyn AsRef<Path>> = Box::new(path);
 
-        let (file_path, source_path, local_etag) = match compressed {
-            SyncDirection::Up => {
+        let (file_path, source_path, local_etag) = match sync_cmd {
+            SyncCmd::Up => {
                 let local_etag = if metadata.is_some() {
                     compute_etag(&source_path).await.map(Option::Some)
                 } else {
@@ -238,7 +238,7 @@ where
                 };
                 (file_path, source_path, local_etag)
             }
-            SyncDirection::UpCompressed => {
+            SyncCmd::UpCompressed => {
                 // If we're syncing up with compression, then everything
                 // should be compressed
                 let (tmp, _) = compress_to_tempfile(&source_path).await?;
@@ -249,11 +249,11 @@ where
                 };
                 (tmp.into_path(), source_path, local_etag)
             }
-            SyncDirection::Down => {
+            SyncCmd::Down => {
                 let local_etag = compute_etag(&source_path).await.map(Option::Some);
                 (file_path, source_path, local_etag)
             }
-            SyncDirection::DownCompressed => {
+            SyncCmd::DownCompressed => {
                 // if we're syncing down with compression, then there
                 // could be both esthri compressed files and non
                 // compressed files within the prefix. We should only
@@ -413,13 +413,13 @@ where
         }
     });
 
-    let compression = if compressed {
-        SyncDirection::UpCompressed
+    let cmd = if compressed {
+        SyncCmd::UpCompressed
     } else {
-        SyncDirection::Up
+        SyncCmd::Up
     };
 
-    let etag_stream = translate_paths(dirent_stream, compression).buffer_unordered(task_count);
+    let etag_stream = translate_paths(dirent_stream, cmd).buffer_unordered(task_count);
     let sync_tasks = local_to_remote_sync_tasks(
         s3.clone(),
         bucket.into(),
@@ -678,13 +678,13 @@ where
     let object_listing =
         flattened_object_listing(s3, bucket, key, directory, filters, transparent_decompress);
 
-    let compression = if transparent_decompress {
-        SyncDirection::DownCompressed
+    let cmd = if transparent_decompress {
+        SyncCmd::DownCompressed
     } else {
-        SyncDirection::Down
+        SyncCmd::Down
     };
 
-    let etag_stream = translate_paths(object_listing, compression).buffer_unordered(task_count);
+    let etag_stream = translate_paths(object_listing, cmd).buffer_unordered(task_count);
     let sync_tasks = remote_to_local_sync_tasks(
         s3.clone(),
         bucket.into(),
