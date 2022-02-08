@@ -638,7 +638,6 @@ where
                             debug!("etag match: {}", source_path.display());
                         }
                     }
-                    Ok(None) => panic!("asdf"),
                     Err(err) => match err {
                         Error::ETagNotPresent => {
                             debug!("file did not exist locally: {}", source_path.display());
@@ -656,6 +655,7 @@ where
                             warn!("s3 etag error: {}", err);
                         }
                     },
+                    Ok(None) => warn!("no local etag"),
                 }
                 Ok(())
             },
