@@ -239,7 +239,7 @@ where
                 // should be compressed
                 let (tmp, _) = compress_to_tempfile(&source_path).await?;
                 let local_etag = if metadata.is_some() {
-                    compute_etag(&source_path).await.map(Option::Some)
+                    compute_etag(tmp.path()).await.map(Option::Some)
                 } else {
                     Ok(None)
                 };
