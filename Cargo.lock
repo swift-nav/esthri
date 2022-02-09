@@ -611,6 +611,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-retry",
+ "tokio-stream",
  "tokio-util",
  "walkdir",
 ]

@@ -44,6 +44,7 @@ tokio = { version = "1", features = ["fs", "io-util", "sync", "parking_lot"] }
 tokio-util = { version = "0.6", features = ["io"] }
 walkdir = "2"
 tokio-retry = "0.3"
+tokio-stream = "0.1"
 
 [dependencies.hyper-tls]
 version = "0.5"
