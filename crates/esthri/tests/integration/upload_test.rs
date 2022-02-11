@@ -10,7 +10,7 @@ fn test_upload() {
     let s3client = esthri_test::get_s3client();
     let filename = "test5mb.bin";
     let filepath = esthri_test::test_data(filename);
-    let s3_key = format!("test_upload/{}", filename);
+    let s3_key = esthri_test::randomised_name(&format!("test_upload/{}", filename));
 
     let res = esthri::blocking::upload(
         s3client.as_ref(),
@@ -35,7 +35,7 @@ fn test_upload_compressed() {
     let s3client = esthri_test::get_s3client();
     let filename = "27-185232-msg.csv";
     let filepath = esthri_test::test_data(filename);
-    let s3_key = format!("test_upload/{}", filename);
+    let s3_key = esthri_test::randomised_name(&format!("test_upload/{}", filename));
 
     let res = esthri::blocking::upload_compressed(
         s3client.as_ref(),
@@ -65,7 +65,7 @@ async fn test_upload_async() {
     let s3client = esthri_test::get_s3client();
     let filename = "test5mb.bin";
     let filepath = esthri_test::test_data(filename);
-    let s3_key = format!("test_upload/{}", filename);
+    let s3_key = esthri_test::randomised_name(&format!("test_upload/{}", filename));
 
     let res = upload(
         s3client.as_ref(),
@@ -81,7 +81,7 @@ async fn test_upload_async() {
 async fn test_upload_reader() {
     let s3client = esthri_test::get_s3client();
     let filename = "test_reader_upload.bin";
-    let filepath = format!("test_upload_reader/{}", filename);
+    let filepath = esthri_test::randomised_name(&format!("test_upload_reader/{}", filename));
     let contents = "file contents";
     let reader = Cursor::new(contents);
 
@@ -102,7 +102,7 @@ fn test_upload_zero_size() {
     let s3client = esthri_test::get_s3client();
     let filename = "test0b.bin";
     let filepath = esthri_test::test_data(filename);
-    let s3_key = format!("test_upload_zero_size/{}", filename);
+    let s3_key = esthri_test::randomised_name(&format!("test_upload_zero_size/{}", filename));
 
     let res = blocking::upload(
         s3client.as_ref(),

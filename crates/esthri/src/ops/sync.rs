@@ -174,7 +174,7 @@ fn read_dir(directory: &Path, filters: &[GlobFilter]) -> impl Stream<Item = Resu
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
     let walk_dir = WalkDir::new(directory);
     let filters = filters.to_vec();
-    tokio::task::spawn_blocking(move || async move {
+    tokio::task::spawn_blocking(move || {
         for entry in walk_dir {
             match entry {
                 Ok(entry) => {
@@ -183,6 +183,17 @@ fn read_dir(directory: &Path, filters: &[GlobFilter]) -> impl Stream<Item = Resu
                         .to_string_lossy()
                         .contains(TEMP_FILE_PREFIX)
                     {
+                        continue;
+                    }
+                    let metadata = entry.metadata();
+                    let stat = if let Ok(stat) = metadata {
+                        stat
+                    } else {
+                        tx.send(Err(metadata.err().unwrap().into()))
+                            .expect("failed to send error");
+                        return;
+                    };
+                    if stat.is_dir() {
                         continue;
                     }
                     if entry.path_is_symlink() {
