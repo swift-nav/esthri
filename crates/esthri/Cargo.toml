@@ -1,7 +1,7 @@
 [package]
 name = "esthri"
 description = "Extremely simple (memory stable) S3 client that supports get, put, head, list, and sync."
-version = "8.1.0"
+version = "8.1.1"
 authors = ["Swift Navigation <dev@swift-nav.com>"]
 edition = "2018"
 license = "MIT"
