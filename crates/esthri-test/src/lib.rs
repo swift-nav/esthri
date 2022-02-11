@@ -12,6 +12,7 @@ use tempdir::TempDir;
 
 use esthri::rusoto::*;
 use esthri::*;
+use uuid::Uuid;
 
 pub struct TestGlobal {
     s3client: Option<Arc<S3Client>>,
@@ -28,6 +29,10 @@ pub type DateTime = chrono::DateTime<chrono::Utc>;
 
 pub fn test_data(name: &str) -> PathBuf {
     test_data_dir().join(name)
+}
+
+pub fn randomised_name(name: &str) -> String {
+    format!("{}-{}", Uuid::new_v4(), name)
 }
 
 pub fn test_data_dir() -> PathBuf {
