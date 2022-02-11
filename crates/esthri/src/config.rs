@@ -30,7 +30,8 @@ pub const CONCURRENT_DOWNLOADER_TASKS: u16 = 8;
 pub const CONCURRENT_SYNC_TASKS: u16 = 4;
 /// The default number of times to retry a request if it fails with a transient error.
 pub const REQUEST_RETRIES: u16 = 5;
-
+/// The default number of concurrent tasks run when writing download data to disk.
+pub const CONCURRENT_WRITER_TASKS: u16 = 1;
 /// Holds configuration information for the library.
 #[derive(Debug, Deserialize)]
 pub struct Config {
@@ -46,6 +47,8 @@ pub struct Config {
     concurrent_sync_tasks: ConcurrentSyncTasks,
     #[serde(default)]
     request_retries: RequestRetries,
+    #[serde(default)]
+    concurrent_writer_tasks: ConcurrentWriterTasks,
 }
 
 /// Wrapper type for [UPLOAD_PART_SIZE] which allows [Config::upload_part_size()] to bind a default
@@ -120,6 +123,18 @@ impl Default for RequestRetries {
     }
 }
 
+/// Wrapper type for [CONCURRENT_WRITER_TASKS] which allows [Config::concurrent_writer_tasks()] to
+/// bind a default value.
+#[derive(Debug, Deserialize)]
+#[serde(transparent)]
+struct ConcurrentWriterTasks(u16);
+
+impl Default for ConcurrentWriterTasks {
+    fn default() -> Self {
+        ConcurrentWriterTasks(CONCURRENT_WRITER_TASKS)
+    }
+}
+
 static CONFIG: OnceCell<Config> = OnceCell::new();
 
 const EXPECT_GLOBAL_CONFIG: &str = "failed to parse config from environment";
@@ -134,6 +149,7 @@ impl Config {
     /// - `ESTHRI_CONCURRENT_DOWNLOADER_TASKS` - [Config::concurrent_downloader_tasks()]
     /// - `ESTHRI_CONCURRENT_SYNC_TASKS` - [Config::concurrent_sync_tasks()]
     /// - `ESTHRI_REQUEST_RETRIES` - [Config::request_retries()]
+    /// - `ESTHRI_CONCURRENT_WRITER_TASKS` - [Config::concurrent_writer_tasks(
     pub fn global() -> &'static Config {
         CONFIG.get_or_init(|| {
             envy::prefixed("ESTHRI_")
@@ -178,5 +194,11 @@ impl Config {
     /// [REQUEST_RETRIES].
     pub fn request_retries(&self) -> usize {
         self.request_retries.0 as usize
+    }
+
+    /// The number of concurrent tasks run when writing download data to disk.  Defaults to
+    /// [CONCURRENT_WRITER_TASKS].
+    pub fn concurrent_writer_tasks(&self) -> usize {
+        self.concurrent_writer_tasks.0 as usize
     }
 }

@@ -123,7 +123,7 @@ where
                 }
                 Result::Ok(())
             })
-            .try_buffer_unordered(Config::global().concurrent_downloader_tasks());
+            .try_buffer_unordered(Config::global().concurrent_writer_tasks());
         let _: () = stream.try_collect().await?;
     };
 
