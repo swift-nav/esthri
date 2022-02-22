@@ -19,13 +19,13 @@ pub struct TempFile {
 pub const TEMP_FILE_PREFIX: &str = ".esthri_temp";
 
 impl TempFile {
-    pub async fn new(dir: PathBuf, suffix: Option<&str>) -> Result<Self> {
+    pub async fn new(suffix: Option<&str>) -> Result<Self> {
         let suffix = suffix.unwrap_or_default().to_owned();
         let path = task::spawn_blocking(move || {
             let f = tempfile::Builder::new()
                 .prefix(TEMP_FILE_PREFIX)
                 .suffix(&suffix)
-                .tempfile_in(dir)?;
+                .tempfile()?;
             Result::Ok(f.into_temp_path())
         })
         .await??;

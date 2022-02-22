@@ -102,8 +102,8 @@ where
         obj_info.size,
         obj_info.parts * obj_info.size as u64
     );
-    let dir = init_download_dir(download_path).await?;
-    let mut dest = TempFile::new(dir, None).await?;
+    init_download_dir(download_path).await?;
+    let mut dest = TempFile::new(None).await?;
 
     if transparent_decompression && obj_info.is_esthri_compressed() {
         let stream = download_streaming_helper(s3, bucket, key, obj_info.parts);
@@ -175,7 +175,7 @@ where
         .map_ok(|res| (res.part, res.into_stream()))
 }
 
-async fn init_download_dir(path: &Path) -> Result<PathBuf> {
+async fn init_download_dir(path: &Path) -> Result<()> {
     let mut path = path.to_owned();
     tokio::task::spawn_blocking(move || {
         if !path.is_file() && !path.is_dir() {
@@ -191,11 +191,8 @@ async fn init_download_dir(path: &Path) -> Result<PathBuf> {
                 info!("Creating directory path {:?}", dir.as_os_str());
                 std::fs::create_dir_all(&dir)?;
             }
-            Ok(dir)
-        } else {
-            path.pop();
-            Ok(path)
         }
+        Ok(())
     })
     .await?
 }
