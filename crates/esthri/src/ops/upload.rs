@@ -458,8 +458,7 @@ fn format_key<'a>(key: &'a str, path: &Path) -> Result<Cow<'a, str>> {
     } else {
         let filename = path
             .file_name()
-            .map(|s| s.to_str())
-            .flatten()
+            .and_then(|s| s.to_str())
             .ok_or(Error::CouldNotParseS3Filename)?;
         Ok(Cow::Owned(format!("{}{}", key, filename)))
     }

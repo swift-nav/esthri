@@ -52,6 +52,14 @@ pub enum GlobFilter {
     Include(Pattern),
     Exclude(Pattern),
 }
+impl GlobFilter {
+    pub fn new_include_pattern(pattern: &str) -> Result<Self> {
+        Ok(GlobFilter::Include(Pattern::new(pattern)?))
+    }
+    pub fn new_exclude_pattern(pattern: &str) -> Result<Self> {
+        Ok(GlobFilter::Exclude(Pattern::new(pattern)?))
+    }
+}
 
 /// Syncs between S3 prefixes and local directories
 ///
@@ -740,6 +748,18 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_glob_filter_associated() {
+        let filters = vec![
+            GlobFilter::new_exclude_pattern("*-blah.csv").unwrap(),
+            GlobFilter::new_include_pattern("*.csv").unwrap(),
+        ];
+
+        assert!(process_globs("data.sbp", &filters[..]).is_none());
+        assert!(process_globs("yes.csv", &filters[..]).is_some());
+        assert!(process_globs("no-blah.csv", &filters[..]).is_none());
+    }
 
     #[test]
     fn test_process_globs() {
