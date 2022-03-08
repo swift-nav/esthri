@@ -576,7 +576,7 @@ dependencies = [
 
 [[package]]
 name = "esthri"
-version = "8.1.1"
+version = "8.1.2"
 dependencies = [
  "assert_cmd",
  "async-compression",
@@ -618,7 +618,7 @@ dependencies = [
 
 [[package]]
 name = "esthri-cli"
-version = "8.1.1"
+version = "8.1.2"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -654,7 +654,7 @@ dependencies = [
 
 [[package]]
 name = "esthri-test"
-version = "8.1.1"
+version = "8.1.2"
 dependencies = [
  "chrono",
  "env_logger",
