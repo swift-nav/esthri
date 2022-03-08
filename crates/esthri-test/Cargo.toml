@@ -1,6 +1,6 @@
 [package]
 name = "esthri-test"
-version = "8.1.1"
+version = "8.1.2"
 authors = ["Swift Navigation <dev@swift-nav.com>"]
 edition = "2018"
 license = "MIT"
