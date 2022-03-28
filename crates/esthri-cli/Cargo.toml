@@ -46,7 +46,7 @@ serde = "1"
 sluice = "0.5"
 structopt = "0.3"
 tokio = { version = "1.6", features = ["rt-multi-thread", "signal", "sync"] }
-tokio-util = { version = "0.7.0", features = ["compat", "codec"] }
+tokio-util = { version = "0.7.1", features = ["compat", "codec"] }
 warp = "0.3"
 
 [dev-dependencies]
