@@ -11,11 +11,11 @@
  */
 
 use std::{
-    borrow::Cow,
     cell::Cell,
     convert::Infallible,
     io::{self, ErrorKind},
     net::SocketAddr,
+    pin::Pin,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
@@ -23,9 +23,13 @@ use std::{
 };
 
 use anyhow::anyhow;
-use async_compression::tokio::bufread::GzipEncoder;
+
 use async_stream::stream;
-use async_tar::{Builder, Header};
+
+use async_zip::{
+    write::{EntryOptions, ZipFileWriter},
+    Compression,
+};
 use bytes::{Bytes, BytesMut};
 use futures::stream::{Stream, StreamExt, TryStreamExt};
 use hyper::header::CONTENT_ENCODING;
@@ -34,12 +38,12 @@ use maud::{html, Markup, DOCTYPE};
 use mime_guess::mime::{APPLICATION_OCTET_STREAM, TEXT_HTML_UTF_8};
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
-use sluice::{pipe, pipe::PipeWriter};
-use tokio::sync::oneshot;
-use tokio_util::{
-    codec::{BytesCodec, FramedRead},
-    compat::*,
+
+use tokio::{
+    io::{AsyncWrite, DuplexStream},
+    sync::oneshot,
 };
+use tokio_util::codec::{BytesCodec, FramedRead};
 use warp::{
     http::{
         self,
@@ -60,8 +64,8 @@ use esthri::rusoto::*;
 use esthri::HeadObjectInfo;
 use esthri::S3ListingItem;
 
-const ARCHIVE_ENTRY_MODE: u32 = 0o0644;
 const LAST_MODIFIED_TIME_FMT: &str = "%a, %d %b %Y %H:%M:%S GMT";
+const MAX_BUF_SIZE: usize = 1024 * 1024;
 
 #[derive(Deserialize)]
 struct DownloadParams {
@@ -263,22 +267,7 @@ pub async fn run(
     Ok(())
 }
 
-async fn abort_with_error(
-    archive: Option<&mut Builder<PipeWriter>>,
-    error_tracker: ErrorTrackerArc,
-    err: anyhow::Error,
-) {
-    let err = {
-        if let Some(archive) = archive {
-            if let Err(err) = archive.finish().await {
-                anyhow!(err).context("while closing the archive")
-            } else {
-                err
-            }
-        } else {
-            err
-        }
-    };
+async fn abort_with_error(error_tracker: ErrorTrackerArc, err: anyhow::Error) {
     ErrorTracker::record_error(error_tracker, err);
 }
 
@@ -286,38 +275,13 @@ async fn stream_object_to_archive<T: S3 + Send + Clone + Sync>(
     s3: &T,
     bucket: &str,
     path: &str,
-    archive: &mut Builder<PipeWriter>,
+    archive: &mut ZipFileWriter<DuplexStreamWrapper>,
     error_tracker: ErrorTrackerArc,
 ) -> bool {
-    let obj_info = match head_object(s3, bucket, path).await {
-        Ok(obj_info) => {
-            if let Some(obj_info) = obj_info {
-                obj_info
-            } else {
-                abort_with_error(
-                    Some(archive),
-                    error_tracker.clone(),
-                    anyhow!("object not found: {}", path),
-                )
-                .await;
-                return !error_tracker.has_error();
-            }
-        }
+    let stream = match download_streaming(s3, bucket, path, true).await {
+        Ok(byte_stream) => (byte_stream).map_err(into_io_error),
         Err(err) => {
             abort_with_error(
-                Some(archive),
-                error_tracker.clone(),
-                anyhow!(err).context("s3 head operation failed"),
-            )
-            .await;
-            return !error_tracker.has_error();
-        }
-    };
-    let stream = match download_streaming(s3, bucket, path).await {
-        Ok(byte_stream) => byte_stream.map_err(into_io_error),
-        Err(err) => {
-            abort_with_error(
-                Some(archive),
                 error_tracker.clone(),
                 anyhow!(err).context("s3 download failed"),
             )
@@ -325,32 +289,42 @@ async fn stream_object_to_archive<T: S3 + Send + Clone + Sync>(
             return !error_tracker.has_error();
         }
     };
-    let mut header = Header::new_gnu();
-    header.set_mode(ARCHIVE_ENTRY_MODE);
-    header.set_mtime(obj_info.last_modified.timestamp() as u64);
-    header.set_size(obj_info.size as u64);
-
-    // Appending the suffix to the path within the archive should
-    // hopefully make dealing with (transparently) compressed files less
-    // confusing
-    let path = if obj_info.is_esthri_compressed() {
-        Cow::Owned(format!("{}.gz", path))
-    } else {
-        Cow::Borrowed(path)
-    };
 
     let stream_reader = stream.into_async_read();
-    futures::pin_mut!(stream_reader);
-    if let Err(err) = archive
-        .append_data(&mut header, &*path, stream_reader)
-        .await
-    {
-        abort_with_error(
-            Some(archive),
-            error_tracker.clone(),
-            anyhow!(err).context("tar append failed"),
-        )
-        .await;
+    let mut stream_reader = tokio_util::compat::FuturesAsyncReadCompatExt::compat(stream_reader);
+
+    let options = EntryOptions::new(path.to_string(), Compression::Deflate);
+
+    match archive.write_entry_stream(options).await {
+        Ok(mut writer) => {
+            match tokio::io::copy(&mut stream_reader, &mut writer).await {
+                Ok(_) => {}
+                Err(err) => {
+                    abort_with_error(
+                        error_tracker.clone(),
+                        anyhow!(err).context("failed to write to archive"),
+                    )
+                    .await;
+                }
+            }
+            match writer.close().await {
+                Ok(_) => {}
+                Err(err) => {
+                    abort_with_error(
+                        error_tracker.clone(),
+                        anyhow!(err).context("failed to close archive"),
+                    )
+                    .await;
+                }
+            }
+        }
+        Err(err) => {
+            abort_with_error(
+                error_tracker.clone(),
+                anyhow!(err).context("tar append failed"),
+            )
+            .await;
+        }
     }
     !error_tracker.has_error()
 }
@@ -383,14 +357,44 @@ async fn create_error_monitor_stream<T: Stream<Item = io::Result<BytesMut>> + Un
     }
 }
 
+// Work around for https://github.com/Majored/rs-async-zip/issues/11 By default,
+// the writer calls shutdown on the Writer to finalize the compressed file. For
+// the duplex pipe, this causes the writer to no longer work so we work around
+// it by calling flush on shutdown instead.
+struct DuplexStreamWrapper(DuplexStream);
+impl AsyncWrite for DuplexStreamWrapper {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<Result<usize, io::Error>> {
+        Pin::new(&mut self.0).poll_write(cx, buf)
+    }
+
+    fn poll_flush(
+        mut self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), io::Error>> {
+        Pin::new(&mut self.0).poll_flush(cx)
+    }
+
+    fn poll_shutdown(
+        mut self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), io::Error>> {
+        Pin::new(&mut self.0).poll_flush(cx)
+    }
+}
+
 async fn create_archive_stream(
     s3: S3Client,
     bucket: String,
     prefixes: Vec<String>,
     error_tracker: ErrorTrackerArc,
 ) -> impl Stream<Item = io::Result<BytesMut>> {
-    let (tar_pipe_reader, tar_pipe_writer) = pipe::pipe();
-    let mut archive = Builder::new(tar_pipe_writer);
+    let (zip_reader, zip_writer) = tokio::io::duplex(MAX_BUF_SIZE);
+    let mut writer = ZipFileWriter::new(DuplexStreamWrapper(zip_writer));
+
     let error_tracker_reader = error_tracker.clone();
     tokio::spawn(async move {
         for prefix in prefixes {
@@ -406,7 +410,7 @@ async fn create_archive_stream(
                                 &s3,
                                 &bucket,
                                 &s3obj.key,
-                                &mut archive,
+                                &mut writer,
                                 error_tracker.clone(),
                             )
                             .await
@@ -420,15 +424,21 @@ async fn create_archive_stream(
                     }
                     Err(err) => {
                         let err = anyhow!(err).context("listing objects");
-                        abort_with_error(Some(&mut archive), error_tracker.clone(), err).await;
+                        abort_with_error(error_tracker.clone(), err).await;
                         break;
                     }
                 }
             }
         }
+        match writer.close().await {
+            Ok(_) => {}
+            Err(err) => {
+                let err = anyhow!(err).context("closing zip writer");
+                abort_with_error(error_tracker.clone(), err).await;
+            }
+        }
     });
-    let gzip = GzipEncoder::new(tar_pipe_reader.compat());
-    let framed_reader = FramedRead::new(gzip, BytesCodec::new());
+    let framed_reader = FramedRead::new(zip_reader, BytesCodec::new());
     create_error_monitor_stream(error_tracker_reader, framed_reader).await
 }
 
@@ -571,7 +581,9 @@ async fn create_item_stream(
     path: String,
 ) -> impl Stream<Item = esthri::Result<Bytes>> {
     stream! {
-        let mut stream = match download_streaming(&s3, &bucket, &path).await {
+        // We don't decompress the file here as it will be served with the
+        // correct content-encoding and be decompressed by the browser.
+        let mut stream = match download_streaming(&s3, &bucket, &path, false).await {
             Ok(byte_stream) => byte_stream,
             Err(err) => {
                 yield Err(err);
@@ -724,10 +736,10 @@ async fn download(
     let (body, resp_builder) = if params.archive.unwrap_or(false) {
         let (archive_filename, prefixes) = if !path.is_empty() && params.prefixes.is_none() {
             let archive_filename = sanitize_filename(path.clone());
-            (format!("{}.tgz", archive_filename), Some(vec![path]))
+            (format!("{}.zip", archive_filename), Some(vec![path]))
         } else if let Some(prefixes) = params.prefixes {
             if path.is_empty() {
-                let archive_filename = params.archive_name.unwrap_or_else(|| "archive.tgz".into());
+                let archive_filename = params.archive_name.unwrap_or_else(|| "archive.zip".into());
                 (sanitize_filename(archive_filename), Some(prefixes.prefixes))
             } else {
                 return Err(EsthriRejection::warp_rejection(
