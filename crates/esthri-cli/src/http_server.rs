@@ -321,7 +321,7 @@ async fn stream_object_to_archive<T: S3 + Send + Clone + Sync>(
         Err(err) => {
             abort_with_error(
                 error_tracker.clone(),
-                anyhow!(err).context("tar append failed"),
+                anyhow!(err).context("zip append failed"),
             )
             .await;
         }
