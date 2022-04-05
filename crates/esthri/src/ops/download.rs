@@ -69,6 +69,7 @@ where
     download_file(s3, bucket.as_ref(), key.as_ref(), file.as_ref(), true).await
 }
 
+#[logfn(err = "ERROR")]
 pub async fn download_streaming<'a, T>(
     s3: &'a T,
     bucket: &'a str,
@@ -76,7 +77,22 @@ pub async fn download_streaming<'a, T>(
     transparent_decompression: bool,
 ) -> Result<Pin<Box<dyn Stream<Item = Result<Bytes>> + Send + 'a>>>
 where
-    T: S3 + std::marker::Sync,
+    T: S3 + Sync,
+{
+    // This is a wrapper for download_streaming_internal just to satisfy the
+    // logfn macro, which seems to have issues with the two different stream
+    // types returned
+    download_streaming_internal(s3, bucket, key, transparent_decompression).await
+}
+
+async fn download_streaming_internal<'a, T>(
+    s3: &'a T,
+    bucket: &'a str,
+    key: &'a str,
+    transparent_decompression: bool,
+) -> Result<Pin<Box<dyn Stream<Item = Result<Bytes>> + Send + 'a>>>
+where
+    T: S3 + Sync,
 {
     let obj_info = head_object_request(s3, bucket, key, Some(1))
         .await?
