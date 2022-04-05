@@ -11,15 +11,17 @@
  */
 
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::sync::Arc;
 
+use async_compression::tokio::bufread::GzipDecoder as GzipDecoderReader;
 use async_compression::tokio::write::GzipDecoder;
 use bytes::Bytes;
 use futures::{stream, Stream, StreamExt, TryStreamExt};
 use log::info;
 use log_derive::logfn;
 use tokio::io;
-use tokio_util::io::StreamReader;
+use tokio_util::io::{ReaderStream, StreamReader};
 
 use crate::config::Config;
 use crate::errors::{Error, Result};
@@ -72,15 +74,42 @@ pub async fn download_streaming<'a, T>(
     s3: &'a T,
     bucket: &'a str,
     key: &'a str,
-) -> Result<impl Stream<Item = Result<Bytes>> + 'a>
+    transparent_decompression: bool,
+) -> Result<Pin<Box<dyn Stream<Item = Result<Bytes>> + Send + 'a>>>
 where
-    T: S3,
+    T: S3 + Sync,
+{
+    // This is a wrapper for download_streaming_internal just to satisfy the
+    // logfn macro, which seems to have issues with the two different stream
+    // types returned
+    download_streaming_internal(s3, bucket, key, transparent_decompression).await
+}
+
+async fn download_streaming_internal<'a, T>(
+    s3: &'a T,
+    bucket: &'a str,
+    key: &'a str,
+    transparent_decompression: bool,
+) -> Result<Pin<Box<dyn Stream<Item = Result<Bytes>> + Send + 'a>>>
+where
+    T: S3 + Sync,
 {
     let obj_info = head_object_request(s3, bucket, key, Some(1))
         .await?
         .ok_or_else(|| Error::GetObjectInvalidKey(key.to_owned()))?;
     let stream = download_streaming_helper(s3, bucket, key, obj_info.parts);
-    Ok(stream)
+
+    if obj_info.is_esthri_compressed() && transparent_decompression {
+        let src = StreamReader::new(stream);
+        let dest = GzipDecoderReader::new(src);
+        let reader = ReaderStream::new(dest);
+        Ok(Box::pin(futures::TryStreamExt::map_err(
+            reader,
+            Error::IoError,
+        )))
+    } else {
+        Ok(Box::pin(stream))
+    }
 }
 
 async fn download_file<T>(

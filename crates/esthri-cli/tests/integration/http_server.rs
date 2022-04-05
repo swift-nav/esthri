@@ -1,8 +1,8 @@
+use std::io::Cursor;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::{fs, io};
 
-use flate2::read::GzDecoder;
-use tar::Archive;
 use tokio::runtime::Runtime;
 
 use esthri::upload;
@@ -100,6 +100,25 @@ fn upload_test_data() -> anyhow::Result<()> {
     Ok(())
 }
 
+fn extract_zip_archive(mut archive: zip::ZipArchive<Cursor<&bytes::Bytes>>) -> anyhow::Result<()> {
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i)?;
+        let outpath = match file.enclosed_name() {
+            Some(path) => path.to_owned(),
+            None => continue,
+        };
+        if let Some(p) = outpath.parent() {
+            if !p.exists() {
+                fs::create_dir_all(&p)?;
+            }
+        }
+        let mut outfile = fs::File::create(&outpath)?;
+        io::copy(&mut file, &mut outfile)?;
+    }
+
+    Ok(())
+}
+
 fn validate_fetch_archive(
     body: bytes::Bytes,
     local_dir: &str,
@@ -107,10 +126,13 @@ fn validate_fetch_archive(
     upload_time: DateTime,
 ) {
     use std::path::Path;
-    let tar = GzDecoder::new(&body[..]);
-    let mut archive = Archive::new(tar);
+
+    let cursor = Cursor::new(&body);
+    let archive = zip::ZipArchive::new(cursor).expect("Error opening Zip");
     let _tmp_dir = esthri_test::EphemeralTempDir::pushd();
-    archive.unpack(".").unwrap();
+
+    extract_zip_archive(archive).expect("Error extracting Zip");
+
     validate_key_hash_pairs(local_dir, key_hash_pairs);
     for key_hash_pair in key_hash_pairs {
         let filename = Path::new(key_hash_pair.0);
@@ -257,10 +279,7 @@ fn test_fetch_archive_with_compressed_files() {
     assert!(res.is_ok());
 
     let key_hash_pairs: Vec<KeyHashPair> = vec![
-        KeyHashPair(
-            "index_compressed.html.gz",
-            "3f945ffd0cf39f07d927d8752526caad",
-        ),
+        KeyHashPair("index_compressed.html", "b4e3f354e8575e2fa5f489ab6078917c"),
         KeyHashPair(
             "index_notcompressed.html",
             "b4e3f354e8575e2fa5f489ab6078917c",
