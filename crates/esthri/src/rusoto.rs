@@ -203,6 +203,7 @@ where
             key: key.into(),
             acl: Some("bucket-owner-full-control".into()),
             metadata: metadata.as_ref().cloned(),
+            storage_class: Some("STANDARD_IA".into()),
             ..Default::default()
         };
 
