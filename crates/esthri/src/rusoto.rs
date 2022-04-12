@@ -26,6 +26,7 @@ pub use rusoto_s3::{
     GetObjectError, GetObjectOutput, GetObjectRequest, HeadObjectOutput, HeadObjectRequest,
     ListObjectsV2Request, PutObjectRequest, S3Client, StreamingBody, UploadPartRequest, S3,
 };
+use crate::S3StorageClass::*;
 
 /// The data returned from a head object request
 #[derive(Debug)]
@@ -95,6 +96,41 @@ where
         Ok(hoo) => HeadObjectInfo::from_head_object_output(hoo),
         Err(RusotoError::Unknown(err)) if err.status == 404 => Ok(None),
         Err(err) => Err(Error::HeadObjectFailure(err)),
+    }
+}
+
+
+pub enum S3StorageClass {
+    Standard,
+    StandardIA,
+    IntelligentTiering,
+    OneZoneIA,
+    GlacialInstantRetrieval,
+    GlacialFlexibleRetrieval,
+    GlacialDeepArchive,
+    RRS,
+}
+
+impl S3StorageClass {
+    pub fn to_enum(value: &str) -> S3StorageClass {
+        for i in [Standard, StandardIA, IntelligentTiering, OneZoneIA, GlacialInstantRetrieval, GlacialFlexibleRetrieval, GlacialDeepArchive, RRS] {
+            if i.value().unwrap().as_str() == value.to_uppercase().as_str() {
+                return i
+            }
+        }
+        StandardIA
+    }
+    pub fn value(&self) -> Option<String> {
+        match self {
+            Standard => Some("STANDARD".into()),
+            StandardIA => Some("STANDARD_IA".into()),
+            IntelligentTiering => Some("INTELLIGENT_TIERING".into()),
+            OneZoneIA => Some("ONEZONE_IA".into()),
+            GlacialInstantRetrieval => Some("GLACIER_IR".into()),
+            GlacialFlexibleRetrieval => Some("GLACIER".into()),
+            GlacialDeepArchive => Some("DEEP_ARCHIVE".into()),
+            RRS => Some("REDUCED_REDUNDANCY".into()),
+        }
     }
 }
 
@@ -188,6 +224,32 @@ where
     Ok(())
 }
 
+pub async fn multipart_upload_with_storage_class<T>(
+    s3: &T,
+    bucket: &str,
+    key: &str,
+    metadata: Option<HashMap<String, String>>,
+    storage_class: S3StorageClass
+) -> Result<rusoto_s3::CreateMultipartUploadOutput>
+    where
+        T: S3,
+{
+    handle_dispatch_error(|| async {
+        let cmur = CreateMultipartUploadRequest {
+            bucket: bucket.into(),
+            key: key.into(),
+            acl: Some("bucket-owner-full-control".into()),
+            metadata: metadata.as_ref().cloned(),
+            storage_class: storage_class.value(),
+            ..Default::default()
+        };
+
+        s3.create_multipart_upload(cmur).await
+    })
+        .await
+        .map_err(Error::CreateMultipartUploadFailed)
+}
+
 pub async fn create_multipart_upload<T>(
     s3: &T,
     bucket: &str,
@@ -197,17 +259,11 @@ pub async fn create_multipart_upload<T>(
 where
     T: S3,
 {
-    handle_dispatch_error(|| async {
-        let cmur = CreateMultipartUploadRequest {
-            bucket: bucket.into(),
-            key: key.into(),
-            acl: Some("bucket-owner-full-control".into()),
-            metadata: metadata.as_ref().cloned(),
-            ..Default::default()
-        };
-
-        s3.create_multipart_upload(cmur).await
-    })
-    .await
-    .map_err(Error::CreateMultipartUploadFailed)
+    multipart_upload_with_storage_class(
+        s3,
+        bucket,
+        key,
+        metadata,
+        StandardIA
+    ).await
 }
