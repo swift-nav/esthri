@@ -123,7 +123,7 @@ impl S3StorageClass {
             RRS,
         ] {
             if i.value().unwrap().as_str() == value.to_uppercase().as_str() {
-                i
+                return i;
             }
         }
         StandardIA
