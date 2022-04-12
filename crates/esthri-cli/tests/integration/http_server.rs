@@ -18,12 +18,14 @@ async fn test_fetch_object() {
     let bucket = esthri_test::TEST_BUCKET;
 
     let s3_key = "test_file.txt".to_owned();
+    let s3_storage_class = "STANDARD";
 
     let res = upload(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
         &s3_key,
         &filename,
+        s3_storage_class
     )
     .await;
     assert!(res.is_ok());
@@ -44,11 +46,14 @@ async fn upload_compressed_html_file() {
     let filename = esthri_test::test_data("index.html");
     let s3client = esthri_test::get_s3client();
     let s3_key = "index_compressed.html".to_owned();
+    let s3_storage_class = "STANDARD";
+
     let res = upload_compressed(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
         &s3_key,
         &filename,
+        s3_storage_class
     )
     .await;
     assert!(res.is_ok());
@@ -87,6 +92,8 @@ fn upload_test_data() -> anyhow::Result<()> {
     let local_directory = esthri_test::test_data("sync_up");
     let s3_key = "test_fetch_archive";
     let filenames = ["1-one.data", "2-two.bin", "3-three.junk"];
+    let s3_storage_class = "STANDARD";
+
     for filename in &filenames {
         let filepath = std::path::Path::new(&local_directory).join(filename);
         let s3_key = format!("{}/{}", s3_key, filename);
@@ -95,6 +102,7 @@ fn upload_test_data() -> anyhow::Result<()> {
             esthri_test::TEST_BUCKET,
             &s3_key,
             filepath.to_str().unwrap(),
+            s3_storage_class
         )?;
     }
     Ok(())
@@ -259,11 +267,14 @@ fn test_fetch_archive_with_compressed_files() {
     let filename = esthri_test::test_data("index.html");
     let s3client = esthri_test::get_s3client();
     let s3_key = format!("{}/{}", prefix, "index_compressed.html");
+    let s3_storage_class = "STANDARD";
+
     let res = blocking::upload_compressed(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
         &s3_key,
         &filename,
+        s3_storage_class
     );
     assert!(res.is_ok());
 
@@ -275,6 +286,7 @@ fn test_fetch_archive_with_compressed_files() {
         esthri_test::TEST_BUCKET,
         &s3_key,
         &filename,
+        s3_storage_class
     );
     assert!(res.is_ok());
 

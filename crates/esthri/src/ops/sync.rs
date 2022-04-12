@@ -80,6 +80,7 @@ pub async fn sync<T>(
     destination: S3PathParam,
     glob_filters: Option<&[GlobFilter]>,
     compressed: bool,
+    storage_class: &str,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
@@ -104,7 +105,7 @@ where
                 key
             );
 
-            sync_local_to_remote(s3, &bucket, &key, &path, &filters, compressed).await?;
+            sync_local_to_remote(s3, &bucket, &key, &path, &filters, compressed, storage_class).await?;
         }
         (S3PathParam::Bucket { bucket, key }, S3PathParam::Local { path }) => {
             info!(
@@ -312,6 +313,7 @@ fn local_to_remote_sync_tasks<ClientT, StreamT>(
     directory: PathBuf,
     dirent_stream: StreamT,
     transparent_compression: bool,
+    storage_class: String
 ) -> impl Stream<Item = impl Future<Output = Result<()>>>
 where
     ClientT: S3 + Send + Clone,
@@ -326,10 +328,11 @@ where
                 key.clone(),
                 directory.clone(),
                 entry.unwrap(),
+                storage_class.clone(),
             )
         })
         .map(move |clones| async move {
-            let (s3, bucket, key, directory, entry) = clones;
+            let (s3, bucket, key, directory, entry, storage_class) = clones;
             let MappedPathResult {
                 file_path: filepath,
                 source_path,
@@ -370,7 +373,7 @@ where
                     let f = File::open(&*filepath).await?;
                     let reader = BufReader::new(f);
                     let size = fs::metadata(&*filepath).await?.len();
-                    upload_from_reader(&s3, bucket, remote_path, reader, size, metadata).await?;
+                    upload_from_reader(&s3, bucket, remote_path, reader, size, metadata, storage_class).await?;
                 } else {
                     debug!(
                         "etags matched: {}, remote_etag={}, local_etag={}",
@@ -382,7 +385,7 @@ where
                 let f = File::open(&*filepath).await?;
                 let reader = BufReader::new(f);
                 let size = fs::metadata(&*filepath).await?.len();
-                upload_from_reader(&s3, bucket, remote_path, reader, size, metadata).await?;
+                upload_from_reader(&s3, bucket, remote_path, reader, size, metadata, storage_class).await?;
             }
             Ok(())
         })
@@ -395,6 +398,7 @@ async fn sync_local_to_remote<T>(
     directory: impl AsRef<Path>,
     filters: &[GlobFilter],
     compressed: bool,
+    storage_class: &str,
 ) -> Result<()>
 where
     T: S3 + Send + Clone,
@@ -441,6 +445,7 @@ where
         directory.into(),
         etag_stream,
         compressed,
+        storage_class.into()
     );
 
     sync_tasks

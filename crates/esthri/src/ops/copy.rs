@@ -24,6 +24,7 @@ pub async fn copy<T>(
     source: S3PathParam,
     destination: S3PathParam,
     transparent_compression: bool,
+    storage_class: &str,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
@@ -44,9 +45,9 @@ where
         S3PathParam::Local { path } => match destination {
             S3PathParam::Bucket { bucket, key } => {
                 if transparent_compression {
-                    upload_compressed(s3, bucket, key, path).await
+                    upload_compressed(s3, bucket, key, path, storage_class).await
                 } else {
-                    upload(s3, bucket, key, path).await
+                    upload(s3, bucket, key, path, storage_class).await
                 }
             }
             S3PathParam::Local { path: _ } => Err(Error::LocalToLocalCpNotImplementedError),

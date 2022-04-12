@@ -11,12 +11,14 @@ fn test_upload() {
     let filename = "test5mb.bin";
     let filepath = esthri_test::test_data(filename);
     let s3_key = esthri_test::randomised_name(&format!("test_upload/{}", filename));
+    let s3_storage_class = "STANDARD";
 
     let res = esthri::blocking::upload(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
         &s3_key,
         &filepath,
+        s3_storage_class,
     );
     assert!(res.is_ok());
 
@@ -36,12 +38,14 @@ fn test_upload_compressed() {
     let filename = "27-185232-msg.csv";
     let filepath = esthri_test::test_data(filename);
     let s3_key = esthri_test::randomised_name(&format!("test_upload/{}", filename));
+    let s3_storage_class = "STANDARD";
 
     let res = esthri::blocking::upload_compressed(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
         &s3_key,
         &filepath,
+        s3_storage_class
     );
     assert!(res.is_ok());
 
@@ -66,12 +70,14 @@ async fn test_upload_async() {
     let filename = "test5mb.bin";
     let filepath = esthri_test::test_data(filename);
     let s3_key = esthri_test::randomised_name(&format!("test_upload/{}", filename));
+    let s3_storage_class = "STANDARD";
 
     let res = upload(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
         &s3_key,
         &filepath,
+        s3_storage_class
     )
     .await;
     assert!(res.is_ok());
@@ -84,6 +90,7 @@ async fn test_upload_reader() {
     let filepath = esthri_test::randomised_name(&format!("test_upload_reader/{}", filename));
     let contents = "file contents";
     let reader = Cursor::new(contents);
+    let s3_storage_class = "STANDARD";
 
     let res = upload_from_reader(
         s3client.as_ref(),
@@ -92,6 +99,7 @@ async fn test_upload_reader() {
         reader,
         contents.len() as u64,
         None,
+        s3_storage_class
     )
     .await;
     assert!(res.is_ok());
@@ -103,12 +111,14 @@ fn test_upload_zero_size() {
     let filename = "test0b.bin";
     let filepath = esthri_test::test_data(filename);
     let s3_key = esthri_test::randomised_name(&format!("test_upload_zero_size/{}", filename));
+    let s3_storage_class = "STANDARD";
 
     let res = blocking::upload(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
         &s3_key,
         &filepath,
+        s3_storage_class
     );
     assert!(res.is_ok());
 }

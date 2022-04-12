@@ -128,6 +128,8 @@ enum EsthriCommand {
         key: String,
         /// The path of the local file to read
         file: PathBuf,
+        /// The storage class of file (defaults to STANDARD_IA)
+        storage_class: String
     },
     /// Download an object from S3
     Get {
@@ -260,8 +262,10 @@ async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
                     let compress =
                         compress || env::var("ESTHRI_AWS_COMPAT_MODE_COMPRESSION").is_ok();
 
+                    let storage_class = "STANDARD_IA";
+
                     if let Err(e) =
-                        esthri::copy(s3, source.clone(), destination.clone(), compress).await
+                        esthri::copy(s3, source.clone(), destination.clone(), compress, storage_class).await
                     {
                         match e {
                             esthri::Error::BucketToBucketCpNotImplementedError => {
@@ -307,12 +311,15 @@ async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
                     let compress =
                         compress || env::var("ESTHRI_AWS_COMPAT_MODE_COMPRESSION").is_ok();
 
+                    let storage_class = "STANDARD_IA";
+
                     esthri::sync(
                         s3,
                         source.clone(),
                         destination.clone(),
                         Some(&filters),
                         compress,
+                        storage_class
                     )
                     .await?;
                 }
@@ -381,11 +388,12 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
             ref key,
             ref file,
             compress,
+            ref storage_class,
         } => {
             if compress {
-                esthri::upload_compressed(s3, bucket, key, file).await?;
+                esthri::upload_compressed(s3, bucket, key, file, storage_class).await?;
             } else {
-                esthri::upload(s3, bucket, key, file).await?;
+                esthri::upload(s3, bucket, key, file, storage_class).await?;
             }
         }
 
@@ -432,12 +440,16 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
                 .subcommand_matches("sync")
                 .expect("Expected sync command");
             let filters = globs_to_filter_list(include, exclude, matches);
+
+            let storage_class = "STANDARD_IA";
+
             esthri::sync(
                 s3,
                 source.clone(),
                 destination.clone(),
                 filters.as_deref(),
                 transparent_compression,
+                storage_class
             )
             .await?;
         }

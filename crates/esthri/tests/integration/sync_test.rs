@@ -11,6 +11,7 @@ fn test_sync_down() {
     let s3client = esthri_test::get_s3client();
     let local_directory = esthri_test::test_data_dir();
     let s3_key = "test_folder/";
+    let s3_storage_class = "STANDARD";
 
     let filters: Option<Vec<GlobFilter>> = Some(vec![
         GlobFilter::Include(Pattern::new("*.txt").unwrap()),
@@ -26,6 +27,7 @@ fn test_sync_down() {
         destination,
         filters.as_deref(),
         false,
+        s3_storage_class
     );
     assert!(res.is_ok(), "s3_sync result: {:?}", res);
 }
@@ -35,6 +37,8 @@ async fn test_sync_down_async() {
     let s3client = esthri_test::get_s3client();
     let local_directory = esthri_test::test_data_dir();
     let s3_key = "test_folder/";
+    let s3_storage_class = "STANDARD";
+
     let filters: Option<Vec<GlobFilter>> = Some(vec![
         GlobFilter::Include(Pattern::new("*.txt").unwrap()),
         GlobFilter::Exclude(Pattern::new("*").unwrap()),
@@ -49,6 +53,7 @@ async fn test_sync_down_async() {
         destination,
         filters.as_deref(),
         false,
+        s3_storage_class
     )
     .await;
     assert!(res.is_ok(), "s3_sync result: {:?}", res);
@@ -59,6 +64,7 @@ fn test_sync_down_without_slash() {
     let s3client = esthri_test::get_s3client();
     let local_directory = esthri_test::test_data_dir();
     let s3_key = esthri_test::randomised_name("test_folder");
+    let s3_storage_class = "STANDARD";
     let filters: Option<Vec<GlobFilter>> = Some(vec![
         GlobFilter::Include(Pattern::new("*.txt").unwrap()),
         GlobFilter::Exclude(Pattern::new("*").unwrap()),
@@ -73,6 +79,7 @@ fn test_sync_down_without_slash() {
         destination,
         filters.as_deref(),
         false,
+        s3_storage_class
     );
     assert!(res.is_ok());
 }
@@ -82,6 +89,8 @@ fn test_sync_up_without_slash() {
     let s3client = esthri_test::get_s3client();
     let local_directory = esthri_test::test_data_dir();
     let s3_key = esthri_test::randomised_name("test_folder");
+    let s3_storage_class = "STANDARD";
+
     let filters: Option<Vec<GlobFilter>> = Some(vec![
         GlobFilter::Include(Pattern::new("*.txt").unwrap()),
         GlobFilter::Exclude(Pattern::new("*").unwrap()),
@@ -96,6 +105,7 @@ fn test_sync_up_without_slash() {
         destination,
         filters.as_deref(),
         false,
+        s3_storage_class
     );
     assert!(res.is_ok());
 }
@@ -105,6 +115,8 @@ fn test_sync_up() {
     let s3client = esthri_test::get_s3client();
     let local_directory = esthri_test::test_data_dir();
     let s3_key = esthri_test::randomised_name("test_folder/");
+    let s3_storage_class = "STANDARD";
+
     let filters: Option<Vec<GlobFilter>> = Some(vec![
         GlobFilter::Include(Pattern::new("*.txt").unwrap()),
         GlobFilter::Exclude(Pattern::new("*").unwrap()),
@@ -119,6 +131,7 @@ fn test_sync_up() {
         destination,
         filters.as_deref(),
         false,
+        s3_storage_class
     );
     assert!(res.is_ok());
 }
@@ -128,6 +141,7 @@ async fn test_sync_up_async() {
     let s3client = esthri_test::get_s3client();
     let local_directory = esthri_test::test_data_dir();
     let s3_key = esthri_test::randomised_name("test_folder/");
+    let s3_storage_class = "STANDARD";
     let filters: Option<Vec<GlobFilter>> = Some(vec![
         GlobFilter::Include(Pattern::new("*.txt").unwrap()),
         GlobFilter::Exclude(Pattern::new("*").unwrap()),
@@ -142,6 +156,7 @@ async fn test_sync_up_async() {
         destination,
         filters.as_deref(),
         false,
+        s3_storage_class
     )
     .await;
     assert!(res.is_ok());
@@ -152,11 +167,19 @@ fn test_sync_up_default() {
     let s3client = esthri_test::get_s3client();
     let local_directory = esthri_test::test_data("sync_up");
     let s3_key = esthri_test::randomised_name("test_sync_up_default/");
+    let s3_storage_class = "STANDARD";
 
     let source = S3PathParam::new_local(&local_directory);
     let destination = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, &s3_key);
 
-    let res = blocking::sync(s3client.as_ref(), source, destination, FILTER_EMPTY, false);
+    let res = blocking::sync(
+        s3client.as_ref(),
+        source,
+        destination,
+        FILTER_EMPTY,
+        false,
+        s3_storage_class
+    );
     assert!(res.is_ok());
 
     let key_hash_pairs = [
@@ -192,11 +215,19 @@ fn test_sync_down_default() {
     //     aws s3 cp --recursive test/data/sync_up s3://esthri-test/test_sync_down_default/
     //
     let s3_key = "test_sync_down_default/";
+    let s3_storage_class = "STANDARD";
 
     let source = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key);
     let destination = S3PathParam::new_local(&local_directory);
 
-    let res = blocking::sync(s3client.as_ref(), source, destination, FILTER_EMPTY, false);
+    let res = blocking::sync(
+        s3client.as_ref(),
+        source,
+        destination,
+        FILTER_EMPTY,
+        false,
+        s3_storage_class
+    );
     assert!(res.is_ok());
 
     let key_hash_pairs = [
@@ -215,6 +246,7 @@ fn test_sync_down_filter() {
     let local_dir = TempDir::new("esthri_cli").unwrap();
 
     let s3_key = "test_sync_down_default/";
+    let s3_storage_class = "STANDARD";
 
     let filters: Option<Vec<GlobFilter>> =
         Some(vec![GlobFilter::Exclude(Pattern::new("*.bin").unwrap())]);
@@ -228,6 +260,7 @@ fn test_sync_down_filter() {
         destination,
         filters.as_deref(),
         false,
+        s3_storage_class
     );
     assert!(res.is_ok());
 
@@ -250,6 +283,7 @@ async fn test_sync_across() {
 
     let source = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, source_prefix);
     let destination = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, dest_prefix);
+    let s3_storage_class = "STANDARD";
 
     let res = sync(
         s3client.as_ref(),
@@ -257,6 +291,7 @@ async fn test_sync_across() {
         destination,
         filters.as_deref(),
         false,
+        s3_storage_class
     )
     .await;
     assert!(res.is_ok(), "s3_sync result: {:?}", res);
@@ -265,6 +300,7 @@ async fn test_sync_across() {
 fn sync_test_files_up_compressed(s3client: &rusoto_s3::S3Client, s3_key: &str) -> String {
     let data_dir = esthri_test::test_data("sync_up/");
     let temp_data_dir = "sync_up_compressed/";
+    let s3_storage_class = "STANDARD";
     let old_cwd = std::env::current_dir().unwrap();
     let data_dir_fp = old_cwd.join(data_dir);
     eprintln!("{:?}", old_cwd);
@@ -276,7 +312,14 @@ fn sync_test_files_up_compressed(s3client: &rusoto_s3::S3Client, s3_key: &str) -
     fs_extra::dir::copy(data_dir_fp, temp_data_dir, &opts).unwrap();
     let source = S3PathParam::new_local(temp_data_dir);
     let destination = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key);
-    let res = blocking::sync(s3client, source, destination, FILTER_EMPTY, true);
+    let res = blocking::sync(
+        s3client,
+        source,
+        destination,
+        FILTER_EMPTY,
+        true,
+        s3_storage_class
+    );
     assert!(res.is_ok());
     s3_key.to_string()
 }
@@ -311,6 +354,7 @@ fn test_sync_up_compressed() {
 fn test_sync_down_compressed() {
     let s3client = esthri_test::get_s3client();
     let s3_key = esthri_test::randomised_name("test_sync_down_compressed_v7/");
+    let s3_storage_class = "STANDARD";
 
     sync_test_files_up_compressed(s3client.as_ref(), &s3_key);
 
@@ -329,6 +373,7 @@ fn test_sync_down_compressed() {
         destination,
         FILTER_EMPTY,
         true,
+        s3_storage_class
     );
     assert!(res.is_ok());
 
@@ -348,12 +393,14 @@ fn test_sync_down_compressed() {
 fn test_sync_down_compressed_mixed() {
     let s3client = esthri_test::get_s3client();
     let s3_key = esthri_test::randomised_name("test_sync_down_compressed_mixed_v7/");
+    let s3_storage_class = "STANDARD";
 
     blocking::upload(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
         &s3_key,
         esthri_test::test_data("index.html"),
+        s3_storage_class
     )
     .unwrap();
     blocking::upload_compressed(
@@ -361,6 +408,7 @@ fn test_sync_down_compressed_mixed() {
         esthri_test::TEST_BUCKET,
         &s3_key,
         esthri_test::test_data("test_file.txt"),
+        s3_storage_class
     )
     .unwrap();
 
@@ -383,6 +431,7 @@ fn test_sync_down_compressed_mixed() {
             destination,
             FILTER_EMPTY,
             false,
+            s3_storage_class
         );
         assert!(res.is_ok());
 
@@ -411,6 +460,7 @@ fn test_sync_down_compressed_mixed() {
             destination,
             FILTER_EMPTY,
             true,
+            s3_storage_class
         );
         assert!(res.is_ok());
 

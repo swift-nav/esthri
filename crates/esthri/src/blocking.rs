@@ -36,11 +36,12 @@ pub async fn upload<T>(
     bucket: impl AsRef<str>,
     key: impl AsRef<str>,
     file: impl AsRef<Path>,
+    storage_class: &str
 ) -> Result<()>
 where
     T: S3 + Send + Clone,
 {
-    crate::upload(s3, bucket, key, file).await
+    crate::upload(s3, bucket, key, file, storage_class).await
 }
 
 #[tokio::main]
@@ -49,11 +50,12 @@ pub async fn upload_compressed<T>(
     bucket: impl AsRef<str>,
     key: impl AsRef<str>,
     file: impl AsRef<Path>,
+    storage_class: &str
 ) -> Result<()>
 where
     T: S3 + Send + Clone,
 {
-    crate::upload_compressed(s3, bucket, key, file).await
+    crate::upload_compressed(s3, bucket, key, file, storage_class).await
 }
 
 #[tokio::main]
@@ -89,11 +91,12 @@ pub async fn sync<T>(
     destination: S3PathParam,
     filters: Option<&[GlobFilter]>,
     transparent_compression: bool,
+    storage_class: &str
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
 {
-    crate::sync(s3, source, destination, filters, transparent_compression).await
+    crate::sync(s3, source, destination, filters, transparent_compression, storage_class).await
 }
 
 #[tokio::main]

@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 use std::result::Result as StdResult;
 
 use regex::Regex;
+use crate::types::S3StorageClass::*;
 
 #[derive(Debug, Clone)]
 pub enum S3PathParam {
@@ -97,16 +98,24 @@ pub enum S3StorageClass {
 }
 
 impl S3StorageClass {
+    pub fn to_enum(value: &str) -> S3StorageClass {
+        for i in [Standard, StandardIA, IntelligentTiering, OneZoneIA, GlacialInstantRetrieval, GlacialFlexibleRetrieval, GlacialDeepArchive, RRS] {
+            if i.value().unwrap().as_str() == value.to_uppercase().as_str() {
+                return i
+            }
+        }
+        StandardIA
+    }
     pub fn value(&self) -> Option<String> {
         match self {
-            S3StorageClass::Standard => Some("STANDARD".into()),
-            S3StorageClass::StandardIA => Some("STANDARD_IA".into()),
-            S3StorageClass::IntelligentTiering => Some("INTELLIGENT_TIERING".into()),
-            S3StorageClass::OneZoneIA => Some("ONEZONE_IA".into()),
-            S3StorageClass::GlacialInstantRetrieval => Some("GLACIER_IR".into()),
-            S3StorageClass::GlacialFlexibleRetrieval => Some("GLACIER".into()),
-            S3StorageClass::GlacialDeepArchive => Some("DEEP_ARCHIVE".into()),
-            S3StorageClass::RRS => Some("REDUCED_REDUNDANCY".into()),
+            Standard => Some("STANDARD".into()),
+            StandardIA => Some("STANDARD_IA".into()),
+            IntelligentTiering => Some("INTELLIGENT_TIERING".into()),
+            OneZoneIA => Some("ONEZONE_IA".into()),
+            GlacialInstantRetrieval => Some("GLACIER_IR".into()),
+            GlacialFlexibleRetrieval => Some("GLACIER".into()),
+            GlacialDeepArchive => Some("DEEP_ARCHIVE".into()),
+            RRS => Some("REDUCED_REDUNDANCY".into()),
         }
     }
 }
