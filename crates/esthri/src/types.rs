@@ -84,6 +84,33 @@ impl S3ListingItem {
     }
 }
 
+
+pub enum S3StorageClass {
+    Standard,
+    StandardIA,
+    IntelligentTiering,
+    OneZoneIA,
+    GlacialInstantRetrieval,
+    GlacialFlexibleRetrieval,
+    GlacialDeepArchive,
+    RRS,
+}
+
+impl S3StorageClass {
+    pub fn value(&self) -> Option<String> {
+        match self {
+            S3StorageClass::Standard => Some("STANDARD".into()),
+            S3StorageClass::StandardIA => Some("STANDARD_IA".into()),
+            S3StorageClass::IntelligentTiering => Some("INTELLIGENT_TIERING".into()),
+            S3StorageClass::OneZoneIA => Some("ONEZONE_IA".into()),
+            S3StorageClass::GlacialInstantRetrieval => Some("GLACIER_IR".into()),
+            S3StorageClass::GlacialFlexibleRetrieval => Some("GLACIER".into()),
+            S3StorageClass::GlacialDeepArchive => Some("DEEP_ARCHIVE".into()),
+            S3StorageClass::RRS => Some("REDUCED_REDUNDANCY".into()),
+        }
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct S3Listing {
     pub(crate) continuation: Option<String>,

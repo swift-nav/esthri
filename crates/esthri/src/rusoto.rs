@@ -26,6 +26,7 @@ pub use rusoto_s3::{
     GetObjectError, GetObjectOutput, GetObjectRequest, HeadObjectOutput, HeadObjectRequest,
     ListObjectsV2Request, PutObjectRequest, S3Client, StreamingBody, UploadPartRequest, S3,
 };
+use crate::types::S3StorageClass;
 
 /// The data returned from a head object request
 #[derive(Debug)]
@@ -193,6 +194,7 @@ pub async fn create_multipart_upload<T>(
     bucket: &str,
     key: &str,
     metadata: Option<HashMap<String, String>>,
+    storage_class: S3StorageClass,
 ) -> Result<rusoto_s3::CreateMultipartUploadOutput>
 where
     T: S3,
@@ -203,7 +205,7 @@ where
             key: key.into(),
             acl: Some("bucket-owner-full-control".into()),
             metadata: metadata.as_ref().cloned(),
-            storage_class: Some("STANDARD_IA".into()),
+            storage_class: storage_class.value(),
             ..Default::default()
         };
 

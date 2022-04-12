@@ -30,6 +30,7 @@ use crate::{
     handle_dispatch_error,
     rusoto::*,
 };
+use crate::types::S3StorageClass;
 
 static PENDING_UPLOADS: parking_lot::Mutex<Vec<PendingUpload>> =
     parking_lot::const_mutex(Vec::new());
@@ -276,7 +277,7 @@ where
     T: S3,
     R: AsyncRead + AsyncSeek + Unpin + Send + 'static,
 {
-    let upload_id = create_multipart_upload(s3, bucket, key, metadata)
+    let upload_id = create_multipart_upload(s3, bucket, key, metadata, S3StorageClass::StandardIA)
         .await?
         .upload_id
         .ok_or(Error::UploadIdNone)?;
