@@ -18,6 +18,7 @@ use futures::Stream;
 
 use crate::{retry::handle_dispatch_error, Error, Result};
 
+use crate::S3StorageClass::*;
 pub use rusoto_core::{ByteStream, HttpClient, Region, RusotoError, RusotoResult};
 pub use rusoto_credential::DefaultCredentialsProvider;
 pub use rusoto_s3::{
@@ -26,7 +27,6 @@ pub use rusoto_s3::{
     GetObjectError, GetObjectOutput, GetObjectRequest, HeadObjectOutput, HeadObjectRequest,
     ListObjectsV2Request, PutObjectRequest, S3Client, StreamingBody, UploadPartRequest, S3,
 };
-use crate::S3StorageClass::*;
 
 /// The data returned from a head object request
 #[derive(Debug)]
@@ -99,7 +99,6 @@ where
     }
 }
 
-
 pub enum S3StorageClass {
     Standard,
     StandardIA,
@@ -112,10 +111,19 @@ pub enum S3StorageClass {
 }
 
 impl S3StorageClass {
-    pub fn to_enum(value: &str) -> S3StorageClass {
-        for i in [Standard, StandardIA, IntelligentTiering, OneZoneIA, GlacialInstantRetrieval, GlacialFlexibleRetrieval, GlacialDeepArchive, RRS] {
+    pub fn value_to_class(value: &str) -> S3StorageClass {
+        for i in [
+            Standard,
+            StandardIA,
+            IntelligentTiering,
+            OneZoneIA,
+            GlacialInstantRetrieval,
+            GlacialFlexibleRetrieval,
+            GlacialDeepArchive,
+            RRS,
+        ] {
             if i.value().unwrap().as_str() == value.to_uppercase().as_str() {
-                return i
+                i
             }
         }
         StandardIA
@@ -229,10 +237,10 @@ pub async fn multipart_upload_with_storage_class<T>(
     bucket: &str,
     key: &str,
     metadata: Option<HashMap<String, String>>,
-    storage_class: S3StorageClass
+    storage_class: S3StorageClass,
 ) -> Result<rusoto_s3::CreateMultipartUploadOutput>
-    where
-        T: S3,
+where
+    T: S3,
 {
     handle_dispatch_error(|| async {
         let cmur = CreateMultipartUploadRequest {
@@ -246,8 +254,8 @@ pub async fn multipart_upload_with_storage_class<T>(
 
         s3.create_multipart_upload(cmur).await
     })
-        .await
-        .map_err(Error::CreateMultipartUploadFailed)
+    .await
+    .map_err(Error::CreateMultipartUploadFailed)
 }
 
 pub async fn create_multipart_upload<T>(
@@ -259,11 +267,5 @@ pub async fn create_multipart_upload<T>(
 where
     T: S3,
 {
-    multipart_upload_with_storage_class(
-        s3,
-        bucket,
-        key,
-        metadata,
-        StandardIA
-    ).await
+    multipart_upload_with_storage_class(s3, bucket, key, metadata, StandardIA).await
 }
