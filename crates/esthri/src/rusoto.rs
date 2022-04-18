@@ -11,6 +11,7 @@
  */
 
 use std::collections::HashMap;
+use std::convert::TryFrom;
 
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
@@ -18,7 +19,6 @@ use futures::Stream;
 
 use crate::{retry::handle_dispatch_error, Error, Result};
 
-use crate::S3StorageClass::*;
 pub use rusoto_core::{ByteStream, HttpClient, Region, RusotoError, RusotoResult};
 pub use rusoto_credential::DefaultCredentialsProvider;
 pub use rusoto_s3::{
@@ -79,8 +79,8 @@ pub async fn head_object_request<T>(
     key: &str,
     part_number: Option<i64>,
 ) -> Result<Option<HeadObjectInfo>>
-where
-    T: S3,
+    where
+        T: S3,
 {
     let res = handle_dispatch_error(|| async {
         s3.head_object(HeadObjectRequest {
@@ -89,9 +89,9 @@ where
             part_number,
             ..Default::default()
         })
-        .await
+            .await
     })
-    .await;
+        .await;
     match res {
         Ok(hoo) => HeadObjectInfo::from_head_object_output(hoo),
         Err(RusotoError::Unknown(err)) if err.status == 404 => Ok(None),
@@ -99,6 +99,7 @@ where
     }
 }
 
+#[derive(Copy, Clone)]
 pub enum S3StorageClass {
     Standard,
     StandardIA,
@@ -110,34 +111,35 @@ pub enum S3StorageClass {
     RRS,
 }
 
-impl S3StorageClass {
-    pub fn value_to_class(value: &str) -> S3StorageClass {
-        for i in [
-            Standard,
-            StandardIA,
-            IntelligentTiering,
-            OneZoneIA,
-            GlacialInstantRetrieval,
-            GlacialFlexibleRetrieval,
-            GlacialDeepArchive,
-            RRS,
-        ] {
-            if i.value().unwrap().as_str() == value.to_uppercase().as_str() {
-                return i;
-            }
+impl From<S3StorageClass> for Option<String> {
+    fn from(s: S3StorageClass) -> Self {
+        match s {
+            S3StorageClass::Standard => Some("STANDARD".into()),
+            S3StorageClass::StandardIA => Some("STANDARD_IA".into()),
+            S3StorageClass::IntelligentTiering => Some("INTELLIGENT_TIERING".into()),
+            S3StorageClass::OneZoneIA => Some("ONEZONE_IA".into()),
+            S3StorageClass::GlacialInstantRetrieval => Some("GLACIER_IR".into()),
+            S3StorageClass::GlacialFlexibleRetrieval => Some("GLACIER".into()),
+            S3StorageClass::GlacialDeepArchive => Some("DEEP_ARCHIVE".into()),
+            S3StorageClass::RRS => Some("REDUCED_REDUNDANCY".into()),
         }
-        StandardIA
     }
-    pub fn value(&self) -> Option<String> {
-        match self {
-            Standard => Some("STANDARD".into()),
-            StandardIA => Some("STANDARD_IA".into()),
-            IntelligentTiering => Some("INTELLIGENT_TIERING".into()),
-            OneZoneIA => Some("ONEZONE_IA".into()),
-            GlacialInstantRetrieval => Some("GLACIER_IR".into()),
-            GlacialFlexibleRetrieval => Some("GLACIER".into()),
-            GlacialDeepArchive => Some("DEEP_ARCHIVE".into()),
-            RRS => Some("REDUCED_REDUNDANCY".into()),
+}
+
+impl TryFrom<&str> for S3StorageClass {
+    type Error = Error;
+
+    fn try_from(s: &str) -> Result<Self> {
+        match s {
+            "STANDARD" => Ok(S3StorageClass::Standard),
+            "STANDARD_IA" => Ok(S3StorageClass::StandardIA),
+            "INTELLIGENT_TIERING" => Ok(S3StorageClass::IntelligentTiering),
+            "ONEZONE_IA" => Ok(S3StorageClass::OneZoneIA),
+            "GLACIAL_INSTANT_RETRIEVAL" => Ok(S3StorageClass::GlacialInstantRetrieval),
+            "GLACIAL_FLEXIBLE_RETRIEVAL" => Ok(S3StorageClass::GlacialFlexibleRetrieval),
+            "GLACIAL_DEEP_ARCHIVE" => Ok(S3StorageClass::GlacialDeepArchive),
+            "REDUCED_REDUNDANCY" => Ok(S3StorageClass::RRS),
+            _ => Err(Error::UnknownStorageClass(s.to_string())),
         }
     }
 }
@@ -151,7 +153,7 @@ pub struct GetObjectResponse {
 }
 
 impl GetObjectResponse {
-    pub fn into_stream(self) -> impl Stream<Item = Result<Bytes>> {
+    pub fn into_stream(self) -> impl Stream<Item=Result<Bytes>> {
         futures::TryStreamExt::map_err(self.stream, Error::IoError)
     }
 }
@@ -162,8 +164,8 @@ pub async fn get_object_part_request<T>(
     key: &str,
     part: i64,
 ) -> Result<GetObjectResponse>
-where
-    T: S3,
+    where
+        T: S3,
 {
     log::debug!("get part={} bucket={} key={}", part, bucket, key);
     let goo = handle_dispatch_error(|| {
@@ -174,8 +176,8 @@ where
             ..Default::default()
         })
     })
-    .await
-    .map_err(Error::GetObjectFailed)?;
+        .await
+        .map_err(Error::GetObjectFailed)?;
     log::debug!("got part={} bucket={} key={}", part, bucket, key);
     Ok(GetObjectResponse {
         stream: goo.body.ok_or(Error::GetObjectOutputBodyNone)?,
@@ -190,8 +192,8 @@ pub async fn get_object_request<T>(
     key: &str,
     range: Option<String>,
 ) -> Result<GetObjectOutput>
-where
-    T: S3,
+    where
+        T: S3,
 {
     handle_dispatch_error(|| {
         s3.get_object(GetObjectRequest {
@@ -201,8 +203,8 @@ where
             ..Default::default()
         })
     })
-    .await
-    .map_err(Error::GetObjectFailed)
+        .await
+        .map_err(Error::GetObjectFailed)
 }
 
 pub async fn complete_multipart_upload<T>(
@@ -212,8 +214,8 @@ pub async fn complete_multipart_upload<T>(
     upload_id: &str,
     completed_parts: &[CompletedPart],
 ) -> Result<()>
-where
-    T: S3,
+    where
+        T: S3,
 {
     handle_dispatch_error(|| async {
         let cmur = CompleteMultipartUploadRequest {
@@ -227,8 +229,8 @@ where
         };
         s3.complete_multipart_upload(cmur).await
     })
-    .await
-    .map_err(Error::CompletedMultipartUploadFailed)?;
+        .await
+        .map_err(Error::CompletedMultipartUploadFailed)?;
     Ok(())
 }
 
@@ -239,8 +241,8 @@ pub async fn multipart_upload_with_storage_class<T>(
     metadata: Option<HashMap<String, String>>,
     storage_class: S3StorageClass,
 ) -> Result<rusoto_s3::CreateMultipartUploadOutput>
-where
-    T: S3,
+    where
+        T: S3,
 {
     handle_dispatch_error(|| async {
         let cmur = CreateMultipartUploadRequest {
@@ -248,14 +250,14 @@ where
             key: key.into(),
             acl: Some("bucket-owner-full-control".into()),
             metadata: metadata.as_ref().cloned(),
-            storage_class: storage_class.value(),
+            storage_class: From::from(storage_class),
             ..Default::default()
         };
 
         s3.create_multipart_upload(cmur).await
     })
-    .await
-    .map_err(Error::CreateMultipartUploadFailed)
+        .await
+        .map_err(Error::CreateMultipartUploadFailed)
 }
 
 pub async fn create_multipart_upload<T>(
@@ -264,8 +266,8 @@ pub async fn create_multipart_upload<T>(
     key: &str,
     metadata: Option<HashMap<String, String>>,
 ) -> Result<rusoto_s3::CreateMultipartUploadOutput>
-where
-    T: S3,
+    where
+        T: S3,
 {
-    multipart_upload_with_storage_class(s3, bucket, key, metadata, StandardIA).await
+    multipart_upload_with_storage_class(s3, bucket, key, metadata, S3StorageClass::StandardIA).await
 }

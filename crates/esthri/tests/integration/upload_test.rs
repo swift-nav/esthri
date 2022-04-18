@@ -73,7 +73,7 @@ async fn test_upload_async() {
         &s3_key,
         &filepath,
     )
-    .await;
+        .await;
     assert!(res.is_ok());
 }
 
@@ -93,7 +93,7 @@ async fn test_upload_reader() {
         contents.len() as u64,
         None,
     )
-    .await;
+        .await;
     assert!(res.is_ok());
 }
 
@@ -111,4 +111,10 @@ fn test_upload_zero_size() {
         &filepath,
     );
     assert!(res.is_ok());
+}
+
+
+#[test]
+fn test_upload_with_storage_class() {
+    esthri::upload()
 }
