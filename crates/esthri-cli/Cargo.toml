@@ -29,7 +29,7 @@ path = "src/http_server.rs"
 esthri = { path = "../esthri", default-features = false }
 anyhow = { version = "1", features = ["backtrace"] }
 async-compression = { version = "0.3", features = ["gzip", "tokio"] }
-async_zip = "0.0.6"
+async_zip = "0.0.7"
 async-stream = "0.3"
 bytes = "1.0"
 env_logger = "0.9"
