@@ -63,10 +63,12 @@ impl HeadObjectInfo {
         let metadata = hoo
             .metadata
             .ok_or_else(|| Error::HeadObjectUnexpected("no metadata found".into()))?;
-        let storage_class =
-            S3StorageClass::try_from(hoo.storage_class.unwrap_or("STANDARD_IA".into()).as_ref())
-                .unwrap_or(S3StorageClass::StandardIA)
-                .into();
+        let storage_class = S3StorageClass::try_from(
+            hoo.storage_class
+                .unwrap_or_else(|| "STANDARD_IA".into())
+                .as_str(),
+        )
+        .unwrap_or(S3StorageClass::StandardIA);
         let parts = hoo.parts_count.unwrap_or(1) as u64;
         Ok(Some(HeadObjectInfo {
             e_tag,
