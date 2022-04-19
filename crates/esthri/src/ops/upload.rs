@@ -117,7 +117,15 @@ where
     );
 
     let compressed = false;
-    upload_file_helper(s3, bucket.as_ref(), key.as_ref(), file.as_ref(), compressed).await
+    upload_file_helper(
+        s3,
+        bucket.as_ref(),
+        key.as_ref(),
+        file.as_ref(),
+        compressed,
+        S3StorageClass::StandardIA,
+    )
+    .await
 }
 
 #[logfn(err = "ERROR")]
@@ -138,7 +146,15 @@ where
     );
 
     let compressed = true;
-    upload_file_helper(s3, bucket.as_ref(), key.as_ref(), file.as_ref(), compressed).await
+    upload_file_helper(
+        s3,
+        bucket.as_ref(),
+        key.as_ref(),
+        file.as_ref(),
+        compressed,
+        S3StorageClass::StandardIA,
+    )
+    .await
 }
 
 #[logfn(err = "ERROR")]
@@ -154,6 +170,32 @@ where
     T: S3,
     R: AsyncRead + AsyncSeek + Unpin + Send + 'static,
 {
+    upload_from_reader_with_storage_class(
+        s3,
+        bucket,
+        key,
+        reader,
+        file_size,
+        metadata,
+        S3StorageClass::StandardIA,
+    )
+    .await
+}
+
+#[logfn(err = "ERROR")]
+pub async fn upload_from_reader_with_storage_class<T, R>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+    reader: R,
+    file_size: u64,
+    metadata: Option<HashMap<String, String>>,
+    storage_class: S3StorageClass,
+) -> Result<()>
+where
+    T: S3,
+    R: AsyncRead + AsyncSeek + Unpin + Send + 'static,
+{
     let (bucket, key) = (bucket.as_ref(), key.as_ref());
     info!(
         "put: bucket={}, key={}, file_size={}",
@@ -162,22 +204,24 @@ where
 
     if file_size == 0 {
         debug!("uploading empty file");
-        empty_upload(s3, bucket, key, metadata).await
+        empty_upload(s3, bucket, key, metadata, storage_class).await
     } else if file_size < Config::global().upload_part_size() {
         debug!("uploading singlepart file");
-        singlepart_upload(s3, bucket, key, reader, file_size, metadata).await
+        singlepart_upload(s3, bucket, key, reader, file_size, metadata, storage_class).await
     } else {
         debug!("uploading multipart file");
-        multipart_upload(s3, bucket, key, reader, file_size, metadata).await
+        multipart_upload(s3, bucket, key, reader, file_size, metadata, storage_class).await
     }
 }
 
-async fn upload_file_helper<T>(
+#[logfn(err = "ERROR")]
+pub async fn upload_file_helper<T>(
     s3: &T,
     bucket: &str,
     key: &str,
     path: &Path,
     compressed: bool,
+    storage_class: S3StorageClass,
 ) -> Result<()>
 where
     T: S3,
@@ -185,13 +229,14 @@ where
     let key = format_key(key, path)?;
     if compressed {
         let (mut tmp, size) = compress_to_tempfile(path).await?;
-        upload_from_reader(
+        upload_from_reader_with_storage_class(
             s3,
             bucket,
             key,
             tmp.take_file(),
             size,
             Some(crate::compression::compressed_file_metadata()),
+            storage_class,
         )
         .await?;
         Ok(())
@@ -199,23 +244,11 @@ where
         let f = File::open(path).await?;
         let size = f.metadata().await?.len();
         debug!("upload: file size: {}", size);
-        upload_from_reader(s3, bucket, key, f, size, None).await
+        upload_from_reader_with_storage_class(s3, bucket, key, f, size, None, storage_class).await
     }
 }
 
 async fn empty_upload<T>(
-    s3: &T,
-    bucket: &str,
-    key: &str,
-    metadata: Option<HashMap<String, String>>,
-) -> Result<()>
-where
-    T: S3,
-{
-    empty_upload_with_storage_class(s3, bucket, key, metadata, S3StorageClass::StandardIA).await
-}
-
-async fn empty_upload_with_storage_class<T>(
     s3: &T,
     bucket: &str,
     key: &str,
@@ -242,30 +275,6 @@ where
 }
 
 async fn singlepart_upload<T, R>(
-    s3: &T,
-    bucket: &str,
-    key: &str,
-    reader: R,
-    file_size: u64,
-    metadata: Option<HashMap<String, String>>,
-) -> Result<()>
-where
-    T: S3,
-    R: AsyncRead,
-{
-    singlepart_upload_with_storage_class(
-        s3,
-        bucket,
-        key,
-        reader,
-        file_size,
-        metadata,
-        S3StorageClass::StandardIA,
-    )
-    .await
-}
-
-async fn singlepart_upload_with_storage_class<T, R>(
     s3: &T,
     bucket: &str,
     key: &str,
@@ -304,7 +313,7 @@ where
     Ok(())
 }
 
-async fn multipart_upload_with_storage_class<T, R>(
+async fn multipart_upload<T, R>(
     s3: &T,
     bucket: &str,
     key: &str,
@@ -346,30 +355,6 @@ where
     remove_pending(&upload_id);
 
     Ok(())
-}
-
-async fn multipart_upload<T, R>(
-    s3: &T,
-    bucket: &str,
-    key: &str,
-    reader: R,
-    file_size: u64,
-    metadata: Option<HashMap<String, String>>,
-) -> Result<()>
-where
-    T: S3,
-    R: AsyncRead + AsyncSeek + Unpin + Send + 'static,
-{
-    multipart_upload_with_storage_class(
-        s3,
-        bucket,
-        key,
-        reader,
-        file_size,
-        metadata,
-        S3StorageClass::StandardIA,
-    )
-    .await
 }
 
 // Creates a stream of smaller chunks for a larger chunk of data. This

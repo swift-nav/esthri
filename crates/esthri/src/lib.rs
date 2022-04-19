@@ -49,7 +49,7 @@ pub use ops::{
     copy::copy,
     download::{download, download_streaming, download_with_transparent_decompression},
     sync::{sync, GlobFilter},
-    upload::{upload, upload_compressed, upload_from_reader, PendingUpload},
+    upload::{upload, upload_compressed, upload_file_helper, upload_from_reader, PendingUpload},
 };
 pub use rusoto::HeadObjectInfo;
 pub use types::{S3ListingItem, S3Object, S3PathParam};

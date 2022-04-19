@@ -57,6 +57,29 @@ where
 }
 
 #[tokio::main]
+pub async fn upload_file_helper<T>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+    file: impl AsRef<Path>,
+    compressed: bool,
+    storage_class: S3StorageClass,
+) -> Result<()>
+where
+    T: S3 + Send + Clone,
+{
+    crate::upload_file_helper(
+        s3,
+        bucket.as_ref(),
+        key.as_ref(),
+        file.as_ref(),
+        compressed,
+        storage_class,
+    )
+    .await
+}
+
+#[tokio::main]
 pub async fn download<T>(
     s3: &T,
     bucket: impl AsRef<str>,
