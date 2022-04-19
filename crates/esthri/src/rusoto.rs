@@ -35,6 +35,7 @@ pub struct HeadObjectInfo {
     pub size: i64,
     pub last_modified: DateTime<Utc>,
     pub metadata: HashMap<String, String>,
+    pub storage_class: S3StorageClass,
     pub(crate) parts: u64,
 }
 
@@ -62,12 +63,17 @@ impl HeadObjectInfo {
         let metadata = hoo
             .metadata
             .ok_or_else(|| Error::HeadObjectUnexpected("no metadata found".into()))?;
+        let storage_class =
+            S3StorageClass::try_from(hoo.storage_class.unwrap_or("STANDARD_IA".into()).as_ref())
+                .unwrap_or(S3StorageClass::StandardIA)
+                .into();
         let parts = hoo.parts_count.unwrap_or(1) as u64;
         Ok(Some(HeadObjectInfo {
             e_tag,
             size,
             last_modified,
             metadata,
+            storage_class,
             parts,
         }))
     }
@@ -79,8 +85,8 @@ pub async fn head_object_request<T>(
     key: &str,
     part_number: Option<i64>,
 ) -> Result<Option<HeadObjectInfo>>
-    where
-        T: S3,
+where
+    T: S3,
 {
     let res = handle_dispatch_error(|| async {
         s3.head_object(HeadObjectRequest {
@@ -89,9 +95,9 @@ pub async fn head_object_request<T>(
             part_number,
             ..Default::default()
         })
-            .await
+        .await
     })
-        .await;
+    .await;
     match res {
         Ok(hoo) => HeadObjectInfo::from_head_object_output(hoo),
         Err(RusotoError::Unknown(err)) if err.status == 404 => Ok(None),
@@ -99,7 +105,7 @@ pub async fn head_object_request<T>(
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum S3StorageClass {
     Standard,
     StandardIA,
@@ -153,7 +159,7 @@ pub struct GetObjectResponse {
 }
 
 impl GetObjectResponse {
-    pub fn into_stream(self) -> impl Stream<Item=Result<Bytes>> {
+    pub fn into_stream(self) -> impl Stream<Item = Result<Bytes>> {
         futures::TryStreamExt::map_err(self.stream, Error::IoError)
     }
 }
@@ -164,8 +170,8 @@ pub async fn get_object_part_request<T>(
     key: &str,
     part: i64,
 ) -> Result<GetObjectResponse>
-    where
-        T: S3,
+where
+    T: S3,
 {
     log::debug!("get part={} bucket={} key={}", part, bucket, key);
     let goo = handle_dispatch_error(|| {
@@ -176,8 +182,8 @@ pub async fn get_object_part_request<T>(
             ..Default::default()
         })
     })
-        .await
-        .map_err(Error::GetObjectFailed)?;
+    .await
+    .map_err(Error::GetObjectFailed)?;
     log::debug!("got part={} bucket={} key={}", part, bucket, key);
     Ok(GetObjectResponse {
         stream: goo.body.ok_or(Error::GetObjectOutputBodyNone)?,
@@ -192,8 +198,8 @@ pub async fn get_object_request<T>(
     key: &str,
     range: Option<String>,
 ) -> Result<GetObjectOutput>
-    where
-        T: S3,
+where
+    T: S3,
 {
     handle_dispatch_error(|| {
         s3.get_object(GetObjectRequest {
@@ -203,8 +209,8 @@ pub async fn get_object_request<T>(
             ..Default::default()
         })
     })
-        .await
-        .map_err(Error::GetObjectFailed)
+    .await
+    .map_err(Error::GetObjectFailed)
 }
 
 pub async fn complete_multipart_upload<T>(
@@ -214,8 +220,8 @@ pub async fn complete_multipart_upload<T>(
     upload_id: &str,
     completed_parts: &[CompletedPart],
 ) -> Result<()>
-    where
-        T: S3,
+where
+    T: S3,
 {
     handle_dispatch_error(|| async {
         let cmur = CompleteMultipartUploadRequest {
@@ -229,20 +235,20 @@ pub async fn complete_multipart_upload<T>(
         };
         s3.complete_multipart_upload(cmur).await
     })
-        .await
-        .map_err(Error::CompletedMultipartUploadFailed)?;
+    .await
+    .map_err(Error::CompletedMultipartUploadFailed)?;
     Ok(())
 }
 
-pub async fn multipart_upload_with_storage_class<T>(
+pub async fn create_multipart_upload<T>(
     s3: &T,
     bucket: &str,
     key: &str,
     metadata: Option<HashMap<String, String>>,
     storage_class: S3StorageClass,
 ) -> Result<rusoto_s3::CreateMultipartUploadOutput>
-    where
-        T: S3,
+where
+    T: S3,
 {
     handle_dispatch_error(|| async {
         let cmur = CreateMultipartUploadRequest {
@@ -256,18 +262,6 @@ pub async fn multipart_upload_with_storage_class<T>(
 
         s3.create_multipart_upload(cmur).await
     })
-        .await
-        .map_err(Error::CreateMultipartUploadFailed)
-}
-
-pub async fn create_multipart_upload<T>(
-    s3: &T,
-    bucket: &str,
-    key: &str,
-    metadata: Option<HashMap<String, String>>,
-) -> Result<rusoto_s3::CreateMultipartUploadOutput>
-    where
-        T: S3,
-{
-    multipart_upload_with_storage_class(s3, bucket, key, metadata, S3StorageClass::StandardIA).await
+    .await
+    .map_err(Error::CreateMultipartUploadFailed)
 }

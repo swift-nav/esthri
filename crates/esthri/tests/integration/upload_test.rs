@@ -1,6 +1,7 @@
 use std::io::Cursor;
 
 use esthri::blocking;
+use esthri::rusoto::S3StorageClass;
 use esthri::upload;
 use esthri::upload_from_reader;
 use esthri::HeadObjectInfo;
@@ -27,6 +28,7 @@ fn test_upload() {
 
     assert_eq!(obj_info.size, 5242880);
     assert_eq!(obj_info.e_tag, "\"8542c49db935a57bb8c26ec68d39aaea\"");
+    assert_eq!(obj_info.storage_class, S3StorageClass::StandardIA);
     assert!(!obj_info.metadata.contains_key("esthri_compress_version"));
 }
 
@@ -73,7 +75,7 @@ async fn test_upload_async() {
         &s3_key,
         &filepath,
     )
-        .await;
+    .await;
     assert!(res.is_ok());
 }
 
@@ -93,7 +95,7 @@ async fn test_upload_reader() {
         contents.len() as u64,
         None,
     )
-        .await;
+    .await;
     assert!(res.is_ok());
 }
 
@@ -111,10 +113,4 @@ fn test_upload_zero_size() {
         &filepath,
     );
     assert!(res.is_ok());
-}
-
-
-#[test]
-fn test_upload_with_storage_class() {
-    esthri::upload()
 }

@@ -212,12 +212,26 @@ async fn empty_upload<T>(
 where
     T: S3,
 {
+    empty_upload_with_storage_class(s3, bucket, key, metadata, S3StorageClass::StandardIA).await
+}
+
+async fn empty_upload_with_storage_class<T>(
+    s3: &T,
+    bucket: &str,
+    key: &str,
+    metadata: Option<HashMap<String, String>>,
+    storage_class: S3StorageClass,
+) -> Result<()>
+where
+    T: S3,
+{
     handle_dispatch_error(|| async {
         s3.put_object(PutObjectRequest {
             bucket: bucket.into(),
             key: key.into(),
             acl: Some("bucket-owner-full-control".into()),
             metadata: metadata.as_ref().cloned(),
+            storage_class: From::from(storage_class),
             ..Default::default()
         })
         .await
@@ -239,6 +253,31 @@ where
     T: S3,
     R: AsyncRead,
 {
+    singlepart_upload_with_storage_class(
+        s3,
+        bucket,
+        key,
+        reader,
+        file_size,
+        metadata,
+        S3StorageClass::StandardIA,
+    )
+    .await
+}
+
+async fn singlepart_upload_with_storage_class<T, R>(
+    s3: &T,
+    bucket: &str,
+    key: &str,
+    reader: R,
+    file_size: u64,
+    metadata: Option<HashMap<String, String>>,
+    storage_class: S3StorageClass,
+) -> Result<()>
+where
+    T: S3,
+    R: AsyncRead,
+{
     let mut buf = BytesMut::with_capacity(file_size as usize);
     let mut total = 0;
     futures::pin_mut!(reader);
@@ -255,6 +294,7 @@ where
             body: Some(into_byte_stream(body.clone())),
             acl: Some("bucket-owner-full-control".into()),
             metadata: metadata.as_ref().cloned(),
+            storage_class: From::from(storage_class),
             ..Default::default()
         })
         .await
@@ -264,19 +304,20 @@ where
     Ok(())
 }
 
-async fn multipart_upload<T, R>(
+async fn multipart_upload_with_storage_class<T, R>(
     s3: &T,
     bucket: &str,
     key: &str,
     reader: R,
     file_size: u64,
     metadata: Option<HashMap<String, String>>,
+    storage_class: S3StorageClass,
 ) -> Result<()>
 where
     T: S3,
     R: AsyncRead + AsyncSeek + Unpin + Send + 'static,
 {
-    let upload_id = create_multipart_upload(s3, bucket, key, metadata)
+    let upload_id = create_multipart_upload(s3, bucket, key, metadata, storage_class)
         .await?
         .upload_id
         .ok_or(Error::UploadIdNone)?;
@@ -305,6 +346,30 @@ where
     remove_pending(&upload_id);
 
     Ok(())
+}
+
+async fn multipart_upload<T, R>(
+    s3: &T,
+    bucket: &str,
+    key: &str,
+    reader: R,
+    file_size: u64,
+    metadata: Option<HashMap<String, String>>,
+) -> Result<()>
+where
+    T: S3,
+    R: AsyncRead + AsyncSeek + Unpin + Send + 'static,
+{
+    multipart_upload_with_storage_class(
+        s3,
+        bucket,
+        key,
+        reader,
+        file_size,
+        metadata,
+        S3StorageClass::StandardIA,
+    )
+    .await
 }
 
 // Creates a stream of smaller chunks for a larger chunk of data. This
