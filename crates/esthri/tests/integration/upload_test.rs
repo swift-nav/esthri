@@ -116,18 +116,40 @@ fn test_upload_zero_size() {
 }
 
 #[test]
-fn test_upload_storage_class() {
+fn test_upload_storage_class_rrs() {
     let s3client = esthri_test::get_s3client();
     let filename = "test5mb.bin";
     let filepath = esthri_test::test_data(filename);
     let s3_key = esthri_test::randomised_name(&format!("test_upload/{}", filename));
 
-    let res = esthri::blocking::upload_file_helper(
+    let res = esthri::blocking::upload_with_storage_class(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
         &s3_key,
         &filepath,
-        false,
+        S3StorageClass::RRS,
+    );
+    assert!(res.is_ok());
+
+    let res = esthri::blocking::head_object(s3client.as_ref(), esthri_test::TEST_BUCKET, &s3_key);
+    let obj_info: Option<HeadObjectInfo> = res.unwrap();
+    assert!(obj_info.is_some());
+    let obj_info: HeadObjectInfo = obj_info.unwrap();
+    assert_eq!(obj_info.storage_class, S3StorageClass::RRS);
+}
+
+#[test]
+fn test_upload_storage_class_standard() {
+    let s3client = esthri_test::get_s3client();
+    let filename = "test5mb.bin";
+    let filepath = esthri_test::test_data(filename);
+    let s3_key = esthri_test::randomised_name(&format!("test_upload/{}", filename));
+
+    let res = esthri::blocking::upload_with_storage_class(
+        s3client.as_ref(),
+        esthri_test::TEST_BUCKET,
+        &s3_key,
+        &filepath,
         S3StorageClass::Standard,
     );
     assert!(res.is_ok());

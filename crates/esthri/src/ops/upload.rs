@@ -129,6 +129,66 @@ where
 }
 
 #[logfn(err = "ERROR")]
+pub async fn upload_with_storage_class<T>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+    file: impl AsRef<Path>,
+    storage_class: S3StorageClass,
+) -> Result<()>
+where
+    T: S3,
+{
+    info!(
+        "put: bucket={}, key={}, file={}",
+        bucket.as_ref(),
+        key.as_ref(),
+        file.as_ref().display()
+    );
+
+    let compressed = false;
+    upload_file_helper(
+        s3,
+        bucket.as_ref(),
+        key.as_ref(),
+        file.as_ref(),
+        compressed,
+        storage_class,
+    )
+    .await
+}
+
+#[logfn(err = "ERROR")]
+pub async fn upload_compressed_with_storage_class<T>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+    file: impl AsRef<Path>,
+    storage_class: S3StorageClass,
+) -> Result<()>
+where
+    T: S3,
+{
+    info!(
+        "put: bucket={}, key={}, file={}",
+        bucket.as_ref(),
+        key.as_ref(),
+        file.as_ref().display()
+    );
+
+    let compressed = true;
+    upload_file_helper(
+        s3,
+        bucket.as_ref(),
+        key.as_ref(),
+        file.as_ref(),
+        compressed,
+        storage_class,
+    )
+    .await
+}
+
+#[logfn(err = "ERROR")]
 pub async fn upload_compressed<T>(
     s3: &T,
     bucket: impl AsRef<str>,
@@ -264,7 +324,7 @@ where
             key: key.into(),
             acl: Some("bucket-owner-full-control".into()),
             metadata: metadata.as_ref().cloned(),
-            storage_class: From::from(storage_class),
+            storage_class: Some(storage_class.into()),
             ..Default::default()
         })
         .await
@@ -303,7 +363,7 @@ where
             body: Some(into_byte_stream(body.clone())),
             acl: Some("bucket-owner-full-control".into()),
             metadata: metadata.as_ref().cloned(),
-            storage_class: From::from(storage_class),
+            storage_class: Some(storage_class.into()),
             ..Default::default()
         })
         .await

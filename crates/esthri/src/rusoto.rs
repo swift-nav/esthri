@@ -65,10 +65,9 @@ impl HeadObjectInfo {
             .ok_or_else(|| Error::HeadObjectUnexpected("no metadata found".into()))?;
         let storage_class = S3StorageClass::try_from(
             hoo.storage_class
-                .unwrap_or_else(|| "STANDARD_IA".into())
+                .unwrap_or_else(|| "STANDARD".into()) // AWS doesn't set header for STANDARD
                 .as_str(),
-        )
-        .unwrap_or(S3StorageClass::StandardIA);
+        )?;
         let parts = hoo.parts_count.unwrap_or(1) as u64;
         Ok(Some(HeadObjectInfo {
             e_tag,
@@ -119,18 +118,19 @@ pub enum S3StorageClass {
     RRS,
 }
 
-impl From<S3StorageClass> for Option<String> {
+impl From<S3StorageClass> for String {
     fn from(s: S3StorageClass) -> Self {
         match s {
-            S3StorageClass::Standard => Some("STANDARD".into()),
-            S3StorageClass::StandardIA => Some("STANDARD_IA".into()),
-            S3StorageClass::IntelligentTiering => Some("INTELLIGENT_TIERING".into()),
-            S3StorageClass::OneZoneIA => Some("ONEZONE_IA".into()),
-            S3StorageClass::GlacialInstantRetrieval => Some("GLACIER_IR".into()),
-            S3StorageClass::GlacialFlexibleRetrieval => Some("GLACIER".into()),
-            S3StorageClass::GlacialDeepArchive => Some("DEEP_ARCHIVE".into()),
-            S3StorageClass::RRS => Some("REDUCED_REDUNDANCY".into()),
+            S3StorageClass::Standard => "STANDARD",
+            S3StorageClass::StandardIA => "STANDARD_IA",
+            S3StorageClass::IntelligentTiering => "INTELLIGENT_TIERING",
+            S3StorageClass::OneZoneIA => "ONEZONE_IA",
+            S3StorageClass::GlacialInstantRetrieval => "GLACIER_IR",
+            S3StorageClass::GlacialFlexibleRetrieval => "GLACIER",
+            S3StorageClass::GlacialDeepArchive => "DEEP_ARCHIVE",
+            S3StorageClass::RRS => "REDUCED_REDUNDANCY",
         }
+        .into()
     }
 }
 
@@ -258,7 +258,7 @@ where
             key: key.into(),
             acl: Some("bucket-owner-full-control".into()),
             metadata: metadata.as_ref().cloned(),
-            storage_class: From::from(storage_class),
+            storage_class: Some(storage_class.into()),
             ..Default::default()
         };
 
