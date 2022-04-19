@@ -122,6 +122,9 @@ pub enum Error {
 
     #[error("File is not gzip compressed")]
     FileNotCompressed,
+
+    #[error("unknown storage class")]
+    UnknownStorageClass(String),
 }
 
 impl From<std::convert::Infallible> for Error {

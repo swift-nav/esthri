@@ -11,6 +11,8 @@
  */
 
 use std::collections::HashMap;
+use std::fmt;
+use std::str::FromStr;
 
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
@@ -34,6 +36,7 @@ pub struct HeadObjectInfo {
     pub size: i64,
     pub last_modified: DateTime<Utc>,
     pub metadata: HashMap<String, String>,
+    pub storage_class: S3StorageClass,
     pub(crate) parts: u64,
 }
 
@@ -61,12 +64,18 @@ impl HeadObjectInfo {
         let metadata = hoo
             .metadata
             .ok_or_else(|| Error::HeadObjectUnexpected("no metadata found".into()))?;
+        let storage_class = S3StorageClass::from_str(
+            hoo.storage_class
+                .unwrap_or_else(|| "STANDARD".into()) // AWS doesn't set header for STANDARD
+                .as_str(),
+        )?;
         let parts = hoo.parts_count.unwrap_or(1) as u64;
         Ok(Some(HeadObjectInfo {
             e_tag,
             size,
             last_modified,
             metadata,
+            storage_class,
             parts,
         }))
     }
@@ -95,6 +104,51 @@ where
         Ok(hoo) => HeadObjectInfo::from_head_object_output(hoo),
         Err(RusotoError::Unknown(err)) if err.status == 404 => Ok(None),
         Err(err) => Err(Error::HeadObjectFailure(err)),
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum S3StorageClass {
+    Standard,
+    StandardIA,
+    IntelligentTiering,
+    OneZoneIA,
+    GlacialInstantRetrieval,
+    GlacialFlexibleRetrieval,
+    GlacialDeepArchive,
+    RRS,
+}
+
+impl fmt::Display for S3StorageClass {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            S3StorageClass::Standard => f.write_str("STANDARD"),
+            S3StorageClass::StandardIA => f.write_str("STANDARD_IA"),
+            S3StorageClass::IntelligentTiering => f.write_str("INTELLIGENT_TIERING"),
+            S3StorageClass::OneZoneIA => f.write_str("ONEZONE_IA"),
+            S3StorageClass::GlacialInstantRetrieval => f.write_str("GLACIER_IR"),
+            S3StorageClass::GlacialFlexibleRetrieval => f.write_str("GLACIER"),
+            S3StorageClass::GlacialDeepArchive => f.write_str("DEEP_ARCHIVE"),
+            S3StorageClass::RRS => f.write_str("REDUCED_REDUNDANCY"),
+        }
+    }
+}
+
+impl FromStr for S3StorageClass {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        match s {
+            "STANDARD" => Ok(S3StorageClass::Standard),
+            "STANDARD_IA" => Ok(S3StorageClass::StandardIA),
+            "INTELLIGENT_TIERING" => Ok(S3StorageClass::IntelligentTiering),
+            "ONEZONE_IA" => Ok(S3StorageClass::OneZoneIA),
+            "GLACIAL_INSTANT_RETRIEVAL" => Ok(S3StorageClass::GlacialInstantRetrieval),
+            "GLACIAL_FLEXIBLE_RETRIEVAL" => Ok(S3StorageClass::GlacialFlexibleRetrieval),
+            "GLACIAL_DEEP_ARCHIVE" => Ok(S3StorageClass::GlacialDeepArchive),
+            "REDUCED_REDUNDANCY" => Ok(S3StorageClass::RRS),
+            _ => Err(Error::UnknownStorageClass(s.to_string())),
+        }
     }
 }
 
@@ -193,6 +247,7 @@ pub async fn create_multipart_upload<T>(
     bucket: &str,
     key: &str,
     metadata: Option<HashMap<String, String>>,
+    storage_class: S3StorageClass,
 ) -> Result<rusoto_s3::CreateMultipartUploadOutput>
 where
     T: S3,
@@ -203,6 +258,7 @@ where
             key: key.into(),
             acl: Some("bucket-owner-full-control".into()),
             metadata: metadata.as_ref().cloned(),
+            storage_class: Some(storage_class.to_string()),
             ..Default::default()
         };
 

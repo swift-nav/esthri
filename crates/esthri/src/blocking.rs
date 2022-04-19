@@ -57,6 +57,34 @@ where
 }
 
 #[tokio::main]
+pub async fn upload_compressed_with_storage_class<T>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+    file: impl AsRef<Path>,
+    storage_class: S3StorageClass,
+) -> Result<()>
+where
+    T: S3 + Send + Clone,
+{
+    crate::upload_compressed_with_storage_class(s3, bucket, key, file, storage_class).await
+}
+
+#[tokio::main]
+pub async fn upload_with_storage_class<T>(
+    s3: &T,
+    bucket: impl AsRef<str>,
+    key: impl AsRef<str>,
+    file: impl AsRef<Path>,
+    storage_class: S3StorageClass,
+) -> Result<()>
+where
+    T: S3 + Send + Clone,
+{
+    crate::upload_with_storage_class(s3, bucket, key, file, storage_class).await
+}
+
+#[tokio::main]
 pub async fn download<T>(
     s3: &T,
     bucket: impl AsRef<str>,

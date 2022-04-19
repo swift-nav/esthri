@@ -1,6 +1,7 @@
 use std::io::Cursor;
 
 use esthri::blocking;
+use esthri::rusoto::S3StorageClass;
 use esthri::upload;
 use esthri::upload_from_reader;
 use esthri::HeadObjectInfo;
@@ -27,6 +28,7 @@ fn test_upload() {
 
     assert_eq!(obj_info.size, 5242880);
     assert_eq!(obj_info.e_tag, "\"8542c49db935a57bb8c26ec68d39aaea\"");
+    assert_eq!(obj_info.storage_class, S3StorageClass::StandardIA);
     assert!(!obj_info.metadata.contains_key("esthri_compress_version"));
 }
 
@@ -111,4 +113,50 @@ fn test_upload_zero_size() {
         &filepath,
     );
     assert!(res.is_ok());
+}
+
+#[test]
+fn test_upload_storage_class_rrs() {
+    let s3client = esthri_test::get_s3client();
+    let filename = "test5mb.bin";
+    let filepath = esthri_test::test_data(filename);
+    let s3_key = esthri_test::randomised_name(&format!("test_upload/{}", filename));
+
+    let res = esthri::blocking::upload_with_storage_class(
+        s3client.as_ref(),
+        esthri_test::TEST_BUCKET,
+        &s3_key,
+        &filepath,
+        S3StorageClass::RRS,
+    );
+    assert!(res.is_ok());
+
+    let res = esthri::blocking::head_object(s3client.as_ref(), esthri_test::TEST_BUCKET, &s3_key);
+    let obj_info: Option<HeadObjectInfo> = res.unwrap();
+    assert!(obj_info.is_some());
+    let obj_info: HeadObjectInfo = obj_info.unwrap();
+    assert_eq!(obj_info.storage_class, S3StorageClass::RRS);
+}
+
+#[test]
+fn test_upload_storage_class_standard() {
+    let s3client = esthri_test::get_s3client();
+    let filename = "test5mb.bin";
+    let filepath = esthri_test::test_data(filename);
+    let s3_key = esthri_test::randomised_name(&format!("test_upload/{}", filename));
+
+    let res = esthri::blocking::upload_with_storage_class(
+        s3client.as_ref(),
+        esthri_test::TEST_BUCKET,
+        &s3_key,
+        &filepath,
+        S3StorageClass::Standard,
+    );
+    assert!(res.is_ok());
+
+    let res = esthri::blocking::head_object(s3client.as_ref(), esthri_test::TEST_BUCKET, &s3_key);
+    let obj_info: Option<HeadObjectInfo> = res.unwrap();
+    assert!(obj_info.is_some());
+    let obj_info: HeadObjectInfo = obj_info.unwrap();
+    assert_eq!(obj_info.storage_class, S3StorageClass::Standard);
 }
