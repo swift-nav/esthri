@@ -324,7 +324,7 @@ where
             key: key.into(),
             acl: Some("bucket-owner-full-control".into()),
             metadata: metadata.as_ref().cloned(),
-            storage_class: Some(storage_class.into()),
+            storage_class: Some(storage_class.to_string()),
             ..Default::default()
         })
         .await
@@ -363,7 +363,7 @@ where
             body: Some(into_byte_stream(body.clone())),
             acl: Some("bucket-owner-full-control".into()),
             metadata: metadata.as_ref().cloned(),
-            storage_class: Some(storage_class.into()),
+            storage_class: Some(storage_class.to_string()),
             ..Default::default()
         })
         .await

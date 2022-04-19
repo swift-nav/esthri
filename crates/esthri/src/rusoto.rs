@@ -11,7 +11,8 @@
  */
 
 use std::collections::HashMap;
-use std::convert::TryFrom;
+use std::fmt;
+use std::str::FromStr;
 
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
@@ -63,7 +64,7 @@ impl HeadObjectInfo {
         let metadata = hoo
             .metadata
             .ok_or_else(|| Error::HeadObjectUnexpected("no metadata found".into()))?;
-        let storage_class = S3StorageClass::try_from(
+        let storage_class = S3StorageClass::from_str(
             hoo.storage_class
                 .unwrap_or_else(|| "STANDARD".into()) // AWS doesn't set header for STANDARD
                 .as_str(),
@@ -118,26 +119,25 @@ pub enum S3StorageClass {
     RRS,
 }
 
-impl From<S3StorageClass> for String {
-    fn from(s: S3StorageClass) -> Self {
-        match s {
-            S3StorageClass::Standard => "STANDARD",
-            S3StorageClass::StandardIA => "STANDARD_IA",
-            S3StorageClass::IntelligentTiering => "INTELLIGENT_TIERING",
-            S3StorageClass::OneZoneIA => "ONEZONE_IA",
-            S3StorageClass::GlacialInstantRetrieval => "GLACIER_IR",
-            S3StorageClass::GlacialFlexibleRetrieval => "GLACIER",
-            S3StorageClass::GlacialDeepArchive => "DEEP_ARCHIVE",
-            S3StorageClass::RRS => "REDUCED_REDUNDANCY",
+impl fmt::Display for S3StorageClass {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            S3StorageClass::Standard => f.write_str("STANDARD"),
+            S3StorageClass::StandardIA => f.write_str("STANDARD_IA"),
+            S3StorageClass::IntelligentTiering => f.write_str("INTELLIGENT_TIERING"),
+            S3StorageClass::OneZoneIA => f.write_str("ONEZONE_IA"),
+            S3StorageClass::GlacialInstantRetrieval => f.write_str("GLACIER_IR"),
+            S3StorageClass::GlacialFlexibleRetrieval => f.write_str("GLACIER"),
+            S3StorageClass::GlacialDeepArchive => f.write_str("DEEP_ARCHIVE"),
+            S3StorageClass::RRS => f.write_str("REDUCED_REDUNDANCY"),
         }
-        .into()
     }
 }
 
-impl TryFrom<&str> for S3StorageClass {
-    type Error = Error;
+impl FromStr for S3StorageClass {
+    type Err = Error;
 
-    fn try_from(s: &str) -> Result<Self> {
+    fn from_str(s: &str) -> Result<Self> {
         match s {
             "STANDARD" => Ok(S3StorageClass::Standard),
             "STANDARD_IA" => Ok(S3StorageClass::StandardIA),
@@ -258,7 +258,7 @@ where
             key: key.into(),
             acl: Some("bucket-owner-full-control".into()),
             metadata: metadata.as_ref().cloned(),
-            storage_class: Some(storage_class.into()),
+            storage_class: Some(storage_class.to_string()),
             ..Default::default()
         };
 
