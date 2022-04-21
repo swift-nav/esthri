@@ -128,7 +128,7 @@ enum EsthriCommand {
         #[structopt(long)]
         key: String,
         /// The storage class of the object (example: RRS)
-        #[structopt(long = "storage", default_value = "STANDARDIA")]
+        #[structopt(long = "storage", default_value = "S3StorageClass::Standard")]
         storage_class: String,
         /// The path of the local file to read
         file: PathBuf,
@@ -387,8 +387,8 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
             ref storage_class,
             compress,
         } => {
-            let storage_class = S3StorageClass::from_str(storage_class.as_ref())
-                .unwrap_or(S3StorageClass::StandardIA);
+            let storage_class =
+                From::from_str(storage_class.as_ref()).unwrap_or(S3StorageClass::StandardIA);
 
             if compress {
                 esthri::upload_compressed_with_storage_class(s3, bucket, key, file, storage_class)
