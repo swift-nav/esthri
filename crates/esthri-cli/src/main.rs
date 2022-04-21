@@ -18,7 +18,6 @@ use std::ffi::OsStr;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::str::FromStr;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -128,8 +127,8 @@ enum EsthriCommand {
         #[structopt(long)]
         key: String,
         /// The storage class of the object (example: RRS)
-        #[structopt(long = "storage", default_value = "S3StorageClass::Standard")]
-        storage_class: String,
+        #[structopt(long = "storage", default_value = "STANDARD")]
+        storage_class: S3StorageClass,
         /// The path of the local file to read
         file: PathBuf,
     },
@@ -384,12 +383,9 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
             ref bucket,
             ref key,
             ref file,
-            ref storage_class,
+            storage_class,
             compress,
         } => {
-            let storage_class =
-                From::from_str(storage_class.as_ref()).unwrap_or(S3StorageClass::StandardIA);
-
             if compress {
                 esthri::upload_compressed_with_storage_class(s3, bucket, key, file, storage_class)
                     .await?;
