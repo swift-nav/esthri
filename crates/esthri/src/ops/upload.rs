@@ -258,8 +258,8 @@ where
 {
     let (bucket, key) = (bucket.as_ref(), key.as_ref());
     info!(
-        "put: bucket={}, key={}, file_size={}",
-        bucket, key, file_size
+        "put: bucket={}, key={}, file_size={}, storage_class={}",
+        bucket, key, file_size, storage_class
     );
 
     if file_size == 0 {
