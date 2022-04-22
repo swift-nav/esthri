@@ -132,7 +132,7 @@ where
         obj_info.parts * obj_info.size as u64
     );
     let dir = init_download_dir(download_path).await?;
-    let mut dest = TempFile::new(dir, None).await?;
+    let mut dest = TempFile::new_with_dir(dir, None).await?;
 
     if transparent_decompression && obj_info.is_esthri_compressed() {
         let stream = download_streaming_helper(s3, bucket, key, obj_info.parts);
