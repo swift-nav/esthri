@@ -10,6 +10,7 @@
  * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
  */
 
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
@@ -107,29 +108,44 @@ where
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum S3StorageClass {
     Standard,
+    #[serde(rename = "STANDARD_IA")]
     StandardIA,
     IntelligentTiering,
+    #[serde(rename = "ONEZONE_IA")]
     OneZoneIA,
-    GlacialInstantRetrieval,
-    GlacialFlexibleRetrieval,
-    GlacialDeepArchive,
+    #[serde(rename = "GLACIER_IR")]
+    GlacierInstantRetrieval,
+    #[serde(rename = "GLACIER")]
+    GlacierFlexibleRetrieval,
+    #[serde(rename = "DEEP_ARCHIVE")]
+    GlacierDeepArchive,
+    #[serde(rename = "REDUCED_REDUNDANCY")]
     RRS,
+    Outposts,
 }
 
 impl fmt::Display for S3StorageClass {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.to_str())
+    }
+}
+
+impl S3StorageClass {
+    pub const fn to_str(&self) -> &'static str {
         match self {
-            S3StorageClass::Standard => f.write_str("STANDARD"),
-            S3StorageClass::StandardIA => f.write_str("STANDARD_IA"),
-            S3StorageClass::IntelligentTiering => f.write_str("INTELLIGENT_TIERING"),
-            S3StorageClass::OneZoneIA => f.write_str("ONEZONE_IA"),
-            S3StorageClass::GlacialInstantRetrieval => f.write_str("GLACIER_IR"),
-            S3StorageClass::GlacialFlexibleRetrieval => f.write_str("GLACIER"),
-            S3StorageClass::GlacialDeepArchive => f.write_str("DEEP_ARCHIVE"),
-            S3StorageClass::RRS => f.write_str("REDUCED_REDUNDANCY"),
+            S3StorageClass::Standard => "STANDARD",
+            S3StorageClass::StandardIA => "STANDARD_IA",
+            S3StorageClass::IntelligentTiering => "INTELLIGENT_TIERING",
+            S3StorageClass::OneZoneIA => "ONEZONE_IA",
+            S3StorageClass::GlacierInstantRetrieval => "GLACIER_IR",
+            S3StorageClass::GlacierFlexibleRetrieval => "GLACIER",
+            S3StorageClass::GlacierDeepArchive => "DEEP_ARCHIVE",
+            S3StorageClass::RRS => "REDUCED_REDUNDANCY",
+            S3StorageClass::Outposts => "OUTPOSTS",
         }
     }
 }
@@ -143,10 +159,11 @@ impl FromStr for S3StorageClass {
             "STANDARD_IA" => Ok(S3StorageClass::StandardIA),
             "INTELLIGENT_TIERING" => Ok(S3StorageClass::IntelligentTiering),
             "ONEZONE_IA" => Ok(S3StorageClass::OneZoneIA),
-            "GLACIAL_INSTANT_RETRIEVAL" => Ok(S3StorageClass::GlacialInstantRetrieval),
-            "GLACIAL_FLEXIBLE_RETRIEVAL" => Ok(S3StorageClass::GlacialFlexibleRetrieval),
-            "GLACIAL_DEEP_ARCHIVE" => Ok(S3StorageClass::GlacialDeepArchive),
+            "GLACIER_INSTANT_RETRIEVAL" => Ok(S3StorageClass::GlacierInstantRetrieval),
+            "GLACIER_FLEXIBLE_RETRIEVAL" => Ok(S3StorageClass::GlacierFlexibleRetrieval),
+            "GLACIER_DEEP_ARCHIVE" => Ok(S3StorageClass::GlacierDeepArchive),
             "REDUCED_REDUNDANCY" => Ok(S3StorageClass::RRS),
+            "OUTPOSTS" => Ok(S3StorageClass::Outposts),
             _ => Err(Error::UnknownStorageClass(s.to_string())),
         }
     }
