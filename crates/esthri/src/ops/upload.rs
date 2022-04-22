@@ -123,7 +123,7 @@ where
         key.as_ref(),
         file.as_ref(),
         compressed,
-        S3StorageClass::StandardIA,
+        Config::global().storage_class(),
     )
     .await
 }

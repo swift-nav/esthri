@@ -13,6 +13,7 @@
 //! Configuration module for the library, allows sizing of internal concurrent task counts,
 //! multipart upload sizes and read buffer sizes, among other things.
 
+use crate::S3StorageClass;
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
 
@@ -36,6 +37,8 @@ pub const CONCURRENT_WRITER_TASKS: u16 = 1;
 #[derive(Debug, Deserialize)]
 pub struct Config {
     #[serde(default)]
+    storage_class: StorageClass,
+    #[serde(default)]
     upload_part_size: UploadPartSize,
     #[serde(default)]
     upload_read_size: UploadReadSize,
@@ -49,6 +52,18 @@ pub struct Config {
     request_retries: RequestRetries,
     #[serde(default)]
     concurrent_writer_tasks: ConcurrentWriterTasks,
+}
+
+/// Wrapper type for [STORAGE_CLASS] which allows [Config::storage_class()] to bind a default
+/// value.
+#[derive(Debug, Deserialize)]
+#[serde(transparent)]
+struct StorageClass(S3StorageClass);
+
+impl Default for StorageClass {
+    fn default() -> Self {
+        StorageClass(S3StorageClass::Standard)
+    }
 }
 
 /// Wrapper type for [UPLOAD_PART_SIZE] which allows [Config::upload_part_size()] to bind a default
@@ -143,6 +158,7 @@ impl Config {
     /// Fetches the global config object, values are either defaulted or populated
     /// from the environment:
     ///
+    /// - `ESTHRI_STORAGE_CLASS` - [Config::storage_class()]
     /// - `ESTHRI_UPLOAD_PART_SIZE` - [Config::upload_part_size()]
     /// - `ESTHRI_UPLOAD_READ_SIZE` - [Config::upload_read_size()]
     /// - `ESTHRI_CONCURRENT_UPLOAD_TASKS` - [Config::concurrent_upload_tasks()]
@@ -156,6 +172,13 @@ impl Config {
                 .from_env::<Config>()
                 .expect(EXPECT_GLOBAL_CONFIG)
         })
+    }
+
+    /// The default size of parts in a multipart upload to S3.  8 MiB is the default chunk size
+    /// from awscli, changing this size will affect the calculation of ETags.  Defaults to
+    /// [STORAGE_CLASS].
+    pub fn storage_class(&self) -> S3StorageClass {
+        self.storage_class.0
     }
 
     /// The default size of parts in a multipart upload to S3.  8 MiB is the default chunk size

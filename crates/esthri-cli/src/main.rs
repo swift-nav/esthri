@@ -13,8 +13,10 @@
 
 mod http_server;
 
+
 use std::env;
 use std::ffi::OsStr;
+
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -28,7 +30,7 @@ use log_derive::logfn;
 use structopt::StructOpt;
 use tokio::runtime::Builder;
 
-use esthri::{rusoto::*, GlobFilter, PendingUpload, S3PathParam};
+use esthri::{rusoto::*, Config, GlobFilter, PendingUpload, S3PathParam};
 
 // Environment variable that can be set to set the path to the aws tool that esthri falls back to
 const REAL_AWS_EXECUTABLE_ENV_NAME: &str = "ESTHRI_AWS_PATH";
@@ -113,6 +115,18 @@ enum S3Command {
     },
 }
 
+const STORAGE_CLASSES: &[&str] = &[
+    S3StorageClass::Standard.to_str(),
+    S3StorageClass::StandardIA.to_str(),
+    S3StorageClass::RRS.to_str(),
+    S3StorageClass::OneZoneIA.to_str(),
+    S3StorageClass::GlacialDeepArchive.to_str(),
+    S3StorageClass::GlacialFlexibleRetrieval.to_str(),
+    S3StorageClass::GlacialInstantRetrieval.to_str(),
+    S3StorageClass::Outposts.to_str(),
+    S3StorageClass::IntelligentTiering.to_str(),
+];
+
 #[derive(Debug, StructOpt)]
 enum EsthriCommand {
     /// Upload an object to S3
@@ -127,8 +141,8 @@ enum EsthriCommand {
         #[structopt(long)]
         key: String,
         /// The storage class of the object (example: RRS)
-        #[structopt(long = "storage", default_value = "STANDARD")]
-        storage_class: S3StorageClass,
+        #[structopt(long = "storage", possible_values(STORAGE_CLASSES))]
+        storage_class: Option<S3StorageClass>,
         /// The path of the local file to read
         file: PathBuf,
     },
@@ -386,6 +400,8 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
             storage_class,
             compress,
         } => {
+            let storage_class = storage_class.unwrap_or_else(|| Config::global().storage_class());
+
             if compress {
                 esthri::upload_compressed_with_storage_class(s3, bucket, key, file, storage_class)
                     .await?;
