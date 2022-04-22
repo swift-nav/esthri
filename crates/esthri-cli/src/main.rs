@@ -13,10 +13,8 @@
 
 mod http_server;
 
-
 use std::env;
 use std::ffi::OsStr;
-
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -120,9 +118,9 @@ const STORAGE_CLASSES: &[&str] = &[
     S3StorageClass::StandardIA.to_str(),
     S3StorageClass::RRS.to_str(),
     S3StorageClass::OneZoneIA.to_str(),
-    S3StorageClass::GlacialDeepArchive.to_str(),
-    S3StorageClass::GlacialFlexibleRetrieval.to_str(),
-    S3StorageClass::GlacialInstantRetrieval.to_str(),
+    S3StorageClass::GlacierDeepArchive.to_str(),
+    S3StorageClass::GlacierFlexibleRetrieval.to_str(),
+    S3StorageClass::GlacierInstantRetrieval.to_str(),
     S3StorageClass::Outposts.to_str(),
     S3StorageClass::IntelligentTiering.to_str(),
 ];

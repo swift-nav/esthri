@@ -118,11 +118,11 @@ pub enum S3StorageClass {
     #[serde(rename = "ONEZONE_IA")]
     OneZoneIA,
     #[serde(rename = "GLACIER_IR")]
-    GlacialInstantRetrieval,
+    GlacierInstantRetrieval,
     #[serde(rename = "GLACIER")]
-    GlacialFlexibleRetrieval,
+    GlacierFlexibleRetrieval,
     #[serde(rename = "DEEP_ARCHIVE")]
-    GlacialDeepArchive,
+    GlacierDeepArchive,
     #[serde(rename = "REDUCED_REDUNDANCY")]
     RRS,
     Outposts,
@@ -141,9 +141,9 @@ impl S3StorageClass {
             S3StorageClass::StandardIA => "STANDARD_IA",
             S3StorageClass::IntelligentTiering => "INTELLIGENT_TIERING",
             S3StorageClass::OneZoneIA => "ONEZONE_IA",
-            S3StorageClass::GlacialInstantRetrieval => "GLACIER_IR",
-            S3StorageClass::GlacialFlexibleRetrieval => "GLACIER",
-            S3StorageClass::GlacialDeepArchive => "DEEP_ARCHIVE",
+            S3StorageClass::GlacierInstantRetrieval => "GLACIER_IR",
+            S3StorageClass::GlacierFlexibleRetrieval => "GLACIER",
+            S3StorageClass::GlacierDeepArchive => "DEEP_ARCHIVE",
             S3StorageClass::RRS => "REDUCED_REDUNDANCY",
             S3StorageClass::Outposts => "OUTPOSTS",
         };
@@ -159,9 +159,9 @@ impl FromStr for S3StorageClass {
             "STANDARD_IA" => Ok(S3StorageClass::StandardIA),
             "INTELLIGENT_TIERING" => Ok(S3StorageClass::IntelligentTiering),
             "ONEZONE_IA" => Ok(S3StorageClass::OneZoneIA),
-            "GLACIER_INSTANT_RETRIEVAL" => Ok(S3StorageClass::GlacialInstantRetrieval),
-            "GLACIER_FLEXIBLE_RETRIEVAL" => Ok(S3StorageClass::GlacialFlexibleRetrieval),
-            "GLACIER_DEEP_ARCHIVE" => Ok(S3StorageClass::GlacialDeepArchive),
+            "GLACIER_INSTANT_RETRIEVAL" => Ok(S3StorageClass::GlacierInstantRetrieval),
+            "GLACIER_FLEXIBLE_RETRIEVAL" => Ok(S3StorageClass::GlacierFlexibleRetrieval),
+            "GLACIER_DEEP_ARCHIVE" => Ok(S3StorageClass::GlacierDeepArchive),
             "REDUCED_REDUNDANCY" => Ok(S3StorageClass::RRS),
             "OUTPOSTS" => Ok(S3StorageClass::Outposts),
             _ => Err(Error::UnknownStorageClass(s.to_string())),
