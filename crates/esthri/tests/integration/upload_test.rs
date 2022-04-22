@@ -28,7 +28,7 @@ fn test_upload() {
 
     assert_eq!(obj_info.size, 5242880);
     assert_eq!(obj_info.e_tag, "\"8542c49db935a57bb8c26ec68d39aaea\"");
-    assert_eq!(obj_info.storage_class, S3StorageClass::StandardIA);
+    assert_eq!(obj_info.storage_class, S3StorageClass::Standard);
     assert!(!obj_info.metadata.contains_key("esthri_compress_version"));
 }
 
