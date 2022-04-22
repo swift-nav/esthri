@@ -136,7 +136,7 @@ impl fmt::Display for S3StorageClass {
 
 impl S3StorageClass {
     pub const fn to_str(&self) -> &'static str {
-        return match self {
+        match self {
             S3StorageClass::Standard => "STANDARD",
             S3StorageClass::StandardIA => "STANDARD_IA",
             S3StorageClass::IntelligentTiering => "INTELLIGENT_TIERING",
@@ -146,7 +146,7 @@ impl S3StorageClass {
             S3StorageClass::GlacierDeepArchive => "DEEP_ARCHIVE",
             S3StorageClass::RRS => "REDUCED_REDUNDANCY",
             S3StorageClass::Outposts => "OUTPOSTS",
-        };
+        }
     }
 }
 
