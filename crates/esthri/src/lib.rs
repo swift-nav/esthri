@@ -332,11 +332,15 @@ where
 }
 
 #[cfg(feature = "rustls")]
-pub use hyper_rustls::HttpsConnector;
+pub use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
 
 #[cfg(feature = "rustls")]
 pub fn new_https_connector() -> HttpsConnector<HttpConnector> {
-    HttpsConnector::with_webpki_roots()
+    HttpsConnectorBuilder::new()
+        .with_webpki_roots()
+        .https_only()
+        .enable_http1()
+        .build()
 }
 
 #[cfg(feature = "nativetls")]
