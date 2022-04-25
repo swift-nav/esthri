@@ -59,15 +59,9 @@ pub struct Config {
 
 /// Wrapper type for [TEMP_DIR_PATH] which allows [Config::temp_dir_path()] to bind a default
 /// value.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 #[serde(transparent)]
-struct TempDirPath(PathBuf);
-
-impl Default for TempDirPath {
-    fn default() -> Self {
-        TempDirPath(std::env::current_dir().unwrap())
-    }
-}
+struct TempDirPath(Option<PathBuf>);
 
 /// Wrapper type for [STORAGE_CLASS] which allows [Config::storage_class()] to bind a default
 /// value.
@@ -199,7 +193,7 @@ impl Config {
     /// The default size of parts in a multipart upload to S3.  8 MiB is the default chunk size
     /// from awscli, changing this size will affect the calculation of ETags.  Defaults to
     /// [TEMP_DIR_PATH].
-    pub fn temp_dir_path(&self) -> PathBuf {
+    pub fn temp_dir_path(&self) -> Option<PathBuf> {
         self.temp_dir_path.0.clone()
     }
 

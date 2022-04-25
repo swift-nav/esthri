@@ -19,19 +19,24 @@ use tokio::{
     io::{self, BufReader},
 };
 
-use crate::{tempfile::TempFile, Result};
+use crate::{tempfile::TempFile, Config, Result};
 
 pub const ESTHRI_METADATA_COMPRESS_KEY: &str = "esthri_compress_version";
 
 pub async fn compress_to_tempfile(path: &Path) -> Result<(TempFile, u64)> {
     debug!("compressing: {}", path.display());
+    let dir = match (Config::global().temp_dir_path(), path.parent()) {
+        (Some(dir), _) => dir,
+        (None, Some(parent)) => parent.to_owned(),
+        _ => std::env::current_dir()?,
+    };
     let mut src = {
         let f = File::open(path).await?;
         let size = f.metadata().await?.len();
         debug!("old file size: {}", size);
         GzipEncoder::new(BufReader::new(f))
     };
-    let mut dest = TempFile::new(Some(".gz")).await?;
+    let mut dest = TempFile::new(dir, Some(".gz")).await?;
     let new_size = io::copy(&mut src, dest.file_mut()).await?;
     dest.rewind().await?;
     debug!("new file size: {}", new_size);
