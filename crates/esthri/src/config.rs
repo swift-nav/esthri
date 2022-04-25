@@ -190,8 +190,7 @@ impl Config {
         self.storage_class.0
     }
 
-    /// The default size of parts in a multipart upload to S3.  8 MiB is the default chunk size
-    /// from awscli, changing this size will affect the calculation of ETags.  Defaults to
+    /// The default path for new temp files. Uses to current directory if unset. Defaults to
     /// [TEMP_DIR_PATH].
     pub fn temp_dir_path(&self) -> Option<PathBuf> {
         self.temp_dir_path.0.clone()
