@@ -1,5 +1,4 @@
 use std::{
-    fs,
     io::SeekFrom,
     path::{Path, PathBuf},
 };
