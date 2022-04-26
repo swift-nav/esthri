@@ -16,6 +16,7 @@
 use crate::S3StorageClass;
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
+use std::path::PathBuf;
 
 /// The default size of parts in a multipart upload to S3.  8 MiB is the default chunk
 /// size from awscli, changing this size will affect the calculation of ETags.
@@ -52,7 +53,15 @@ pub struct Config {
     request_retries: RequestRetries,
     #[serde(default)]
     concurrent_writer_tasks: ConcurrentWriterTasks,
+    #[serde(default)]
+    temp_dir_path: TempDirPath,
 }
+
+/// Wrapper type for [TEMP_DIR_PATH] which allows [Config::temp_dir_path()] to bind a default
+/// value.
+#[derive(Debug, Deserialize, Default)]
+#[serde(transparent)]
+struct TempDirPath(Option<PathBuf>);
 
 /// Wrapper type for [STORAGE_CLASS] which allows [Config::storage_class()] to bind a default
 /// value.
@@ -174,11 +183,17 @@ impl Config {
         })
     }
 
-    /// The default size of parts in a multipart upload to S3.  8 MiB is the default chunk size
-    /// from awscli, changing this size will affect the calculation of ETags.  Defaults to
-    /// [STORAGE_CLASS].
+    /// The default storage class for put requests to S3. STANDARD is the default storage class
+    /// unless specified. View AWS documentation for more specifications on other storage classes.
+    /// Defaults to [STORAGE_CLASS].
     pub fn storage_class(&self) -> S3StorageClass {
         self.storage_class.0
+    }
+
+    /// The default path for new temp files. Uses to current directory if unset. Defaults to
+    /// [TEMP_DIR_PATH].
+    pub fn temp_dir_path(&self) -> Option<PathBuf> {
+        self.temp_dir_path.0.clone()
     }
 
     /// The default size of parts in a multipart upload to S3.  8 MiB is the default chunk size

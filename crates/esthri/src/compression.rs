@@ -19,15 +19,16 @@ use tokio::{
     io::{self, BufReader},
 };
 
-use crate::{tempfile::TempFile, Result};
+use crate::{tempfile::TempFile, Config, Result};
 
 pub const ESTHRI_METADATA_COMPRESS_KEY: &str = "esthri_compress_version";
 
 pub async fn compress_to_tempfile(path: &Path) -> Result<(TempFile, u64)> {
     debug!("compressing: {}", path.display());
-    let dir = match path.parent() {
-        Some(parent) => parent.to_owned(),
-        None => std::env::current_dir()?,
+    let dir = match (Config::global().temp_dir_path(), path.parent()) {
+        (Some(dir), _) => dir,
+        (None, Some(parent)) => parent.to_owned(),
+        _ => std::env::current_dir()?,
     };
     let mut src = {
         let f = File::open(path).await?;
