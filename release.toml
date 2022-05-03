@@ -3,3 +3,5 @@ post-release-commit-message = "Start next development iteration: {{next_version}
 tag-message = "{{tag_name}}"
 tag-name = "{{version}}"
 allow-branch = ["master"]
+consolidate-commits = true
+consolidate-pushes = true
