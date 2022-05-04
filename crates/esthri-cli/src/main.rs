@@ -21,11 +21,11 @@ use std::process::Command;
 use std::time::Duration;
 
 use anyhow::Result;
+use clap::{ArgMatches, Parser, Subcommand};
 use glob::Pattern;
 use hyper::Client;
 use log::*;
 use log_derive::logfn;
-use structopt::StructOpt;
 use tokio::runtime::Builder;
 
 use esthri::{rusoto::*, Config, GlobFilter, PendingUpload, S3PathParam};
@@ -49,28 +49,28 @@ enum Cli {
     AwsCompat(AwsCompatCli),
 }
 
-#[derive(Debug, StructOpt)]
-#[structopt(name = "esthri", about = "Simple S3 file transfer utility.")]
+#[derive(Debug, Parser)]
+#[clap(name = "esthri", about = "Simple S3 file transfer utility.")]
 struct EsthriCli {
-    #[structopt(subcommand)]
+    #[clap(subcommand)]
     cmd: EsthriCommand,
 }
 
-#[derive(Debug, StructOpt)]
-#[structopt(
+#[derive(Debug, Parser)]
+#[clap(
     name = "esthri aws wrapper",
     about = "Simple S3 file transfer utility."
 )]
 struct AwsCompatCli {
-    #[structopt(subcommand)]
+    #[clap(subcommand)]
     cmd: AwsCommand,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Subcommand)]
 enum AwsCommand {
     /// S3 compatibility layer, providing a compatibility CLI layer for the official AWS S3 CLI tool
     S3 {
-        #[structopt(subcommand)]
+        #[clap(subcommand)]
         cmd: S3Command,
     },
 }
@@ -80,35 +80,35 @@ enum AwsCommand {
 // when the acl option is specified and set to this value
 const S3_ACL_OPTIONS: &[&str] = &["bucket-owner-full-control"];
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Subcommand)]
 enum S3Command {
-    #[structopt(name = "cp")]
+    #[clap(name = "cp")]
     Copy {
         source: S3PathParam,
         destination: S3PathParam,
-        #[structopt(long)]
+        #[clap(long)]
         #[allow(dead_code)]
         quiet: bool,
-        #[structopt(long, possible_values(S3_ACL_OPTIONS))]
+        #[clap(long, possible_values(S3_ACL_OPTIONS))]
         #[allow(dead_code)]
         acl: Option<String>,
-        #[structopt(long)]
+        #[clap(long)]
         transparent_compression: bool,
     },
     Sync {
         source: S3PathParam,
         destination: S3PathParam,
-        #[structopt(long)]
+        #[clap(long)]
         include: Option<Vec<Pattern>>,
-        #[structopt(long)]
+        #[clap(long)]
         exclude: Option<Vec<Pattern>>,
-        #[structopt(long)]
+        #[clap(long)]
         #[allow(dead_code)]
         quiet: bool,
-        #[structopt(long, possible_values(S3_ACL_OPTIONS))]
+        #[clap(long, possible_values(S3_ACL_OPTIONS))]
         #[allow(dead_code)]
         acl: Option<String>,
-        #[structopt(long)]
+        #[clap(long)]
         transparent_compression: bool,
     },
 }
@@ -125,21 +125,21 @@ const STORAGE_CLASSES: &[&str] = &[
     S3StorageClass::IntelligentTiering.to_str(),
 ];
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Subcommand)]
 enum EsthriCommand {
     /// Upload an object to S3
     Put {
         /// Should the file be compressed during upload
-        #[structopt(long)]
+        #[clap(long)]
         compress: bool,
         /// The target bucket (example: my-bucket)
-        #[structopt(long)]
+        #[clap(long)]
         bucket: String,
         /// The key name of the object (example: a/key/name.bin)
-        #[structopt(long)]
+        #[clap(long)]
         key: String,
         /// The storage class of the object (example: RRS)
-        #[structopt(long = "storage", possible_values(STORAGE_CLASSES))]
+        #[clap(long = "storage", possible_values(STORAGE_CLASSES))]
         storage_class: Option<S3StorageClass>,
         /// The path of the local file to read
         file: PathBuf,
@@ -147,13 +147,13 @@ enum EsthriCommand {
     /// Download an object from S3
     Get {
         /// Should the file be decompressed during download
-        #[structopt(long)]
+        #[clap(long)]
         transparent_compression: bool,
         /// The target bucket (example: my-bucket)
-        #[structopt(long)]
+        #[clap(long)]
         bucket: String,
         /// The key name of the object (example: a/key/name.bin)
-        #[structopt(long)]
+        #[clap(long)]
         key: String,
         /// The path of the local file to write
         file: PathBuf,
@@ -161,10 +161,10 @@ enum EsthriCommand {
     /// Manually abort a multipart upload
     Abort {
         /// The bucket of the multipart upload (example: my-bucket)
-        #[structopt(long)]
+        #[clap(long)]
         bucket: String,
         /// The key of the multipart upload (example: a/key/name.bin)
-        #[structopt(long)]
+        #[clap(long)]
         key: String,
         /// The upload_id for the multipart upload
         upload_id: String,
@@ -174,37 +174,37 @@ enum EsthriCommand {
     /// Sync a directory with S3
     Sync {
         /// Source of the sync (example: s3://my-bucket/a/prefix/src)
-        #[structopt(long)]
+        #[clap(long)]
         source: S3PathParam,
         /// Destination of the sync (example: s3://my-bucket/a/prefix/dst)
-        #[structopt(long)]
+        #[clap(long)]
         destination: S3PathParam,
         /// Optional include glob pattern (see `man 3 glob`)
-        #[structopt(long)]
+        #[clap(long)]
         include: Option<Vec<Pattern>>,
         /// Optional exclude glob pattern (see `man 3 glob`)
-        #[structopt(long)]
+        #[clap(long)]
         exclude: Option<Vec<Pattern>>,
         /// Enable compression, only valid on upload
-        #[structopt(long)]
+        #[clap(long)]
         transparent_compression: bool,
     },
     /// Retreive the ETag for a remote object
     HeadObject {
         /// The bucket to target (example: my-bucket)
-        #[structopt(long)]
+        #[clap(long)]
         bucket: String,
         /// The key to target (example: a/key/name.bin)
-        #[structopt(long)]
+        #[clap(long)]
         key: String,
     },
     /// List remote objects in S3
     ListObjects {
         /// The bucket to target (example: my-bucket)
-        #[structopt(long)]
+        #[clap(long)]
         bucket: String,
         /// The key to target (example: a/key/name.bin)
-        #[structopt(long)]
+        #[clap(long)]
         key: String,
     },
 
@@ -213,10 +213,10 @@ enum EsthriCommand {
     /// This also supports serving dynamic archives of bucket contents
     Serve {
         /// The bucket to serve over HTTP (example: my-bucket)
-        #[structopt(long)]
+        #[clap(long)]
         bucket: String,
         /// The listening address for the server
-        #[structopt(long, default_value = "127.0.0.1:3030")]
+        #[clap(long, default_value = "127.0.0.1:3030")]
         address: std::net::SocketAddr,
     },
 }
@@ -297,7 +297,7 @@ async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
                     transparent_compression: compress,
                     ..
                 } => {
-                    let clap = AwsCompatCli::clap();
+                    let clap = AwsCompatCli::app();
                     let matches = clap.get_matches();
                     let matches = matches
                         .subcommand_matches("s3")
@@ -341,7 +341,7 @@ async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
 fn args_with_indices<'a, I: IntoIterator + 'a>(
     collection: I,
     name: &str,
-    matches: &'a structopt::clap::ArgMatches,
+    matches: &'a ArgMatches,
 ) -> impl Iterator<Item = (usize, I::Item)> + 'a {
     matches
         .indices_of(name)
@@ -355,7 +355,7 @@ fn args_with_indices<'a, I: IntoIterator + 'a>(
 fn globs_to_filter_list(
     include: &Option<Vec<Pattern>>,
     exclude: &Option<Vec<Pattern>>,
-    matches: &structopt::clap::ArgMatches,
+    matches: &ArgMatches,
 ) -> Option<Vec<GlobFilter>> {
     if include.as_deref().is_some() || exclude.as_deref().is_some() {
         let includes: Vec<GlobFilter> = include
@@ -511,9 +511,9 @@ async fn async_main() -> Result<()> {
     }
 
     let cli = match aws_compat_mode {
-        false => Cli::Esthri(EsthriCli::from_args()),
+        false => Cli::Esthri(EsthriCli::parse()),
         true => {
-            let args = AwsCompatCli::from_args_safe().map_err(|e| {
+            let args = AwsCompatCli::try_parse().map_err(|e| {
                 call_real_aws();
                 anyhow::anyhow!(e)
             })?;
