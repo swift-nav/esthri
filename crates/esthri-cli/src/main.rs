@@ -297,39 +297,40 @@ async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
                     transparent_compression: compress,
                     ..
                 } => {
-                    let clap = AwsCompatCli::app();
-                    let matches = clap.get_matches();
-                    let matches = matches
-                        .subcommand_matches("s3")
-                        .expect("Expected s3 command")
-                        .subcommand_matches("sync")
-                        .expect("Expected sync command");
-
-                    let user_filters = globs_to_filter_list(include, exclude, matches);
-
-                    let mut filters = vec![];
-
-                    if let Some(user_filters) = user_filters {
-                        filters.extend(user_filters);
-                    }
-
-                    // Following the interface of `aws sync`, we should
-                    // always fall back to including every file. See:
-                    // https://docs.aws.amazon.com/cli/latest/reference/s3/index.html#use-of-exclude-and-include-filters
-                    filters.push(GlobFilter::Include(Pattern::new("*")?));
-
-                    // Works around structopt/clap not supporting flag values from environment variables
-                    let compress =
-                        compress || env::var("ESTHRI_AWS_COMPAT_MODE_COMPRESSION").is_ok();
-
-                    esthri::sync(
-                        s3,
-                        source.clone(),
-                        destination.clone(),
-                        Some(&filters),
-                        compress,
-                    )
-                    .await?;
+                    // FIXME: hmmm #2
+                    // let clap = AwsCompatCli::parse();
+                    // let matches = clap.get_matches();
+                    // let matches = matches
+                    //     .subcommand_matches("s3")
+                    //     .expect("Expected s3 command")
+                    //     .subcommand_matches("sync")
+                    //     .expect("Expected sync command");
+                    //
+                    // let user_filters = globs_to_filter_list(include, exclude, matches);
+                    //
+                    // let mut filters = vec![];
+                    //
+                    // if let Some(user_filters) = user_filters {
+                    //     filters.extend(user_filters);
+                    // }
+                    //
+                    // // Following the interface of `aws sync`, we should
+                    // // always fall back to including every file. See:
+                    // // https://docs.aws.amazon.com/cli/latest/reference/s3/index.html#use-of-exclude-and-include-filters
+                    // filters.push(GlobFilter::Include(Pattern::new("*")?));
+                    //
+                    // // Works around structopt/clap not supporting flag values from environment variables
+                    // let compress =
+                    //     compress || env::var("ESTHRI_AWS_COMPAT_MODE_COMPRESSION").is_ok();
+                    //
+                    // esthri::sync(
+                    //     s3,
+                    //     source.clone(),
+                    //     destination.clone(),
+                    //     Some(&filters),
+                    //     compress,
+                    // )
+                    // .await?;
                 }
             };
         }
@@ -445,20 +446,21 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
             if transparent_compression && (source.is_bucket() && destination.is_bucket()) {
                 return Err(esthri::errors::Error::InvalidSyncCompress.into());
             }
-            let clap = EsthriCommand::clap();
-            let matches = clap.get_matches();
-            let matches = matches
-                .subcommand_matches("sync")
-                .expect("Expected sync command");
-            let filters = globs_to_filter_list(include, exclude, matches);
-            esthri::sync(
-                s3,
-                source.clone(),
-                destination.clone(),
-                filters.as_deref(),
-                transparent_compression,
-            )
-            .await?;
+            // FIXME: hmmmmmmmmmmmmm #1
+            // let clap = EsthriCommand::clap();
+            // let matches = clap.get_matches();
+            // let matches = matches
+            //     .subcommand_matches("sync")
+            //     .expect("Expected sync command");
+            // let filters = globs_to_filter_list(include, exclude, matches);
+            // esthri::sync(
+            //     s3,
+            //     source.clone(),
+            //     destination.clone(),
+            //     filters.as_deref(),
+            //     transparent_compression,
+            // )
+            // .await?;
         }
 
         HeadObject { bucket, key } => {
@@ -497,8 +499,6 @@ async fn async_main() -> Result<()> {
     if std::env::var("RUST_LOG").is_err() {
         std::env::set_var("RUST_LOG", "esthri=debug,esthri_lib=debug");
     }
-
-    eprintln!("{:?}", esthri::Config::global());
 
     env_logger::init();
 
