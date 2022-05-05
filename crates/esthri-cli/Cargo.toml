@@ -49,6 +49,7 @@ tokio-util = { version = "0.7.1", features = ["compat", "codec"] }
 warp = "0.3"
 
 [dev-dependencies]
+esthri = { path = "../esthri", default-features = false, features=["blocking"] }
 esthri-test = { path = "../esthri-test" }
 assert_cmd = "2.0.4"
 backtrace = "0.3"
