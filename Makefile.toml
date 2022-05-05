@@ -67,7 +67,7 @@ command = "cargo"
 args = [
         "test",
         "${@}",
-        "--features=${TLS_PROVIDER},blocking",
+        "--features=${TLS_PROVIDER}",
         "--no-default-features",
         "@@remove-empty(BUILD_FLAVOR)",
         "--",

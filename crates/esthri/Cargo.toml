@@ -57,6 +57,7 @@ optional = true
 features = ["webpki-roots"]
 
 [dev-dependencies]
+esthri = { path = ".", default-features = false, features=["blocking"] }
 esthri-test = { path = "../esthri-test" }
 md5 = "0.7"
 tar = "0.4"
