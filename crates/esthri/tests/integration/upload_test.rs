@@ -56,6 +56,7 @@ fn test_upload_compressed() {
 
     assert_eq!(obj_info.size, 3344161);
     assert_eq!(obj_info.e_tag, "\"4a57bdf6ed65bc7e9ed34a4796561f06\"");
+    assert_eq!(obj_info.storage_class, S3StorageClass::Standard);
     assert_eq!(
         obj_info.metadata.get("esthri_compress_version").unwrap(),
         env!("CARGO_PKG_VERSION")

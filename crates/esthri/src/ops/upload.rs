@@ -212,7 +212,7 @@ where
         key.as_ref(),
         file.as_ref(),
         compressed,
-        S3StorageClass::StandardIA,
+        Config::global().storage_class(),
     )
     .await
 }
@@ -237,7 +237,7 @@ where
         reader,
         file_size,
         metadata,
-        S3StorageClass::StandardIA,
+        Config::global().storage_class(),
     )
     .await
 }
