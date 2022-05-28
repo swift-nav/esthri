@@ -35,6 +35,9 @@ pub enum Error {
     #[error("create_multipart_upload upload_id was none")]
     UploadIdNone,
 
+    #[error("get_bucket_location location_constraint was none")]
+    LocationConstraintNone,
+
     #[error("a read of zero occured")]
     ReadZero,
 
@@ -97,6 +100,9 @@ pub enum Error {
 
     #[error("remote object sized changed while reading")]
     GetObjectSizeChanged,
+
+    #[error(transparent)]
+    GetBucketLocationFailed(#[from] RusotoError<GetBucketLocationError>),
 
     #[error(transparent)]
     IoError(#[from] std::io::Error),
