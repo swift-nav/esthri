@@ -16,7 +16,7 @@ TARGET = "--target=x86_64-unknown-linux-musl"
 
 [env.'release+mac']
 BUILD_FLAVOR = "--release"
-TARGET = "--target=aarch64-apple-darwin"
+TARGET = "--target=x86_64-apple-darwin"
 
 [env.'release+windows']
 BUILD_FLAVOR = "--release"
