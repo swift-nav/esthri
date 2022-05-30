@@ -28,7 +28,7 @@ jobs:
             profile: release+mac
             target: x86_64-apple-darwin
           - os: windows-2019
-            profile: release-windows
+            profile: release+windows
             target: x86_64-pc-windows-msvc
 
     steps:
@@ -51,27 +51,24 @@ jobs:
       - name: Build
         shell: bash
         run: |
-          cargo make \
-            --no-workspace \
-            --env CARGO_MAKE_RELEASE_FLOW_TARGET=${{ matrix.binary_target }} \
-            setup-release-build-env
-          cargo build --release --all-features --target ${{ matrix.binary_target }}
-      - name: Package Release
-        shell: bash
-        run: |
-          touch LICENSE.txt
-          cargo make zip-release-binary-for-target \
-            --no-workspace \
-            --env CARGO_MAKE_BINARY_EXECUTABLE_NAME=log-analyzer \
-            --env CARGO_MAKE_RELEASE_FLOW_TARGET=${{ matrix.binary_target }} \
-            --env CARGO_MAKE_PROJECT_NAME=log-analyzer \
-            --env CARGO_MAKE_PROJECT_VERSION=${{ steps.get_tag.outputs.tag }}
+          cargo make --profile ${{ matrix.profile }} build
 
-      - name: Upload Release
-        uses: svenstaro/upload-release-action@v1-release
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: "*.zip"
-          tag: ${{ github.ref }}
-          overwrite: true
-          file_glob: true
+#      - name: Package Release
+#        shell: bash
+#        run: |
+#          touch LICENSE.txt
+#          cargo make zip-release-binary-for-target \
+#            --no-workspace \
+#            --env CARGO_MAKE_BINARY_EXECUTABLE_NAME=log-analyzer \
+#            --env CARGO_MAKE_RELEASE_FLOW_TARGET=${{ matrix.binary_target }} \
+#            --env CARGO_MAKE_PROJECT_NAME=log-analyzer \
+#            --env CARGO_MAKE_PROJECT_VERSION=${{ steps.get_tag.outputs.tag }}
+
+#      - name: Upload Release
+#        uses: svenstaro/upload-release-action@v1-release
+#        with:
+#          repo_token: ${{ secrets.GITHUB_TOKEN }}
+#          file: "*.zip"
+#          tag: ${{ github.ref }}
+#          overwrite: true
+#          file_glob: true
