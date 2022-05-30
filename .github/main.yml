@@ -1,0 +1,41 @@
+# This is a basic workflow to help you get started with Actions
+
+name: Build macOS and Windows
+
+# Controls when the workflow will run
+on:
+  # Triggers the workflow on push or pull request events but only for the master branch
+  push:
+    branches: [ master ]
+       tags:
+         - '[0-9]+.[0-9]+.[0-9]+*'
+         - 'v[0-9]+.[0-9]+.[0-9]+*'
+  pull_request:
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  build:
+    runs-on: macos-10.15
+    steps:
+
+      - name: Checkout source
+        uses: actions/checkout@v2
+
+      - name: Install stable Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          components: rustfmt, clippy
+
+      - name: Build release
+        run: |
+          cargo make --profile release+mac build
+
+#       - uses: actions/upload-artifact@v2
+#         with:
+#           name: ubuntu-rust-artifacts
+#           path: |
