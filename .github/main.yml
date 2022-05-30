@@ -6,10 +6,10 @@ name: Build macOS and Windows
 on:
   # Triggers the workflow on push or pull request events but only for the master branch
   push:
-    branches: [ master ]
-      tags:
-        - '[0-9]+.[0-9]+.[0-9]+*'
-        - 'v[0-9]+.[0-9]+.[0-9]+*'
+    branches: [ adrian/release ]
+#      tags:
+#        - '[0-9]+.[0-9]+.[0-9]+*'
+#        - 'v[0-9]+.[0-9]+.[0-9]+*'
   pull_request:
 
   # Allows you to run this workflow manually from the Actions tab
