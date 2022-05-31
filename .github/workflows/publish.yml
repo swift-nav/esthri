@@ -72,8 +72,8 @@ jobs:
       - name: Upload Release
         uses: svenstaro/upload-release-action@v1-release
         with:
+          asset_name: esthri-${{ matrix.target}}-$tag
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: "target/${{ matrix.target }}/release/esthri"
+          file: target/${{ matrix.target }}/release/esthri
           tag: ${{ github.ref }}
           overwrite: true
-          file_glob: true
