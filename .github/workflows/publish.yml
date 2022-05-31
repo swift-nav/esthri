@@ -54,6 +54,7 @@ jobs:
       - name: Build
         shell: bash
         run: |
+          rustup target add ${{ matrix.target }}
           cargo make --profile ${{ matrix.profile }} build
           ls target/${{ matrix.target }}/release
 
@@ -72,7 +73,7 @@ jobs:
         uses: svenstaro/upload-release-action@v1-release
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: "/target/${{ matrix.target }}/release/esthri"
+          file: "target/${{ matrix.target }}/release/esthri"
           tag: ${{ github.ref }}
           overwrite: true
           file_glob: true
