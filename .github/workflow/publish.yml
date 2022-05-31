@@ -52,7 +52,7 @@ jobs:
         shell: bash
         run: |
           cargo make --profile ${{ matrix.profile }} build
-          ls
+          ls 
           ls target
 
 #      - name: Package Release
