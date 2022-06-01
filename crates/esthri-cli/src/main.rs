@@ -15,6 +15,7 @@ mod http_server;
 
 use std::env;
 use std::ffi::OsStr;
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
@@ -227,7 +228,7 @@ fn call_real_aws() {
     let aws_tool_path = env::var(REAL_AWS_EXECUTABLE_ENV_NAME)
         .unwrap_or_else(|_| REAL_AWS_EXECUTABLE_DEFAULT.to_string());
 
-    let err = Command::new(&aws_tool_path).args(args).output().err()?;
+    let err = Command::new(&aws_tool_path).args(args).exec();
 
     panic!(
         "Executing aws didn't work. Is it installed and available as {:?}? {:?}",
