@@ -15,9 +15,8 @@ mod http_server;
 
 use std::env;
 use std::ffi::OsStr;
-use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use anyhow::Result;
@@ -228,12 +227,17 @@ fn call_real_aws() {
     let aws_tool_path = env::var(REAL_AWS_EXECUTABLE_ENV_NAME)
         .unwrap_or_else(|_| REAL_AWS_EXECUTABLE_DEFAULT.to_string());
 
-    let err = Command::new(&aws_tool_path).args(args).exec();
-
-    panic!(
-        "Executing aws didn't work. Is it installed and available as {:?}? {:?}",
-        aws_tool_path, err
-    );
+    Command::new(&aws_tool_path)
+        .args(args)
+        .stdout(Stdio::inherit())
+        .output()
+        .expect(
+            format!(
+                "Executing aws didn't work. Is it installed and available as {:?} ",
+                aws_tool_path
+            )
+            .as_str(),
+        );
 }
 
 /// Checks if the Esthri CLI tool should run in "aws compatibility mode", where
