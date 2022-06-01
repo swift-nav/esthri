@@ -227,10 +227,10 @@ fn call_real_aws() {
     let aws_tool_path = env::var(REAL_AWS_EXECUTABLE_ENV_NAME)
         .unwrap_or_else(|_| REAL_AWS_EXECUTABLE_DEFAULT.to_string());
 
-    Command::new(&aws_tool_path)
+    let status = Command::new(&aws_tool_path)
         .args(args)
         .stdout(Stdio::inherit())
-        .output()
+        .status()
         .expect(
             format!(
                 "Executing aws didn't work. Is it installed and available as {:?} ",
@@ -238,6 +238,7 @@ fn call_real_aws() {
             )
             .as_str(),
         );
+    std::process::exit(status.code().unwrap_or(-1));
 }
 
 /// Checks if the Esthri CLI tool should run in "aws compatibility mode", where
