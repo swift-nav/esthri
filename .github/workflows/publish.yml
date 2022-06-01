@@ -6,10 +6,12 @@ name: Build macOS and Windows
 on:
   # Triggers the workflow on push or pull request events but only for the master branch
   push:
-    branches: [ adrian/publish ]
-  #      tags:
-  #        - '[0-9]+.[0-9]+.[0-9]+*'
-  #        - 'v[0-9]+.[0-9]+.[0-9]+*'
+    branches: [ main ]
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+*'
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
+
+  pull_request:
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -57,21 +59,10 @@ jobs:
           rustup target add ${{ matrix.target }}
           cargo make --profile ${{ matrix.profile }} build
 
-#      - name: Package Release
-#        shell: bash
-#        run: |
-#          touch LICENSE.txt
-#          cargo make zip-release-binary-for-target \
-#            --no-workspace \
-#            --env CARGO_MAKE_BINARY_EXECUTABLE_NAME=esthri \
-#            --env CARGO_MAKE_RELEASE_FLOW_TARGET=${{ matrix.binary_target }} \
-#            --env CARGO_MAKE_PROJECT_NAME=esthri \
-#            --env CARGO_MAKE_PROJECT_VERSION=${{ steps.get_tag.outputs.tag }}
-
       - name: Upload Release
         uses: svenstaro/upload-release-action@v1-release
         with:
-          asset_name: esthri-$tag-${{ matrix.target }}
+          asset_name: esthri-$tag-${{ matrix.target }}${{ matrix.suffix }}
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: target/${{ matrix.target }}/release/esthri${{ matrix.suffix }}
           tag: ${{ github.ref }}
