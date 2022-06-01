@@ -33,6 +33,7 @@ jobs:
           - os: windows-2019
             profile: release+windows
             target: x86_64-pc-windows-msvc
+            suffix: .exe
 
     steps:
       - name: Checkout source
@@ -56,7 +57,6 @@ jobs:
         run: |
           rustup target add ${{ matrix.target }}
           cargo make --profile ${{ matrix.profile }} build
-          ls target/${{ matrix.target }}/release
 
 #      - name: Package Release
 #        shell: bash
@@ -74,6 +74,6 @@ jobs:
         with:
           asset_name: esthri-$tag-${{ matrix.target }}
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: target/${{ matrix.target }}/release/esthri
+          file: target/${{ matrix.target }}/release/esthri${{ matrix.suffix }}
           tag: ${{ github.ref }}
           overwrite: true
