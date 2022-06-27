@@ -56,13 +56,18 @@ jobs:
         shell: bash
         run: |
           rustup target add ${{ matrix.target }}
-          cargo make --profile ${{ matrix.profile }} build
+          cargo build --release --all-features --target ${{ matrix.target }}
+
+      - name: Package release
+        shell: bash
+        run: |
+          tar -C target/${{ matrix.target }}/release -czf esthri-${{ env.VERSION }}-${{ matrix.target }}.tar.gz esthri${{ matrix.suffix }}
 
       - name: Upload Release
         uses: svenstaro/upload-release-action@v1-release
         with:
-          asset_name: esthri-${{ env.VERSION }}-${{ matrix.target }}${{ matrix.suffix }}
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: target/${{ matrix.target }}/release/esthri${{ matrix.suffix }}
+          file: "*.tar.gz"
           tag: ${{ github.ref }}
           overwrite: true
+          file_glob: true
