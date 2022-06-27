@@ -187,50 +187,5 @@ pipeline {
         }
       }
     }
-    stage('Publish release') {
-      agent { dockerfile { reuseNode true } }
-      when {
-        expression {
-          context.isTagPush()
-        }
-      }
-      environment {
-        GITHUB_USER = "swiftnav-svc-jenkins"
-      }
-      steps {
-        gitPrep()
-        script {
-          withCredentials([string(credentialsId: 'github-access-token-secretText', variable: 'GITHUB_TOKEN')]) {
-            sh("""/bin/bash -ex
-                |
-                | ./third_party/github-release-api/github_release_manager.sh \\
-                | -l \$GITHUB_USER -t \$GITHUB_TOKEN \\
-                | -o swift-nav -r ${context.repo}  \\
-                | -m "Release ${TAG_NAME}" \\
-                | -d ${TAG_NAME} \\
-                | -c create || :
-                |
-                | dir_name=esthri-${TAG_NAME}-linux_x86_64
-                | archive_name=\${dir_name}.tgz
-                |
-                | mkdir \$dir_name
-                |
-                | cargo make --profile release+static build
-                |
-                | cp target/release/esthri \$dir_name
-                |
-                | tar -cvzf \$archive_name \$dir_name
-                |
-                | ./third_party/github-release-api/github_release_manager.sh \\
-                | -l \$GITHUB_USER -t \$GITHUB_TOKEN \\
-                | -o swift-nav -r ${context.repo}  \\
-                | -d ${TAG_NAME} \\
-                | -c upload \$archive_name
-                |
-               """.stripMargin())
-          }
-        }
-      }
-    }
   }
 }
