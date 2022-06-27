@@ -50,6 +50,10 @@ jobs:
         run: |
           echo "VERSION=${GITHUB_REF##*/}" >> $GITHUB_ENV
 
+      - name: Install musl tools
+        if: matrix.needs_musl
+        run: sudo apt-get install musl-tools
+
       - name: Install stable Rust
         uses: actions-rs/toolchain@v1
         with:
