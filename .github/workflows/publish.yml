@@ -56,7 +56,7 @@ jobs:
         shell: bash
         run: |
           rustup target add ${{ matrix.target }}
-          cargo build --release --all-features --target ${{ matrix.target }}
+          cargo make --profile ${{ matrix.profile }} build
 
       - name: Package release
         shell: bash
