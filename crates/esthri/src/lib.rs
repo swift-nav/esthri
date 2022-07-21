@@ -24,6 +24,7 @@ pub(crate) mod types;
 
 mod config;
 mod ops;
+pub mod redis;
 mod retry;
 
 use std::marker::Unpin;

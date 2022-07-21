@@ -15,6 +15,7 @@ use std::path::StripPrefixError;
 
 use chrono::ParseError;
 use glob::PatternError;
+use redis::RedisError;
 use rusoto_core::RusotoError;
 use rusoto_s3::{
     AbortMultipartUploadError, CompleteMultipartUploadError, CopyObjectError,
@@ -125,6 +126,15 @@ pub enum Error {
 
     #[error("unknown storage class")]
     UnknownStorageClass(String),
+
+    #[error(transparent)]
+    RedisError(#[from] RedisError),
+
+    #[error(transparent)]
+    EnvVarError(#[from] std::env::VarError),
+
+    #[error(transparent)]
+    ParseIntError(#[from] std::num::ParseIntError),
 }
 
 impl From<std::convert::Infallible> for Error {

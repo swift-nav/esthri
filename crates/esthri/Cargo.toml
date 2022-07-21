@@ -56,6 +56,10 @@ version = "0.23"
 optional = true
 features = ["webpki-roots"]
 
+[dependencies.redis]
+version = "0.21.5"
+features = ["tokio-comp", "streams"]
+
 [dev-dependencies]
 esthri = { path = ".", default-features = false, features=["blocking"] }
 esthri-test = { path = "../esthri-test" }
@@ -65,3 +69,4 @@ tempdir = "0.3"
 backtrace = "0.3"
 fs_extra = "1.2"
 assert_cmd = "2.0.4"
+env_logger = "0.9"
