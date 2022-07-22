@@ -1,7 +1,10 @@
 use redis::{streams::StreamMaxlen, AsyncCommands};
+use rusoto_s3::S3;
+use tokio::fs::{self, write};
 use std::env;
+use tempdir::TempDir;
 
-use crate::{config::Config, errors::Result};
+use crate::{config::Config, errors::Result, ops::upload::upload};
 
 const REDIS_PREFIX: &str = "redis://";
 
@@ -70,6 +73,18 @@ impl RedisStreamer {
         Ok(output)
     }
 
+    pub async fn upload_stream_to_s3<'a, T>(s3: &T, bucket: String, stream_key: String, stream_field: String) -> Result<()>
+        where T: S3 + Send
+    {
+        let data = Self::download(stream_key.clone(), stream_field).await?;
+        let path = {
+            crate::tempfile::TempFile::new(std::path::PathBuf::from("temp"), None).await?.path().to_string_lossy().to_string()
+        };
+        write(path.clone(), data).await?;
+        upload(s3, bucket, stream_key, path).await?;
+        Ok(())
+    }
+
     pub async fn delete_stream(&self) -> Result<()> {
         let mut con = self.client.get_async_connection().await?;
         con.del(self.stream_key.clone()).await?;
@@ -92,7 +107,6 @@ impl RedisStreamer {
 mod tests {
     use super::*;
     use std::time::Duration;
-    use tempdir::TempDir;
     use tokio::{
         fs,
         io::{AsyncReadExt, AsyncSeekExt, SeekFrom},
@@ -102,10 +116,7 @@ mod tests {
     #[ignore]
     #[tokio::test]
     async fn redis_streamer_test() {
-        env_logger::init();
-
-        let dir = TempDir::new("temp").unwrap();
-        let log_path = dir.path().join("test.txt");
+        let log_path = tempfile()?;
 
         let (sender, receiver) = std::sync::mpsc::channel();
         let log_path_clone = log_path.clone();

@@ -46,6 +46,7 @@ tokio-util = { version = "0.7", features = ["io"] }
 walkdir = "2"
 tokio-retry = "0.3"
 tokio-stream = "0.1"
+tempdir = "0.3"
 
 [dependencies.hyper-tls]
 version = "0.5"
