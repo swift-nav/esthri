@@ -29,20 +29,19 @@ mod retry;
 use std::marker::Unpin;
 use std::path::Path;
 
-use crypto::{digest::Digest, md5::Md5};
-use futures::{stream, TryStream, TryStreamExt};
-use hyper::client::connect::HttpConnector;
-use log::{info, warn};
-use log_derive::logfn;
-use tokio::{
-    fs,
-    io::{AsyncRead, AsyncReadExt, BufReader},
-};
-
 pub use crate::config::Config;
 use crate::retry::handle_dispatch_error;
 use crate::rusoto::*;
 use crate::types::S3Listing;
+use futures::{stream, TryStream, TryStreamExt};
+use hyper::client::connect::HttpConnector;
+use log::{info, warn};
+use log_derive::logfn;
+use md5::{Digest, Md5};
+use tokio::{
+    fs,
+    io::{AsyncRead, AsyncReadExt, BufReader},
+};
 
 pub use errors::{Error, Result};
 pub use ops::{
@@ -91,18 +90,15 @@ where
         } else {
             remaining
         }) as usize;
-        hash.reset();
         let mut blob = vec![0u8; upload_part_size];
         reader.read_exact(&mut blob).await?;
-        hash.input(&blob);
-        let mut hash_bytes = [0u8; 16];
-        hash.result(&mut hash_bytes);
+        hash.update(&blob);
+        let hash_bytes: [u8; 16] = hash.finalize_reset().into();
         digests.push(hash_bytes);
         remaining -= upload_part_size as u64;
     }
     if digests.is_empty() {
-        let mut hash_bytes = [0u8; 16];
-        hash.result(&mut hash_bytes);
+        let hash_bytes = hash.finalize();
         let hex_digest = hex::encode(hash_bytes);
         Ok(format!("\"{}\"", hex_digest))
     } else if digests.len() == 1 && length < upload_part_size {
@@ -112,10 +108,9 @@ where
         let count = digests.len();
         let mut etag_hash = Md5::new();
         for digest_bytes in digests {
-            etag_hash.input(&digest_bytes);
+            etag_hash.update(&digest_bytes);
         }
-        let mut final_hash = [0u8; 16];
-        etag_hash.result(&mut final_hash);
+        let final_hash = etag_hash.finalize();
         let hex_digest = hex::encode(final_hash);
         Ok(format!("\"{}-{}\"", hex_digest, count))
     }
