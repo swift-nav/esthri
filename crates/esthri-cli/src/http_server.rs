@@ -215,6 +215,13 @@ fn with_bucket(bucket: String) -> impl Filter<Extract = (String,), Error = Infal
     warp::any().map(move || bucket.clone())
 }
 
+fn with_allowed_prefixes(
+    allowed_prefixes: &[String],
+) -> impl Filter<Extract = (Vec<String>,), Error = Infallible> + Clone {
+    let allowed_prefixes = allowed_prefixes.to_vec();
+    warp::any().map(move || allowed_prefixes.clone())
+}
+
 fn with_s3_client(
     s3_client: S3Client,
 ) -> impl Filter<Extract = (S3Client,), Error = Infallible> + Clone {
@@ -224,10 +231,12 @@ fn with_s3_client(
 pub fn esthri_filter(
     s3_client: S3Client,
     bucket: &str,
+    allowed_prefixes: &[String],
 ) -> impl Filter<Extract = (http::Response<Body>,), Error = warp::Rejection> + Clone {
     warp::path::full()
         .and(with_s3_client(s3_client))
         .and(with_bucket(bucket.to_owned()))
+        .and(with_allowed_prefixes(allowed_prefixes))
         .and(warp::query::<DownloadParams>())
         .and(warp::header::optional::<String>("if-none-match"))
         .and_then(download)
@@ -237,6 +246,7 @@ pub async fn run(
     s3_client: S3Client,
     bucket: &str,
     address: &SocketAddr,
+    allowed_prefixes: &[String],
 ) -> Result<(), Infallible> {
     setup_termination_handler();
 
@@ -251,7 +261,7 @@ pub async fn run(
     let health_check = warp::path(".esthri_health_check").map(still_alive);
 
     let routes = health_check
-        .or(esthri_filter(s3_client, bucket))
+        .or(esthri_filter(s3_client, bucket, allowed_prefixes))
         .recover(handle_rejection);
 
     let (addr, server) = warp::serve(routes).bind_with_graceful_shutdown(*address, async {
@@ -259,7 +269,10 @@ pub async fn run(
         debug!("got shutdown signal, waiting for all open connections to complete...");
     });
 
-    info!("listening on: http://{}...", addr);
+    info!(
+        "listening on: http://{}..., allowed prefixes: {:?}",
+        addr, allowed_prefixes
+    );
     let _ = tokio::task::spawn(server).await;
 
     info!("shutting down...");
@@ -714,10 +727,36 @@ fn sanitize_filename(filename: String) -> String {
     )
 }
 
+fn should_reject(
+    path: &str,
+    allowed_prefixes: &[String],
+    params: &DownloadParams,
+) -> bool
+{
+    if !allowed_prefixes.is_empty() {
+        if allowed_prefixes.iter().any(|p| path.starts_with(p)) {
+            false
+        } else if path.is_empty() && params.prefixes.is_some() {
+            let prefixes = params.prefixes.as_ref().unwrap();
+            !prefixes.prefixes.iter().all(|archive_prefix| {
+                allowed_prefixes
+                    .iter()
+                    .any(|p| archive_prefix.starts_with(p))
+            })
+        } else {
+            true
+        }
+    } else {
+        // No allowed prefixes means everything is allowed
+        false
+    }
+}
+
 async fn download(
     path: warp::path::FullPath,
     s3: S3Client,
     bucket: String,
+    allowed_prefixes: Vec<String>,
     params: DownloadParams,
     if_none_match: Option<String>,
 ) -> Result<http::Response<Body>, warp::Rejection> {
@@ -733,7 +772,11 @@ async fn download(
         "path: {}, params: archive: {:?}, prefixes: {:?}",
         path, params.archive, params.prefixes
     );
-    let (body, resp_builder) = if params.archive.unwrap_or(false) {
+    if should_reject(&path, &allowed_prefixes, &params) {
+        return Err(warp::reject::not_found());
+    }
+    let is_archive = params.archive.unwrap_or(false);
+    let (body, resp_builder) = if is_archive {
         let (archive_filename, prefixes) = if !path.is_empty() && params.prefixes.is_none() {
             let archive_filename = sanitize_filename(path.clone());
             (format!("{}.zip", archive_filename), Some(vec![path]))
