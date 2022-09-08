@@ -727,12 +727,7 @@ fn sanitize_filename(filename: String) -> String {
     )
 }
 
-fn should_reject(
-    path: &str,
-    allowed_prefixes: &[String],
-    params: &DownloadParams,
-) -> bool
-{
+fn should_reject(path: &str, allowed_prefixes: &[String], params: &DownloadParams) -> bool {
     if !allowed_prefixes.is_empty() {
         if allowed_prefixes.iter().any(|p| path.starts_with(p)) {
             false
