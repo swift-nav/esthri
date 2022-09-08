@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::{fs, io};
 
 use tokio::runtime::Runtime;
+use warp::http::status::StatusCode;
 
 use esthri::upload;
 use esthri::{blocking, upload_compressed};
@@ -71,7 +72,7 @@ async fn test_allowed_prefixes() {
 
     assert!(res.is_ok());
 
-    let allowed_prefixes = ["allowed_prefix".to_owned()];
+    let allowed_prefixes = ["allowed_prefix".to_owned(), "another_allowed_prefix/".to_owned()];
     let filter = esthri_filter((*s3client).clone(), bucket, &allowed_prefixes);
 
     let mut result = warp::test::request()
@@ -88,7 +89,35 @@ async fn test_allowed_prefixes() {
         .filter(&filter)
         .await;
 
-    assert!(result.err().unwrap().is_not_found())
+    assert!(result.err().unwrap().is_not_found());
+
+    let result = warp::test::request()
+        .path("/allowed_prefix/?archive=true")
+        .filter(&filter)
+        .await;
+
+    assert_eq!(result.unwrap().status(), StatusCode::OK);
+
+    let result = warp::test::request()
+        .path("/not_allowed_prefix/?archive=true")
+        .filter(&filter)
+        .await;
+
+    assert!(result.err().unwrap().is_not_found());
+
+    let result = warp::test::request()
+        .path("/?archive=true&prefixes=allowed_prefix/|another_allowed_prefix/")
+        .filter(&filter)
+        .await;
+
+    assert_eq!(result.unwrap().status(), StatusCode::OK);
+
+    let result = warp::test::request()
+        .path("/?archive=true&prefixes=not_allowed_prefix/|another_allowed_prefix/")
+        .filter(&filter)
+        .await;
+
+    assert!(result.err().unwrap().is_not_found());
 }
 
 async fn upload_compressed_html_file() {
