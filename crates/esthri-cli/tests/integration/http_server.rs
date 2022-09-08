@@ -72,7 +72,10 @@ async fn test_allowed_prefixes() {
 
     assert!(res.is_ok());
 
-    let allowed_prefixes = ["allowed_prefix".to_owned(), "another_allowed_prefix/".to_owned()];
+    let allowed_prefixes = [
+        "allowed_prefix".to_owned(),
+        "another_allowed_prefix/".to_owned(),
+    ];
     let filter = esthri_filter((*s3client).clone(), bucket, &allowed_prefixes);
 
     let mut result = warp::test::request()
