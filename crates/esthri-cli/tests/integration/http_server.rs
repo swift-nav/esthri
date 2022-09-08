@@ -40,6 +40,57 @@ async fn test_fetch_object() {
     assert_eq!(body, "this file has contents\n");
 }
 
+#[tokio::test]
+async fn test_allowed_prefixes() {
+    let filename = esthri_test::test_data("test_file.txt");
+
+    let s3client = esthri_test::get_s3client();
+    let bucket = esthri_test::TEST_BUCKET;
+
+    let an_allowed_key = "allowed_prefix/test_file.txt".to_owned();
+
+    let res = upload(
+        s3client.as_ref(),
+        esthri_test::TEST_BUCKET,
+        &an_allowed_key,
+        &filename,
+    )
+    .await;
+
+    assert!(res.is_ok());
+
+    let a_not_allowed_key = "not_allowed_prefix/test_file.txt".to_owned();
+
+    let res = upload(
+        s3client.as_ref(),
+        esthri_test::TEST_BUCKET,
+        &a_not_allowed_key,
+        &filename,
+    )
+    .await;
+
+    assert!(res.is_ok());
+
+    let allowed_prefixes = ["allowed_prefix".to_owned()];
+    let filter = esthri_filter((*s3client).clone(), bucket, &allowed_prefixes);
+
+    let mut result = warp::test::request()
+        .path("/allowed_prefix/test_file.txt")
+        .filter(&filter)
+        .await
+        .unwrap();
+
+    let body = hyper::body::to_bytes(result.body_mut()).await.unwrap();
+    assert_eq!(body, "this file has contents\n");
+
+    let result = warp::test::request()
+        .path("/not_allowed_prefix/test_file.txt")
+        .filter(&filter)
+        .await;
+
+    assert!(result.err().unwrap().is_not_found())
+}
+
 async fn upload_compressed_html_file() {
     let filename = esthri_test::test_data("index.html");
     let s3client = esthri_test::get_s3client();
