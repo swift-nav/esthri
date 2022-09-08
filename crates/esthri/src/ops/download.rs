@@ -157,7 +157,7 @@ where
                 Result::Ok(())
             })
             .try_buffer_unordered(Config::global().concurrent_writer_tasks());
-        let _: () = stream.try_collect().await?;
+        stream.try_collect().await?;
     };
 
     // If we're trying to download into a directory, assemble the path for the user
