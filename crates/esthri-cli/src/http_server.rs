@@ -217,8 +217,25 @@ fn with_bucket(bucket: String) -> impl Filter<Extract = (String,), Error = Infal
 
 fn with_allowed_prefixes(
     allowed_prefixes: &[String],
-) -> impl Filter<Extract = (Vec<String>,), Error = Infallible> + Clone {
-    let allowed_prefixes = allowed_prefixes.to_vec();
+) -> impl Filter<Extract = (Option<Vec<String>>,), Error = Infallible> + Clone {
+    let allowed_prefixes = if !allowed_prefixes.is_empty() {
+        let allowed_prefixes = allowed_prefixes.to_vec();
+        Some(
+            allowed_prefixes
+                .iter()
+                .map(|prefix| {
+                    if prefix.ends_with('/') {
+                        prefix.to_owned()
+                    } else {
+                        prefix.to_owned() + "/"
+                    }
+                })
+                .collect(),
+        )
+    } else {
+        None
+    };
+    info!("allowed prefixes: {:?}", allowed_prefixes);
     warp::any().map(move || allowed_prefixes.clone())
 }
 
@@ -269,10 +286,7 @@ pub async fn run(
         debug!("got shutdown signal, waiting for all open connections to complete...");
     });
 
-    info!(
-        "listening on: http://{}..., allowed prefixes: {:?}",
-        addr, allowed_prefixes
-    );
+    info!("listening on: http://{}...", addr);
     let _ = tokio::task::spawn(server).await;
 
     info!("shutting down...");
@@ -728,22 +742,20 @@ fn sanitize_filename(filename: String) -> String {
 }
 
 fn should_reject(path: &str, allowed_prefixes: &[String], params: &DownloadParams) -> bool {
-    if !allowed_prefixes.is_empty() {
-        if allowed_prefixes.iter().any(|p| path.starts_with(p)) {
-            false
-        } else if path.is_empty() && params.prefixes.is_some() {
-            let prefixes = params.prefixes.as_ref().unwrap();
-            !prefixes.prefixes.iter().all(|archive_prefix| {
-                allowed_prefixes
-                    .iter()
-                    .any(|p| archive_prefix.starts_with(p))
-            })
-        } else {
-            true
-        }
-    } else {
-        // No allowed prefixes means everything is allowed
+    // The with_allowed_prefixes filter should ensure that allowed_prefixes is not
+    //   not by the time we get here.
+    assert!(!allowed_prefixes.is_empty());
+    if allowed_prefixes.iter().any(|p| path.starts_with(p)) {
         false
+    } else if path.is_empty() && params.prefixes.is_some() {
+        let prefixes = params.prefixes.as_ref().unwrap();
+        !prefixes.prefixes.iter().all(|archive_prefix| {
+            allowed_prefixes
+                .iter()
+                .any(|p| archive_prefix.starts_with(p))
+        })
+    } else {
+        true
     }
 }
 
@@ -751,7 +763,7 @@ async fn download(
     path: warp::path::FullPath,
     s3: S3Client,
     bucket: String,
-    allowed_prefixes: Vec<String>,
+    allowed_prefixes: Option<Vec<String>>,
     params: DownloadParams,
     if_none_match: Option<String>,
 ) -> Result<http::Response<Body>, warp::Rejection> {
@@ -767,8 +779,10 @@ async fn download(
         "path: {}, params: archive: {:?}, prefixes: {:?}",
         path, params.archive, params.prefixes
     );
-    if should_reject(&path, &allowed_prefixes, &params) {
-        return Err(warp::reject::not_found());
+    if let Some(allowed_prefixes) = allowed_prefixes {
+        if should_reject(&path, &allowed_prefixes[..], &params) {
+            return Err(warp::reject::not_found());
+        }
     }
     let is_archive = params.archive.unwrap_or(false);
     let (body, resp_builder) = if is_archive {
