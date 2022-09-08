@@ -16,7 +16,6 @@ use std::{
     io::{self, ErrorKind},
     net::SocketAddr,
     ops::Deref,
-    pin::Pin,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
@@ -34,9 +33,8 @@ use async_zip::{
 use bytes::{Bytes, BytesMut};
 use futures::{
     stream::{Stream, StreamExt, TryStreamExt},
-    Future,
 };
-use hyper::{body::HttpBody, header::CONTENT_ENCODING, http::response::Builder};
+use hyper::header::{CONTENT_ENCODING, LOCATION};
 use log::*;
 use maud::{html, Markup, DOCTYPE};
 use mime_guess::mime::{APPLICATION_OCTET_STREAM, TEXT_HTML_UTF_8};
@@ -44,7 +42,7 @@ use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 
 use tokio::{
-    io::{AsyncWrite, DuplexStream},
+    io::DuplexStream,
     sync::oneshot,
 };
 use tokio_util::codec::{BytesCodec, FramedRead};
@@ -59,7 +57,6 @@ use warp::{
         Response,
     },
     hyper::Body,
-    path::FullPath,
     Filter,
 };
 
@@ -370,39 +367,6 @@ async fn create_error_monitor_stream<T: Stream<Item = io::Result<BytesMut>> + Un
     }
 }
 
-/*
-Might not need anymor?
-
-// Work around for https://github.com/Majored/rs-async-zip/issues/11 By default,
-// the writer calls shutdown on the Writer to finalize the compressed file. For
-// the duplex pipe, this causes the writer to no longer work so we work around
-// it by calling flush on shutdown instead.
-struct DuplexStreamWrapper(DuplexStream);
-impl AsyncWrite for DuplexStreamWrapper {
-    fn poll_write(
-        mut self: Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-        buf: &[u8],
-    ) -> std::task::Poll<Result<usize, io::Error>> {
-        Pin::new(&mut self.0).poll_write(cx, buf)
-    }
-
-    fn poll_flush(
-        mut self: Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Result<(), io::Error>> {
-        Pin::new(&mut self.0).poll_flush(cx)
-    }
-
-    fn poll_shutdown(
-        mut self: Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Result<(), io::Error>> {
-        Pin::new(&mut self.0).poll_flush(cx)
-    }
-}
-*/
-
 async fn create_archive_stream(
     s3: S3Client,
     bucket: String,
@@ -539,6 +503,21 @@ fn format_title(bucket: &str, path: &str) -> Markup {
                     }
                 }
             }
+        }
+    }
+}
+
+async fn is_directory<'a, T: S3 + Send>(s3: &T, bucket: &str, path: &str) -> Result<bool, warp::Rejection> {
+    if get_obj_info(s3, bucket, path).await.is_ok() {
+        return Ok(false);
+    }
+    let mut directory_list_stream = list_directory_stream(s3, bucket, path);
+    match directory_list_stream.try_next().await {
+        Ok(None) => Ok(false),
+        Ok(Some(_)) => Ok(true),
+        Err(err) => {
+            let message = format!("error listing item: {}", err);
+            EsthriRejection::warp_result(message)
         }
     }
 }
@@ -743,8 +722,16 @@ async fn download(
         .unwrap_or_default();
     let error_tracker = ErrorTrackerArc::new();
     let resp_builder = Response::builder();
-    let slash_end = path.ends_with('/');
-    let slash_or_empty = slash_end || path.is_empty();
+    let slash_or_empty = path.is_empty() || path.ends_with('/');
+    if index_html && !slash_or_empty && is_directory(&s3, &bucket, &path).await? {
+        let path = String::from("/") + &path + "/";
+        debug!("redirect for index-html: {}", path);
+        return resp_builder
+            .header(LOCATION, path)
+            .status(StatusCode::MOVED_PERMANENTLY)
+            .body(Body::empty())
+            .map_err(|err| EsthriRejection::warp_rejection(format!("{}", err)))
+    }
     debug!(
         "path: {}, params: archive: {:?}, prefixes: {:?}",
         path, params.archive, params.prefixes
@@ -790,10 +777,10 @@ async fn download(
         }
     } else {
         let path = if slash_or_empty && index_html {
-            if slash_end {
-                path + "index.html"
-            } else {
+            if path.is_empty() {
                 "index.html".into()
+            } else {
+                path + "index.html"
             }
         } else {
             path
