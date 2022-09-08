@@ -217,6 +217,9 @@ enum EsthriCommand {
         /// The listening address for the server
         #[clap(long, default_value = "127.0.0.1:3030")]
         address: std::net::SocketAddr,
+        /// Wether to serve "index.html" in place of "/"
+        #[clap(long)]
+        index_html: bool,
     },
 }
 
@@ -474,8 +477,12 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
             esthri::list_objects(s3, &bucket, &key).await?;
         }
 
-        Serve { bucket, address } => {
-            http_server::run(s3.clone(), &bucket, &address).await?;
+        Serve {
+            bucket,
+            address,
+            index_html,
+        } => {
+            http_server::run(s3.clone(), &bucket, &address, index_html).await?;
         }
     }
 

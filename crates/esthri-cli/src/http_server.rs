@@ -15,6 +15,7 @@ use std::{
     convert::Infallible,
     io::{self, ErrorKind},
     net::SocketAddr,
+    ops::Deref,
     pin::Pin,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -31,8 +32,11 @@ use async_zip::{
     Compression,
 };
 use bytes::{Bytes, BytesMut};
-use futures::stream::{Stream, StreamExt, TryStreamExt};
-use hyper::header::CONTENT_ENCODING;
+use futures::{
+    stream::{Stream, StreamExt, TryStreamExt},
+    Future,
+};
+use hyper::{body::HttpBody, header::CONTENT_ENCODING, http::response::Builder};
 use log::*;
 use maud::{html, Markup, DOCTYPE};
 use mime_guess::mime::{APPLICATION_OCTET_STREAM, TEXT_HTML_UTF_8};
@@ -50,9 +54,12 @@ use warp::{
         header::{
             CACHE_CONTROL, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_TYPE, ETAG, LAST_MODIFIED,
         },
-        response, Response,
+        response,
+        status::StatusCode,
+        Response,
     },
     hyper::Body,
+    path::FullPath,
     Filter,
 };
 
@@ -114,12 +121,8 @@ impl ErrorTracker {
         }
     }
     fn record_error(error_tracker: ErrorTrackerArc, err: anyhow::Error) {
-        error_tracker.0.has_error.store(true, Ordering::Release);
-        let mut the_error = error_tracker
-            .0
-            .the_error
-            .lock()
-            .expect("locking error field");
+        error_tracker.has_error.store(true, Ordering::Release);
+        let mut the_error = error_tracker.the_error.lock().expect("locking error field");
         *the_error = Some(Box::new(err));
     }
 }
@@ -133,6 +136,13 @@ impl ErrorTrackerArc {
     }
     fn has_error(&self) -> bool {
         self.0.has_error.load(Ordering::Acquire)
+    }
+}
+
+impl Deref for ErrorTrackerArc {
+    type Target = ErrorTracker;
+    fn deref(&self) -> &Self::Target {
+        self.0.as_ref()
     }
 }
 
@@ -224,10 +234,12 @@ fn with_s3_client(
 pub fn esthri_filter(
     s3_client: S3Client,
     bucket: &str,
+    index_html: bool,
 ) -> impl Filter<Extract = (http::Response<Body>,), Error = warp::Rejection> + Clone {
     warp::path::full()
         .and(with_s3_client(s3_client))
         .and(with_bucket(bucket.to_owned()))
+        .and(warp::any().map(move || index_html))
         .and(warp::query::<DownloadParams>())
         .and(warp::header::optional::<String>("if-none-match"))
         .and_then(download)
@@ -237,6 +249,7 @@ pub async fn run(
     s3_client: S3Client,
     bucket: &str,
     address: &SocketAddr,
+    index_html: bool,
 ) -> Result<(), Infallible> {
     setup_termination_handler();
 
@@ -251,7 +264,7 @@ pub async fn run(
     let health_check = warp::path(".esthri_health_check").map(still_alive);
 
     let routes = health_check
-        .or(esthri_filter(s3_client, bucket))
+        .or(esthri_filter(s3_client, bucket, index_html))
         .recover(handle_rejection);
 
     let (addr, server) = warp::serve(routes).bind_with_graceful_shutdown(*address, async {
@@ -275,7 +288,7 @@ async fn stream_object_to_archive<T: S3 + Send + Clone + Sync>(
     s3: &T,
     bucket: &str,
     path: &str,
-    archive: &mut ZipFileWriter<DuplexStreamWrapper>,
+    archive: &mut ZipFileWriter<DuplexStream>,
     error_tracker: ErrorTrackerArc,
 ) -> bool {
     let stream = match download_streaming(s3, bucket, path, true).await {
@@ -357,6 +370,9 @@ async fn create_error_monitor_stream<T: Stream<Item = io::Result<BytesMut>> + Un
     }
 }
 
+/*
+Might not need anymor?
+
 // Work around for https://github.com/Majored/rs-async-zip/issues/11 By default,
 // the writer calls shutdown on the Writer to finalize the compressed file. For
 // the duplex pipe, this causes the writer to no longer work so we work around
@@ -385,6 +401,7 @@ impl AsyncWrite for DuplexStreamWrapper {
         Pin::new(&mut self.0).poll_flush(cx)
     }
 }
+*/
 
 async fn create_archive_stream(
     s3: S3Client,
@@ -393,7 +410,7 @@ async fn create_archive_stream(
     error_tracker: ErrorTrackerArc,
 ) -> impl Stream<Item = io::Result<BytesMut>> {
     let (zip_reader, zip_writer) = tokio::io::duplex(MAX_BUF_SIZE);
-    let mut writer = ZipFileWriter::new(DuplexStreamWrapper(zip_writer));
+    let mut writer = ZipFileWriter::new(zip_writer);
 
     let error_tracker_reader = error_tracker.clone();
     tokio::spawn(async move {
@@ -628,31 +645,28 @@ async fn item_pre_response<'a, T: S3 + Send>(
     mut resp_builder: response::Builder,
 ) -> Result<(response::Builder, Option<(String, String)>), warp::Rejection> {
     let obj_info = get_obj_info(s3, &bucket, &path).await?;
-
     let not_modified = if_none_match
         .map(|etag| etag.strip_prefix("W/").map(String::from).unwrap_or(etag))
         .map(|etag| etag == obj_info.e_tag)
         .unwrap_or(false);
     if not_modified {
-        use warp::http::status::StatusCode;
         resp_builder = resp_builder.status(StatusCode::NOT_MODIFIED);
         Ok((resp_builder, None))
     } else {
-        resp_builder = resp_builder.header(CONTENT_LENGTH, obj_info.size);
-        resp_builder = resp_builder.header(ETAG, &obj_info.e_tag);
-        resp_builder = resp_builder.header(CACHE_CONTROL, "private,max-age=0");
-        resp_builder = resp_builder.header(
-            LAST_MODIFIED,
-            obj_info
-                .last_modified
-                .format(LAST_MODIFIED_TIME_FMT)
-                .to_string(),
-        );
-
+        resp_builder = resp_builder
+            .header(CONTENT_LENGTH, obj_info.size)
+            .header(ETAG, &obj_info.e_tag)
+            .header(CACHE_CONTROL, "private,max-age=0")
+            .header(
+                LAST_MODIFIED,
+                obj_info
+                    .last_modified
+                    .format(LAST_MODIFIED_TIME_FMT)
+                    .to_string(),
+            );
         if obj_info.is_esthri_compressed() {
             resp_builder = resp_builder.header(CONTENT_ENCODING, "gzip");
         }
-
         let mime = mime_guess::from_path(&path);
         let mime = mime.first();
         if let Some(mime) = mime {
@@ -667,7 +681,6 @@ async fn item_pre_response<'a, T: S3 + Send>(
 
 /// An API error serializable to JSON.
 async fn handle_rejection(err: warp::Rejection) -> Result<impl warp::Reply, Infallible> {
-    use warp::http::StatusCode;
     let code;
     let message;
     if err.is_not_found() {
@@ -718,6 +731,7 @@ async fn download(
     path: warp::path::FullPath,
     s3: S3Client,
     bucket: String,
+    index_html: bool,
     params: DownloadParams,
     if_none_match: Option<String>,
 ) -> Result<http::Response<Body>, warp::Rejection> {
@@ -729,6 +743,8 @@ async fn download(
         .unwrap_or_default();
     let error_tracker = ErrorTrackerArc::new();
     let resp_builder = Response::builder();
+    let slash_end = path.ends_with('/');
+    let slash_or_empty = slash_end || path.is_empty();
     debug!(
         "path: {}, params: archive: {:?}, prefixes: {:?}",
         path, params.archive, params.prefixes
@@ -765,15 +781,23 @@ async fn download(
         } else {
             (None, resp_builder)
         }
-    } else if path.ends_with('/') || path.is_empty() {
+    } else if slash_or_empty && !index_html {
         let listing_page = create_listing_page(s3.clone(), bucket, path).await;
         let header = resp_builder.header(CONTENT_TYPE, TEXT_HTML_UTF_8.essence_str());
-
         match listing_page {
             Ok(page) => (Some(Body::from(page)), header),
             Err(e) => (Some(Body::from(e.to_string())), header),
         }
     } else {
+        let path = if slash_or_empty && index_html {
+            if slash_end {
+                path + "index.html"
+            } else {
+                "index.html".into()
+            }
+        } else {
+            path
+        };
         let (resp_builder, create_stream) =
             item_pre_response(&s3, bucket, path, if_none_match, resp_builder).await?;
         if let Some((bucket, path)) = create_stream {
