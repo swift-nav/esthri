@@ -45,7 +45,7 @@ sanitize-filename = "0.4"
 serde = "1"
 clap = { version = "3.2.20", features = ["derive"] }
 tokio = { version = "1.6", features = ["rt-multi-thread", "signal", "sync"] }
-tokio-util = { version = "0.7.3", features = ["compat", "codec"] }
+tokio-util = { version = "0.7.4", features = ["compat", "codec"] }
 warp = "0.3"
 
 [dev-dependencies]
