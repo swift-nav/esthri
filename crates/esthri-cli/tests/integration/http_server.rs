@@ -100,6 +100,20 @@ fn upload_test_data() -> anyhow::Result<()> {
     Ok(())
 }
 
+async fn upload_index_url_test_data() -> anyhow::Result<()> {
+    let s3_key = "index_html";
+    let s3client = esthri_test::get_s3client();
+    let local_directory = esthri_test::test_data(s3_key);
+    esthri::sync(
+        s3client.as_ref(),
+        esthri::S3PathParam::new_local(local_directory),
+        esthri::S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key),
+        None,
+        false,
+    ).await?;
+    Ok(())
+}
+
 fn extract_zip_archive(mut archive: zip::ZipArchive<Cursor<&bytes::Bytes>>) -> anyhow::Result<()> {
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
@@ -291,4 +305,26 @@ fn test_fetch_archive_with_compressed_files() {
         "test_fetch_archive_compressed",
         key_hash_pairs,
     );
+}
+
+#[tokio::test]
+async fn test_index_url() {
+
+    upload_index_url_test_data().await.unwrap();
+
+    let s3client = esthri_test::get_s3client();
+    let s3client = (*s3client).clone();
+
+    let bucket = esthri_test::TEST_BUCKET;
+
+    let filter = esthri_filter(s3client, bucket, true);
+
+    let mut result = warp::test::request()
+        .path("/index_html/")
+        .filter(&filter)
+        .await
+        .unwrap();
+
+    let body = hyper::body::to_bytes(result.body_mut()).await.unwrap();
+    assert_eq!(body, "<p>Hello world!</p>\n");
 }
