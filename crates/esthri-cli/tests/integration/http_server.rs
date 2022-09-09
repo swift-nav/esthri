@@ -110,7 +110,8 @@ async fn upload_index_url_test_data() -> anyhow::Result<()> {
         esthri::S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key),
         None,
         false,
-    ).await?;
+    )
+    .await?;
     Ok(())
 }
 
@@ -309,7 +310,6 @@ fn test_fetch_archive_with_compressed_files() {
 
 #[tokio::test]
 async fn test_index_url() {
-
     upload_index_url_test_data().await.unwrap();
 
     let s3client = esthri_test::get_s3client();
@@ -327,4 +327,58 @@ async fn test_index_url() {
 
     let body = hyper::body::to_bytes(result.body_mut()).await.unwrap();
     assert_eq!(body, "<p>Hello world!</p>\n");
+
+    // Test request without trailing slash
+
+    let result = warp::test::request()
+        .path("/index_html")
+        .filter(&filter)
+        .await
+        .unwrap();
+
+    assert_eq!(result.status(), warp::http::status::StatusCode::FOUND);
+    assert_eq!(
+        result
+            .headers()
+            .get(warp::http::header::LOCATION)
+            .unwrap()
+            .to_str()
+            .unwrap(),
+        "/index_html/"
+    );
+
+    // Test that requesting a dir with an index.html falls back to listing
+
+    let mut result = warp::test::request()
+        .path("/index_html/subdir/")
+        .filter(&filter)
+        .await
+        .unwrap();
+
+    let body = hyper::body::to_bytes(result.body_mut()).await.unwrap();
+
+    assert!(String::from_utf8_lossy(body.as_ref()).contains("href=\"a_file.txt\""));
+    assert!(String::from_utf8_lossy(body.as_ref()).contains("href=\"has_index/"));
+
+    // Test directly fetching an index.html
+
+    let mut result = warp::test::request()
+        .path("/index_html/subdir/has_index/index.html")
+        .filter(&filter)
+        .await
+        .unwrap();
+
+    let body = hyper::body::to_bytes(result.body_mut()).await.unwrap();
+    assert_eq!(body, "<p>Hello world! I am from a subdir.</p>\n");
+
+    // Test fetching a different index.html
+
+    let mut result = warp::test::request()
+        .path("/index_html/subdir/has_index/")
+        .filter(&filter)
+        .await
+        .unwrap();
+
+    let body = hyper::body::to_bytes(result.body_mut()).await.unwrap();
+    assert_eq!(body, "<p>Hello world! I am from a subdir.</p>\n");
 }
