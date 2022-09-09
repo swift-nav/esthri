@@ -1,7 +1,7 @@
 [package]
 name = "esthri"
 description = "Extremely simple (memory stable) S3 client that supports get, put, head, list, and sync."
-version = "8.4.0"
+version = "8.5.1"
 authors = ["Swift Navigation <dev@swift-nav.com>"]
 edition = "2018"
 license = "MIT"
@@ -30,6 +30,7 @@ hex = "0.4"
 hyper = "0.14"
 log = "0.4"
 log-derive = "0.4"
+md-5 = "0.10.4"
 once_cell = "1"
 parking_lot = "0.12"
 regex = "1"
@@ -37,15 +38,14 @@ rusoto_core = { version = ">= 0.46, < 1", default-features = false }
 rusoto_credential = { version = ">= 0.46, < 1", default-features = false }
 rusoto_s3 = { version = ">= 0.46, < 1", default-features = false }
 rusoto_signature = { version = ">= 0.46, < 1", default-features = false }
-rust-crypto = "0.2"
 serde = { version = "1", features = ["derive"] }
 tempfile = "3"
 thiserror = "1"
 tokio = { version = "1", features = ["fs", "io-util", "sync", "parking_lot"] }
-tokio-util = { version = "0.7", features = ["io"] }
-walkdir = "2"
 tokio-retry = "0.3"
 tokio-stream = "0.1"
+tokio-util = { version = "0.7", features = ["io"] }
+walkdir = "2"
 
 [dependencies.hyper-tls]
 version = "0.5"
@@ -59,7 +59,6 @@ features = ["webpki-roots"]
 [dev-dependencies]
 esthri = { path = ".", default-features = false, features=["blocking"] }
 esthri-test = { path = "../esthri-test" }
-md5 = "0.7"
 tar = "0.4"
 tempdir = "0.3"
 backtrace = "0.3"

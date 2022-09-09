@@ -1,13 +1,13 @@
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
+use hyper::Client;
+use md5::{Digest, Md5};
+use once_cell::sync::Lazy;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
-
-use hyper::Client;
-use once_cell::sync::Lazy;
 use tempdir::TempDir;
 
 use esthri::rusoto::*;
@@ -45,7 +45,7 @@ pub fn validate_key_hash_pairs(local_directory: impl AsRef<Path>, key_hash_pairs
     for key_hash_pair in key_hash_pairs {
         let path = local_directory.join(key_hash_pair.0);
         let data = fs::read(&path).unwrap();
-        let digest = md5::compute(data);
+        let digest = Md5::new().chain_update(data).finalize();
         let digest = format!("{:x}", digest);
         assert_eq!(
             digest,
