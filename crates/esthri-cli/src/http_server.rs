@@ -776,7 +776,8 @@ async fn download(
     if let Some(redirect) = maybe_redirect {
         return redirect;
     }
-    let (is_dir_listing, path) = maybe_serve_index_html(&s3, &bucket, path, index_html, is_dir_listing).await?;
+    let (is_dir_listing, path) =
+        maybe_serve_index_html(&s3, &bucket, path, index_html, is_dir_listing).await?;
     let resp_builder = Response::builder();
     let (body, resp_builder) = if params.archive.unwrap_or(false) {
         let (archive_filename, prefixes) = if !path.is_empty() && params.prefixes.is_none() {
