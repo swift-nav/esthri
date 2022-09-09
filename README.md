@@ -75,6 +75,13 @@ configuration.
 
 To perform a release, run `cargo release <release-level> -x`.
 
+## Local development
+
+Successful testing requires the use of updated hashes on larger files stored by git. run:
+`brew install git-lfs`
+`git lfs pull`
+before invoking cargo's test feature.
+
 ## Copyright
 
 ```
