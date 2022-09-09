@@ -31,9 +31,7 @@ use async_zip::{
     Compression,
 };
 use bytes::{Bytes, BytesMut};
-use futures::{
-    stream::{Stream, StreamExt, TryStreamExt},
-};
+use futures::stream::{Stream, StreamExt, TryStreamExt};
 use hyper::header::{CONTENT_ENCODING, LOCATION};
 use log::*;
 use maud::{html, Markup, DOCTYPE};
@@ -41,10 +39,7 @@ use mime_guess::mime::{APPLICATION_OCTET_STREAM, TEXT_HTML_UTF_8};
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 
-use tokio::{
-    io::DuplexStream,
-    sync::oneshot,
-};
+use tokio::{io::DuplexStream, sync::oneshot};
 use tokio_util::codec::{BytesCodec, FramedRead};
 use warp::{
     http::{
@@ -507,8 +502,24 @@ fn format_title(bucket: &str, path: &str) -> Markup {
     }
 }
 
-async fn is_directory<'a, T: S3 + Send>(s3: &T, bucket: &str, path: &str) -> Result<bool, warp::Rejection> {
-    if get_obj_info(s3, bucket, path).await.is_ok() {
+async fn is_object<'a, T: S3 + Send>(
+    s3: &T,
+    bucket: &str,
+    path: &str,
+) -> Result<bool, warp::Rejection> {
+    if path.is_empty() {
+        Ok(false)
+    } else {
+        Ok(get_obj_info(s3, bucket, path).await.is_ok())
+    }
+}
+
+async fn is_directory<'a, T: S3 + Send>(
+    s3: &T,
+    bucket: &str,
+    path: &str,
+) -> Result<bool, warp::Rejection> {
+    if is_object(s3, bucket, path).await? {
         return Ok(false);
     }
     let mut directory_list_stream = list_directory_stream(s3, bucket, path);
@@ -525,7 +536,6 @@ async fn is_directory<'a, T: S3 + Send>(s3: &T, bucket: &str, path: &str) -> Res
 async fn create_listing_page(s3: S3Client, bucket: String, path: String) -> io::Result<Bytes> {
     let mut directory_list_stream = list_directory_stream(&s3, &bucket, &path);
     let mut elements = vec![];
-
     loop {
         match directory_list_stream.try_next().await {
             Ok(None) => break,
@@ -545,7 +555,6 @@ async fn create_listing_page(s3: S3Client, bucket: String, path: String) -> io::
             }
         }
     }
-
     let document = html! {
         (DOCTYPE)
         meta charset="utf-8";
@@ -567,7 +576,6 @@ async fn create_listing_page(s3: S3Client, bucket: String, path: String) -> io::
             }
         }
     };
-
     Ok(Bytes::from(document.into_string()))
 }
 
@@ -706,6 +714,45 @@ fn sanitize_filename(filename: String) -> String {
     )
 }
 
+async fn maybe_redirect<'a, T: S3 + Send>(
+    s3: &T,
+    bucket: &str,
+    path: &str,
+) -> Result<(bool, Option<Result<http::Response<Body>, warp::Rejection>>), warp::Rejection> {
+    let is_dir_listing = path.is_empty() || path.ends_with('/');
+    if !is_dir_listing && is_directory(s3, bucket, path).await? {
+        let path = String::from("/") + path + "/";
+        debug!("redirect for index-html: {}", path);
+        let response = Response::builder()
+            .header(LOCATION, path)
+            .status(StatusCode::FOUND)
+            .body(Body::empty())
+            .map_err(|err| EsthriRejection::warp_rejection(format!("{}", err)));
+        Ok((is_dir_listing, Some(response)))
+    } else {
+        Ok((is_dir_listing, None))
+    }
+}
+
+async fn maybe_serve_index_html<'a, T: S3 + Send>(
+    s3: &T,
+    bucket: &str,
+    path: String,
+    index_html: bool,
+    is_dir_listing: bool,
+) -> Result<(bool, String), warp::Rejection> {
+    let index_html_path = if path.is_empty() {
+        "index.html".to_owned()
+    } else {
+        path.clone() + "index.html"
+    };
+    if is_dir_listing && index_html && is_object(s3, bucket, &index_html_path).await? {
+        Ok((false, index_html_path))
+    } else {
+        Ok((is_dir_listing, path))
+    }
+}
+
 async fn download(
     path: warp::path::FullPath,
     s3: S3Client,
@@ -720,22 +767,17 @@ async fn download(
         .get(1..)
         .map(Into::<String>::into)
         .unwrap_or_default();
-    let error_tracker = ErrorTrackerArc::new();
-    let resp_builder = Response::builder();
-    let slash_or_empty = path.is_empty() || path.ends_with('/');
-    if index_html && !slash_or_empty && is_directory(&s3, &bucket, &path).await? {
-        let path = String::from("/") + &path + "/";
-        debug!("redirect for index-html: {}", path);
-        return resp_builder
-            .header(LOCATION, path)
-            .status(StatusCode::MOVED_PERMANENTLY)
-            .body(Body::empty())
-            .map_err(|err| EsthriRejection::warp_rejection(format!("{}", err)))
-    }
     debug!(
         "path: {}, params: archive: {:?}, prefixes: {:?}",
         path, params.archive, params.prefixes
     );
+    let error_tracker = ErrorTrackerArc::new();
+    let (is_dir_listing, maybe_redirect) = maybe_redirect(&s3, &bucket, &path).await?;
+    if let Some(redirect) = maybe_redirect {
+        return redirect;
+    }
+    let (is_dir_listing, path) = maybe_serve_index_html(&s3, &bucket, path, index_html, is_dir_listing).await?;
+    let resp_builder = Response::builder();
     let (body, resp_builder) = if params.archive.unwrap_or(false) {
         let (archive_filename, prefixes) = if !path.is_empty() && params.prefixes.is_none() {
             let archive_filename = sanitize_filename(path.clone());
@@ -768,7 +810,7 @@ async fn download(
         } else {
             (None, resp_builder)
         }
-    } else if slash_or_empty && !index_html {
+    } else if is_dir_listing {
         let listing_page = create_listing_page(s3.clone(), bucket, path).await;
         let header = resp_builder.header(CONTENT_TYPE, TEXT_HTML_UTF_8.essence_str());
         match listing_page {
@@ -776,15 +818,6 @@ async fn download(
             Err(e) => (Some(Body::from(e.to_string())), header),
         }
     } else {
-        let path = if slash_or_empty && index_html {
-            if path.is_empty() {
-                "index.html".into()
-            } else {
-                path + "index.html"
-            }
-        } else {
-            path
-        };
         let (resp_builder, create_stream) =
             item_pre_response(&s3, bucket, path, if_none_match, resp_builder).await?;
         if let Some((bucket, path)) = create_stream {
@@ -794,7 +827,6 @@ async fn download(
             (None, resp_builder)
         }
     };
-
     resp_builder
         .body(body.unwrap_or_else(Body::empty))
         .map_err(|err| EsthriRejection::warp_rejection(format!("{}", err)))

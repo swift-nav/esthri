@@ -28,7 +28,7 @@ async fn test_fetch_object() {
     .await;
     assert!(res.is_ok());
 
-    let filter = esthri_filter((*s3client).clone(), bucket);
+    let filter = esthri_filter((*s3client).clone(), bucket, false);
 
     let mut result = warp::test::request()
         .path("/test_file.txt")
@@ -61,7 +61,7 @@ async fn test_fetch_compressed_object_encoding() {
     upload_compressed_html_file().await;
     let s3client = esthri_test::get_s3client();
 
-    let filter = esthri_filter((*s3client).clone(), esthri_test::TEST_BUCKET);
+    let filter = esthri_filter((*s3client).clone(), esthri_test::TEST_BUCKET, false);
 
     let mut result = warp::test::request()
         .path("/index_compressed.html")
@@ -156,7 +156,7 @@ async fn fetch_archive_and_validate(
     upload_time: DateTime,
 ) {
     let s3client = esthri_test::get_s3client();
-    let filter = esthri_filter((*s3client).clone(), esthri_test::TEST_BUCKET);
+    let filter = esthri_filter((*s3client).clone(), esthri_test::TEST_BUCKET, false);
     let mut body = warp::test::request()
         .path(request_path)
         .filter(&filter)
