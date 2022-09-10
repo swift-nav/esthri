@@ -566,7 +566,7 @@ fn test_sync_up_delete() {
     let s3client = esthri_test::get_s3client();
     let s3_key = "test_sync_up_delete/";
 
-    // Create temporary directory and one redundant file to live in it.
+    // Create temporary directory and one redundant empty file to live in it.
     let local_dir = TempDir::new("esthri_cli").unwrap();
     let file_path = local_dir.path().join("to-be-deleted.txt");
     #[allow(unused_variables)]
@@ -616,9 +616,8 @@ fn test_sync_up_delete() {
     let obj_info: Option<HeadObjectInfo> = res.unwrap();
     assert!(obj_info.is_some());
     let obj_info: HeadObjectInfo = obj_info.unwrap();
-
+    // Expect file to be empty. TODO: get name of file from s3 and check that instead
     assert_eq!(obj_info.size, 0);
-    assert_eq!(obj_info.e_tag, "\"8542c49db935a57bb8c26ec68d39aaea\""); // TODO: find what actual hash is
 
     // Cleanup. Empty the test_sync_up_default/ portion of the s3 bucket for future use.
     fs::remove_file(&file_path).expect("Could not delete file");
