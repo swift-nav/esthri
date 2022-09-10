@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/esthri", "crates/esthri-cli", "crates/esthri-test"]
+members = ["crates/esthri", "crates/esthri-internals", "crates/esthri-cli", "crates/esthri-test"]
 
 [profile.dev]
 panic = "abort"

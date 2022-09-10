@@ -21,14 +21,7 @@ use futures::Stream;
 
 use crate::{retry::handle_dispatch_error, Error, Result};
 
-pub use rusoto_core::{ByteStream, HttpClient, Region, RusotoError, RusotoResult};
-pub use rusoto_credential::DefaultCredentialsProvider;
-pub use rusoto_s3::{
-    AbortMultipartUploadRequest, CompleteMultipartUploadRequest, CompletedMultipartUpload,
-    CompletedPart, CopyObjectOutput, CopyObjectRequest, CreateMultipartUploadRequest,
-    GetObjectError, GetObjectOutput, GetObjectRequest, HeadObjectOutput, HeadObjectRequest,
-    ListObjectsV2Request, PutObjectRequest, S3Client, StreamingBody, UploadPartRequest, S3,
-};
+pub use esthri_internals::rusoto::*;
 
 /// The data returned from a head object request
 #[derive(Debug)]
@@ -265,7 +258,7 @@ pub async fn create_multipart_upload<T>(
     key: &str,
     metadata: Option<HashMap<String, String>>,
     storage_class: S3StorageClass,
-) -> Result<rusoto_s3::CreateMultipartUploadOutput>
+) -> Result<CreateMultipartUploadOutput>
 where
     T: S3,
 {

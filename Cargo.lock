@@ -546,13 +546,12 @@ dependencies = [
  "bytes",
  "chrono",
  "envy",
- "esthri",
+ "esthri-internals",
  "esthri-test",
  "fs_extra",
  "futures",
  "glob",
  "hex",
- "hyper",
  "hyper-rustls",
  "hyper-tls",
  "log",
@@ -561,10 +560,6 @@ dependencies = [
  "once_cell",
  "parking_lot",
  "regex",
- "rusoto_core",
- "rusoto_credential",
- "rusoto_s3",
- "rusoto_signature",
  "serde",
  "tar",
  "tempdir",
@@ -612,12 +607,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "esthri-internals"
+version = "8.7.0"
+dependencies = [
+ "hyper",
+ "hyper-rustls",
+ "hyper-tls",
+ "rusoto_core",
+ "rusoto_credential",
+ "rusoto_s3",
+ "rusoto_signature",
+]
+
+[[package]]
 name = "esthri-test"
 version = "8.7.0"
 dependencies = [
  "chrono",
  "env_logger",
- "esthri",
+ "esthri-internals",
  "flate2",
  "hyper",
  "md-5 0.10.4",

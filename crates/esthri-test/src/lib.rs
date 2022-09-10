@@ -10,9 +10,10 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use tempdir::TempDir;
 
-use esthri::rusoto::*;
-use esthri::*;
 use uuid::Uuid;
+
+use esthri_internals::new_https_connector;
+use esthri_internals::rusoto::*;
 
 pub struct TestGlobal {
     s3client: Option<Arc<S3Client>>,

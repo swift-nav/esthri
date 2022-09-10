@@ -8,8 +8,13 @@ repository = "https://github.com/swift-nav/esthri/"
 homepage = "https://github.com/swift-nav/esthri/"
 readme = "../../README.md"
 
+[features]
+default = []
+nativetls = ["esthri-internals/nativetls"]
+rustls = ["esthri-internals/rustls"]
+
 [dependencies]
-esthri = { path = "../esthri", default-features = false }
+esthri-internals = { path = "../esthri-internals", default-features = false }
 chrono = "0.4"
 env_logger = "0.9"
 flate2 = "1.0.24"

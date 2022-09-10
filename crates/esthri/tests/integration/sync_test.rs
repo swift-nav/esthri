@@ -3,7 +3,7 @@ use std::fs;
 use glob::Pattern;
 use tempdir::TempDir;
 
-use esthri::{blocking, sync, GlobFilter, S3PathParam, FILTER_EMPTY};
+use esthri::{blocking, rusoto::S3Client, sync, GlobFilter, S3PathParam, FILTER_EMPTY};
 use esthri_test::{validate_key_hash_pairs, KeyHashPair};
 
 #[test]
@@ -262,7 +262,7 @@ async fn test_sync_across() {
     assert!(res.is_ok(), "s3_sync result: {:?}", res);
 }
 
-fn sync_test_files_up_compressed(s3client: &rusoto_s3::S3Client, s3_key: &str) -> String {
+fn sync_test_files_up_compressed(s3client: &S3Client, s3_key: &str) -> String {
     let data_dir = esthri_test::test_data("sync_up/");
     let temp_data_dir = "sync_up_compressed/";
     let old_cwd = std::env::current_dir().unwrap();

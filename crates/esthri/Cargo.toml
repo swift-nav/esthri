@@ -14,30 +14,25 @@ keywords = ["aws", "s3"]
 default = ["blocking", "rustls"]
 aggressive_lint = []
 blocking = ["tokio/rt"]
-nativetls = ["rusoto_core/native-tls", "rusoto_s3/native-tls", "hyper-tls"]
-rustls = ["rusoto_core/rustls", "rusoto_s3/rustls", "hyper-rustls"]
+nativetls = ["esthri-internals/nativetls"]
+rustls = ["esthri-internals/rustls"]
 
 [dependencies]
 async-compression = { version = "0.3", features = ["gzip", "tokio"] }
-
 async-stream = "0.3"
 bytes = "1"
 chrono = "0.4"
 envy = "0.4"
+esthri-internals = { path = "../esthri-internals" }
 futures = { version = "0.3", default-features = false }
 glob = "0.3"
 hex = "0.4"
-hyper = "0.14"
 log = "0.4"
 log-derive = "0.4"
 md-5 = "0.10.4"
 once_cell = "1"
 parking_lot = "0.12"
 regex = "1"
-rusoto_core = { version = ">= 0.46, < 1", default-features = false }
-rusoto_credential = { version = ">= 0.46, < 1", default-features = false }
-rusoto_s3 = { version = ">= 0.46, < 1", default-features = false }
-rusoto_signature = { version = ">= 0.46, < 1", default-features = false }
 serde = { version = "1", features = ["derive"] }
 tempfile = "3"
 thiserror = "1"
@@ -57,7 +52,6 @@ optional = true
 features = ["webpki-roots"]
 
 [dev-dependencies]
-esthri = { path = ".", default-features = false, features=["blocking"] }
 esthri-test = { path = "../esthri-test" }
 tar = "0.4"
 tempdir = "0.3"

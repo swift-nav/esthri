@@ -206,7 +206,15 @@ enum EsthriCommand {
         #[clap(long)]
         key: String,
     },
-
+    /// Delete objects from the specified bucket.
+    DeleteObjects {
+        /// The bucket to delete from (example: my-bucket)
+        #[clap(long)]
+        bucket: String,
+        /// The keys to delete (example: a/key/name.bin b/key/name.bin)
+        #[clap(long = "key", required = true, multiple_occurrences = true)]
+        keys: Vec<String>,
+    },
     /// Launch an HTTP server attached to the specified bucket
     ///
     /// This also supports serving dynamic archives of bucket contents
@@ -477,6 +485,10 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
 
         ListObjects { bucket, key } => {
             esthri::list_objects(s3, &bucket, &key).await?;
+        }
+
+        DeleteObjects { bucket, keys } => {
+            esthri::delete(s3, bucket, &keys[..]).await?;
         }
 
         Serve {
