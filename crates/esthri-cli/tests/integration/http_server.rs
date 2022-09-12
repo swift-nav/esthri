@@ -41,12 +41,17 @@ async fn test_fetch_object() {
     assert_eq!(body, "this file has contents\n");
 }
 
+/// Test allowed prefixes functionality.  Specifically if a set of allowed prefixes are specified then the server should
+/// block access to those resource either via direct access or indirect via an archive request.
+///
 #[tokio::test]
 async fn test_allowed_prefixes() {
     let filename = esthri_test::test_data("test_file.txt");
 
     let s3client = esthri_test::get_s3client();
     let bucket = esthri_test::TEST_BUCKET;
+
+    // Nominal happy path, a prefix is allowed, so access to a file is allowed.
 
     let an_allowed_key = "allowed_prefix/test_file.txt".to_owned();
 
@@ -60,6 +65,8 @@ async fn test_allowed_prefixes() {
 
     assert!(res.is_ok());
 
+    // Nominal bad path, a prefix is *NOT* allowed, so access to a file is *NOT* allowed.
+
     let a_not_allowed_key = "not_allowed_prefix/test_file.txt".to_owned();
 
     let res = upload(
@@ -71,6 +78,8 @@ async fn test_allowed_prefixes() {
     .await;
 
     assert!(res.is_ok());
+
+    // Test that a set of prefixes, one without a training slash are correctly allowed or blocked.
 
     let allowed_prefixes = [
         "allowed_prefix".to_owned(),
@@ -101,6 +110,8 @@ async fn test_allowed_prefixes() {
 
     assert_eq!(result.unwrap().status(), StatusCode::OK);
 
+    // Test indirect access via archive request is blocked.
+
     let result = warp::test::request()
         .path("/not_allowed_prefix/?archive=true")
         .filter(&filter)
@@ -108,12 +119,16 @@ async fn test_allowed_prefixes() {
 
     assert!(result.err().unwrap().is_not_found());
 
+    // Test indirect access via archive request is allowed even if it's 2 different allowed prefixes.
+
     let result = warp::test::request()
         .path("/?archive=true&prefixes=allowed_prefix/|another_allowed_prefix/")
         .filter(&filter)
         .await;
 
     assert_eq!(result.unwrap().status(), StatusCode::OK);
+
+    // Test indirect access via archive request is *NOT* allowed when at least one blocked path is present.
 
     let result = warp::test::request()
         .path("/?archive=true&prefixes=not_allowed_prefix/|another_allowed_prefix/")

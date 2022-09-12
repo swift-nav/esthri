@@ -215,6 +215,9 @@ fn with_bucket(bucket: String) -> impl Filter<Extract = (String,), Error = Infal
     warp::any().map(move || bucket.clone())
 }
 
+/// Lift allowed prefixes parameter into a warp handler/filter.  If allowed prefixes are empty then `None` is passed and
+/// all paths are allowed, also normalizes all prefixes so that they end in a slash.
+///
 fn with_allowed_prefixes(
     allowed_prefixes: &[String],
 ) -> impl Filter<Extract = (Option<Vec<String>>,), Error = Infallible> + Clone {
@@ -245,6 +248,9 @@ fn with_s3_client(
     warp::any().map(move || s3_client.clone())
 }
 
+/// * `allowed_prefixes` - specifies a list of prefixes which are allowed for access, all other prefixes will be
+/// rejected with HTTP status 404 (not found).
+///
 pub fn esthri_filter(
     s3_client: S3Client,
     bucket: &str,
