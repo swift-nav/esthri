@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::{fs, io};
 
 use tokio::runtime::Runtime;
+use warp::http::status::StatusCode;
 
 use esthri::upload;
 use esthri::{blocking, upload_compressed};
@@ -28,7 +29,7 @@ async fn test_fetch_object() {
     .await;
     assert!(res.is_ok());
 
-    let filter = esthri_filter((*s3client).clone(), bucket);
+    let filter = esthri_filter((*s3client).clone(), bucket, &[]);
 
     let mut result = warp::test::request()
         .path("/test_file.txt")
@@ -38,6 +39,103 @@ async fn test_fetch_object() {
 
     let body = hyper::body::to_bytes(result.body_mut()).await.unwrap();
     assert_eq!(body, "this file has contents\n");
+}
+
+/// Test allowed prefixes functionality.  Specifically if a set of allowed prefixes are specified then the server should
+/// block access to those resource either via direct access or indirect via an archive request.
+///
+#[tokio::test]
+async fn test_allowed_prefixes() {
+    let filename = esthri_test::test_data("test_file.txt");
+
+    let s3client = esthri_test::get_s3client();
+    let bucket = esthri_test::TEST_BUCKET;
+
+    // Nominal happy path, a prefix is allowed, so access to a file is allowed.
+
+    let an_allowed_key = "allowed_prefix/test_file.txt".to_owned();
+
+    let res = upload(
+        s3client.as_ref(),
+        esthri_test::TEST_BUCKET,
+        &an_allowed_key,
+        &filename,
+    )
+    .await;
+
+    assert!(res.is_ok());
+
+    // Nominal bad path, a prefix is *NOT* allowed, so access to a file is *NOT* allowed.
+
+    let a_not_allowed_key = "not_allowed_prefix/test_file.txt".to_owned();
+
+    let res = upload(
+        s3client.as_ref(),
+        esthri_test::TEST_BUCKET,
+        &a_not_allowed_key,
+        &filename,
+    )
+    .await;
+
+    assert!(res.is_ok());
+
+    // Test that a set of prefixes, one without a training slash are correctly allowed or blocked.
+
+    let allowed_prefixes = [
+        "allowed_prefix".to_owned(),
+        "another_allowed_prefix/".to_owned(),
+    ];
+    let filter = esthri_filter((*s3client).clone(), bucket, &allowed_prefixes);
+
+    let mut result = warp::test::request()
+        .path("/allowed_prefix/test_file.txt")
+        .filter(&filter)
+        .await
+        .unwrap();
+
+    let body = hyper::body::to_bytes(result.body_mut()).await.unwrap();
+    assert_eq!(body, "this file has contents\n");
+
+    let result = warp::test::request()
+        .path("/not_allowed_prefix/test_file.txt")
+        .filter(&filter)
+        .await;
+
+    assert!(result.err().unwrap().is_not_found());
+
+    let result = warp::test::request()
+        .path("/allowed_prefix/?archive=true")
+        .filter(&filter)
+        .await;
+
+    assert_eq!(result.unwrap().status(), StatusCode::OK);
+
+    // Test indirect access via archive request is blocked.
+
+    let result = warp::test::request()
+        .path("/not_allowed_prefix/?archive=true")
+        .filter(&filter)
+        .await;
+
+    assert!(result.err().unwrap().is_not_found());
+
+    // Test indirect access via archive request is allowed even if it's 2 different allowed prefixes.
+
+    let result = warp::test::request()
+        .path("/?archive=true&prefixes=allowed_prefix/|another_allowed_prefix/")
+        .filter(&filter)
+        .await;
+
+    assert_eq!(result.unwrap().status(), StatusCode::OK);
+
+    // Test indirect access via archive request is *NOT* allowed when at least one blocked path is present.
+
+    let result = warp::test::request()
+        .path("/?archive=true&prefixes=not_allowed_prefix/|another_allowed_prefix/")
+        .filter(&filter)
+        .await;
+
+    assert!(result.err().unwrap().is_not_found());
 }
 
 async fn upload_compressed_html_file() {
@@ -61,7 +159,7 @@ async fn test_fetch_compressed_object_encoding() {
     upload_compressed_html_file().await;
     let s3client = esthri_test::get_s3client();
 
-    let filter = esthri_filter((*s3client).clone(), esthri_test::TEST_BUCKET);
+    let filter = esthri_filter((*s3client).clone(), esthri_test::TEST_BUCKET, &[]);
 
     let mut result = warp::test::request()
         .path("/index_compressed.html")
@@ -156,7 +254,7 @@ async fn fetch_archive_and_validate(
     upload_time: DateTime,
 ) {
     let s3client = esthri_test::get_s3client();
-    let filter = esthri_filter((*s3client).clone(), esthri_test::TEST_BUCKET);
+    let filter = esthri_filter((*s3client).clone(), esthri_test::TEST_BUCKET, &[]);
     let mut body = warp::test::request()
         .path(request_path)
         .filter(&filter)
