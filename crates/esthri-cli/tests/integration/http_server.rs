@@ -308,8 +308,12 @@ fn test_fetch_archive_with_compressed_files() {
     );
 }
 
+/// Tests nomimal behavaior of the `--index-html` switch which eventually manifests as a parameter passed to
+/// [esthri_server::esthri_filter].  See [esthri_server::esthri_filter] for details on the intended behavior of the
+/// `index_html` parameter.
+///
 #[tokio::test]
-async fn test_index_url() {
+async fn test_index_url_nominal() {
     upload_index_url_test_data().await.unwrap();
 
     let s3client = esthri_test::get_s3client();
@@ -327,8 +331,21 @@ async fn test_index_url() {
 
     let body = hyper::body::to_bytes(result.body_mut()).await.unwrap();
     assert_eq!(body, "<p>Hello world!</p>\n");
+}
 
-    // Test request without trailing slash
+/// See [esthri_server::esthri_filter] -- tests that requests without trailing slash will redirect to a slash if that
+/// path resolves to a "directory".  In S3 directories are simulated by keys which use the "/" has a key separator.
+///
+#[tokio::test]
+async fn test_index_url_redirect() {
+    upload_index_url_test_data().await.unwrap();
+
+    let s3client = esthri_test::get_s3client();
+    let s3client = (*s3client).clone();
+
+    let bucket = esthri_test::TEST_BUCKET;
+
+    let filter = esthri_filter(s3client, bucket, true);
 
     let result = warp::test::request()
         .path("/index_html")
@@ -346,21 +363,21 @@ async fn test_index_url() {
             .unwrap(),
         "/index_html/"
     );
+}
 
-    // Test that requesting a dir with an index.html falls back to listing
+/// See [esthri_server::esthri_filter] -- tests that requests for a path without an `index.html` willl fall back to a
+/// directory listing.
+///
+#[tokio::test]
+async fn test_index_url_listing_fallback() {
+    upload_index_url_test_data().await.unwrap();
 
-    let mut result = warp::test::request()
-        .path("/index_html/subdir/")
-        .filter(&filter)
-        .await
-        .unwrap();
+    let s3client = esthri_test::get_s3client();
+    let s3client = (*s3client).clone();
 
-    let body = hyper::body::to_bytes(result.body_mut()).await.unwrap();
+    let bucket = esthri_test::TEST_BUCKET;
 
-    assert!(String::from_utf8_lossy(body.as_ref()).contains("href=\"a_file.txt\""));
-    assert!(String::from_utf8_lossy(body.as_ref()).contains("href=\"has_index/"));
-
-    // Test directly fetching an index.html
+    let filter = esthri_filter(s3client, bucket, true);
 
     let mut result = warp::test::request()
         .path("/index_html/subdir/has_index/index.html")
@@ -370,8 +387,31 @@ async fn test_index_url() {
 
     let body = hyper::body::to_bytes(result.body_mut()).await.unwrap();
     assert_eq!(body, "<p>Hello world! I am from a subdir.</p>\n");
+}
 
-    // Test fetching a different index.html
+/// See [esthri_server::esthri_filter] -- sanity check test, just fetches a different index.html and makes sure it's
+/// different from the top-level index.html (ensures that we're not redirecting or reading from an incorrect object
+/// key).
+///
+#[tokio::test]
+async fn test_index_url_different_index_html() {
+    upload_index_url_test_data().await.unwrap();
+
+    let s3client = esthri_test::get_s3client();
+    let s3client = (*s3client).clone();
+
+    let bucket = esthri_test::TEST_BUCKET;
+
+    let filter = esthri_filter(s3client, bucket, true);
+
+    let mut result = warp::test::request()
+        .path("/index_html/subdir/has_index/index.html")
+        .filter(&filter)
+        .await
+        .unwrap();
+
+    let body = hyper::body::to_bytes(result.body_mut()).await.unwrap();
+    assert_eq!(body, "<p>Hello world! I am from a subdir.</p>\n");
 
     let mut result = warp::test::request()
         .path("/index_html/subdir/has_index/")

@@ -223,6 +223,20 @@ fn with_s3_client(
     warp::any().map(move || s3_client.clone())
 }
 
+/// The main warp "filter" for the http server module, this lifts all of the information out of the HTTP request that we
+/// need and allows the [download] function to do it's work.  See [warp::Filter] for more details.  In a sense this
+/// function prepares the data that we need and [download] is the function that acts on that data.
+///
+/// # Arguments
+///
+/// * `s3_client` - The S3 client object, see [rusoto_s3::S3]
+/// * `bucket` - The bucket to serve over HTTP.
+/// * `index_html` - Wether to serve "index.html" in place of directory listings.
+///
+/// # Errors
+///
+/// This follows [warp]'s error model, see [warp::Rejection].
+///
 pub fn esthri_filter(
     s3_client: S3Client,
     bucket: &str,
