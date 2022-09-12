@@ -728,7 +728,11 @@ fn sanitize_filename(filename: String) -> String {
     )
 }
 
-async fn maybe_redirect<'a, T: S3 + Send>(
+/// If a path is supplied that is actually a "directory" (or in S3, it is a prefix which lists multiple objects) then we
+/// redirect to a version of the path with a trailing slash.  This makes downstream logic around what is an isn't a
+/// directory much easier to implement.
+///
+async fn redirect_on_dir_without_slash<'a, T: S3 + Send>(
     s3: &T,
     bucket: &str,
     path: &str,
@@ -748,6 +752,10 @@ async fn maybe_redirect<'a, T: S3 + Send>(
     }
 }
 
+/// If we've enabled the "--index-html" feature to the http server and a "index.html" exists in the directory that's
+/// currently been requested, then we'll serve that file in place of the usualy directory listing.  This allows the
+/// server to behave more like a "real" http server.
+///
 async fn maybe_serve_index_html<'a, T: S3 + Send>(
     s3: &T,
     bucket: &str,
@@ -767,6 +775,21 @@ async fn maybe_serve_index_html<'a, T: S3 + Send>(
     }
 }
 
+/// The main entrypoint for fulfilling requests to the server.
+///
+/// Path patterns that are requested and handled here:
+///
+/// * HTTP GET request to `/<path/to/object/foo.bin` => results in fetch of `s3://<bucket>/path/to/object/foo.bin`
+///
+/// * HTTP GET request to `/<path/to/object/>` => results in a listing page showing all objects that match the prefix
+/// `path/to/object`
+///
+/// * HTTP GET request to `/<path/to/object/>?archive=true` => results in a zip archive being served with the contents
+/// of the directory `path/to/object` recursively populating said archive
+///
+/// * HTTP GET request to `/?archive=true&prefixes=prefix1|prefix2` => results in a zip archive being served with the
+/// contents all directories listed in the `prefixes` parameter populating the archive
+///
 async fn download(
     path: warp::path::FullPath,
     s3: S3Client,
@@ -786,7 +809,8 @@ async fn download(
         path, params.archive, params.prefixes
     );
     let error_tracker = ErrorTrackerArc::new();
-    let (is_dir_listing, maybe_redirect) = maybe_redirect(&s3, &bucket, &path).await?;
+    let (is_dir_listing, maybe_redirect) =
+        redirect_on_dir_without_slash(&s3, &bucket, &path).await?;
     if let Some(redirect) = maybe_redirect {
         return redirect;
     }
