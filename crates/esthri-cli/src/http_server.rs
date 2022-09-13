@@ -217,6 +217,33 @@ fn with_bucket(bucket: String) -> impl Filter<Extract = (String,), Error = Infal
     warp::any().map(move || bucket.clone())
 }
 
+/// Lift allowed prefixes parameter into a warp handler/filter.  If allowed prefixes are empty then `None` is passed and
+/// all paths are allowed, also normalizes all prefixes so that they end in a slash.
+///
+fn with_allowed_prefixes(
+    allowed_prefixes: &[String],
+) -> impl Filter<Extract = (Option<Vec<String>>,), Error = Infallible> + Clone {
+    let allowed_prefixes = if !allowed_prefixes.is_empty() {
+        let allowed_prefixes = allowed_prefixes.to_vec();
+        Some(
+            allowed_prefixes
+                .iter()
+                .map(|prefix| {
+                    if prefix.ends_with('/') {
+                        prefix.to_owned()
+                    } else {
+                        prefix.to_owned() + "/"
+                    }
+                })
+                .collect(),
+        )
+    } else {
+        None
+    };
+    info!("allowed prefixes: {:?}", allowed_prefixes);
+    warp::any().map(move || allowed_prefixes.clone())
+}
+
 fn with_s3_client(
     s3_client: S3Client,
 ) -> impl Filter<Extract = (S3Client,), Error = Infallible> + Clone {
@@ -232,6 +259,8 @@ fn with_s3_client(
 /// * `s3_client` - The S3 client object, see [rusoto_s3::S3]
 /// * `bucket` - The bucket to serve over HTTP.
 /// * `index_html` - Wether to serve "index.html" in place of directory listings.
+/// * `allowed_prefixes` - specifies a list of prefixes which are allowed for access, all other prefixes will be
+/// rejected with HTTP status 404 (not found).
 ///
 /// # Errors
 ///
@@ -241,11 +270,13 @@ pub fn esthri_filter(
     s3_client: S3Client,
     bucket: &str,
     index_html: bool,
+    allowed_prefixes: &[String],
 ) -> impl Filter<Extract = (http::Response<Body>,), Error = warp::Rejection> + Clone {
     warp::path::full()
         .and(with_s3_client(s3_client))
         .and(with_bucket(bucket.to_owned()))
         .and(warp::any().map(move || index_html))
+        .and(with_allowed_prefixes(allowed_prefixes))
         .and(warp::query::<DownloadParams>())
         .and(warp::header::optional::<String>("if-none-match"))
         .and_then(download)
@@ -256,6 +287,7 @@ pub async fn run(
     bucket: &str,
     address: &SocketAddr,
     index_html: bool,
+    allowed_prefixes: &[String],
 ) -> Result<(), Infallible> {
     setup_termination_handler();
 
@@ -270,7 +302,12 @@ pub async fn run(
     let health_check = warp::path(".esthri_health_check").map(still_alive);
 
     let routes = health_check
-        .or(esthri_filter(s3_client, bucket, index_html))
+        .or(esthri_filter(
+            s3_client,
+            bucket,
+            index_html,
+            allowed_prefixes,
+        ))
         .recover(handle_rejection);
 
     let (addr, server) = warp::serve(routes).bind_with_graceful_shutdown(*address, async {
@@ -775,6 +812,25 @@ async fn maybe_serve_index_html<'a, T: S3 + Send>(
     }
 }
 
+/// Process list of allowed prefixes and reject the path if it's not allowed
+fn should_reject(path: &str, allowed_prefixes: &[String], params: &DownloadParams) -> bool {
+    // The with_allowed_prefixes filter should ensure that allowed_prefixes is not
+    //   empty by the time we get here.
+    assert!(!allowed_prefixes.is_empty());
+    if allowed_prefixes.iter().any(|p| path.starts_with(p)) {
+        false
+    } else if path.is_empty() && params.prefixes.is_some() {
+        let prefixes = params.prefixes.as_ref().unwrap();
+        !prefixes.prefixes.iter().all(|archive_prefix| {
+            allowed_prefixes
+                .iter()
+                .any(|p| archive_prefix.starts_with(p))
+        })
+    } else {
+        true
+    }
+}
+
 /// The main entrypoint for fulfilling requests to the server.
 ///
 /// Path patterns that are requested and handled here:
@@ -790,11 +846,22 @@ async fn maybe_serve_index_html<'a, T: S3 + Send>(
 /// * HTTP GET request to `/?archive=true&prefixes=prefix1|prefix2` => results in a zip archive being served with the
 /// contents all directories listed in the `prefixes` parameter populating the archive
 ///
+/// # Arguments
+///
+/// * `path` - the full request path
+/// * `s3` - s3 client implementaiton, see [rusoto_s3::S3Client]
+/// * `bucket` - the bucket that objects are served from
+/// * `index_html` - if `index.html` from directory roots should be served instead of a directory listing
+/// * `allowed_prefixes` - the list of prefixes allowed for access
+/// * `params` - optional download parameter that can customize request behavior (see above)
+/// * `if_none_match` - hash from client to match against for client side cache processing
+///
 async fn download(
     path: warp::path::FullPath,
     s3: S3Client,
     bucket: String,
     index_html: bool,
+    allowed_prefixes: Option<Vec<String>>,
     params: DownloadParams,
     if_none_match: Option<String>,
 ) -> Result<http::Response<Body>, warp::Rejection> {
@@ -808,16 +875,29 @@ async fn download(
         "path: {}, params: archive: {:?}, prefixes: {:?}",
         path, params.archive, params.prefixes
     );
-    let error_tracker = ErrorTrackerArc::new();
+
+    if let Some(allowed_prefixes) = allowed_prefixes {
+        if should_reject(&path, &allowed_prefixes[..], &params) {
+            return Err(warp::reject::not_found());
+        }
+    }
+
     let (is_dir_listing, maybe_redirect) =
         redirect_on_dir_without_slash(&s3, &bucket, &path).await?;
+
     if let Some(redirect) = maybe_redirect {
         return redirect;
     }
+
     let (is_dir_listing, path) =
         maybe_serve_index_html(&s3, &bucket, path, index_html, is_dir_listing).await?;
+
     let resp_builder = Response::builder();
-    let (body, resp_builder) = if params.archive.unwrap_or(false) {
+    let error_tracker = ErrorTrackerArc::new();
+
+    let is_archive = params.archive.unwrap_or(false);
+
+    let (body, resp_builder) = if is_archive {
         let (archive_filename, prefixes) = if !path.is_empty() && params.prefixes.is_none() {
             let archive_filename = sanitize_filename(path.clone());
             (format!("{}.zip", archive_filename), Some(vec![path]))
@@ -835,6 +915,7 @@ async fn download(
                 "path and prefixes were empty",
             ));
         };
+
         if let Some(prefixes) = prefixes {
             let stream = create_archive_stream(s3.clone(), bucket, prefixes, error_tracker).await;
             (
@@ -866,6 +947,7 @@ async fn download(
             (None, resp_builder)
         }
     };
+
     resp_builder
         .body(body.unwrap_or_else(Body::empty))
         .map_err(|err| EsthriRejection::warp_rejection(format!("{}", err)))
