@@ -217,6 +217,10 @@ enum EsthriCommand {
         /// The listening address for the server
         #[clap(long, default_value = "127.0.0.1:3030")]
         address: std::net::SocketAddr,
+        /// Whether to serve "index.html" in place of "/" for directories
+        #[clap(long)]
+        index_html: bool,
+        /// A list of prefixes that are allowed for access, all other prefixes are rejected
         #[clap(long = "allowed-prefix", multiple_occurrences = true)]
         allowed_prefixes: Vec<String>,
     },
@@ -478,9 +482,17 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
         Serve {
             bucket,
             address,
+            index_html,
             allowed_prefixes,
         } => {
-            http_server::run(s3.clone(), &bucket, &address, &allowed_prefixes[..]).await?;
+            http_server::run(
+                s3.clone(),
+                &bucket,
+                &address,
+                index_html,
+                &allowed_prefixes[..],
+            )
+            .await?;
         }
     }
 

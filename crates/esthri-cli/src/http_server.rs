@@ -15,7 +15,7 @@ use std::{
     convert::Infallible,
     io::{self, ErrorKind},
     net::SocketAddr,
-    pin::Pin,
+    ops::Deref,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
@@ -32,17 +32,14 @@ use async_zip::{
 };
 use bytes::{Bytes, BytesMut};
 use futures::stream::{Stream, StreamExt, TryStreamExt};
-use hyper::header::CONTENT_ENCODING;
+use hyper::header::{CONTENT_ENCODING, LOCATION};
 use log::*;
 use maud::{html, Markup, DOCTYPE};
 use mime_guess::mime::{APPLICATION_OCTET_STREAM, TEXT_HTML_UTF_8};
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 
-use tokio::{
-    io::{AsyncWrite, DuplexStream},
-    sync::oneshot,
-};
+use tokio::{io::DuplexStream, sync::oneshot};
 use tokio_util::codec::{BytesCodec, FramedRead};
 use warp::{
     http::{
@@ -50,7 +47,9 @@ use warp::{
         header::{
             CACHE_CONTROL, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_TYPE, ETAG, LAST_MODIFIED,
         },
-        response, Response,
+        response,
+        status::StatusCode,
+        Response,
     },
     hyper::Body,
     Filter,
@@ -113,13 +112,16 @@ impl ErrorTracker {
             the_error: Mutex::new(None),
         }
     }
+
+    /// Store a copy of the provided error in the error tracker for later retrieval.
+    ///
+    /// # Arguments
+    ///
+    /// * `error_tracker` - the error tracker pointer, see [ErrorTrackerArc]
+    /// * `err` - the error toe record
     fn record_error(error_tracker: ErrorTrackerArc, err: anyhow::Error) {
-        error_tracker.0.has_error.store(true, Ordering::Release);
-        let mut the_error = error_tracker
-            .0
-            .the_error
-            .lock()
-            .expect("locking error field");
+        error_tracker.has_error.store(true, Ordering::Release);
+        let mut the_error = error_tracker.the_error.lock().expect("locking error field");
         *the_error = Some(Box::new(err));
     }
 }
@@ -133,6 +135,13 @@ impl ErrorTrackerArc {
     }
     fn has_error(&self) -> bool {
         self.0.has_error.load(Ordering::Acquire)
+    }
+}
+
+impl Deref for ErrorTrackerArc {
+    type Target = ErrorTracker;
+    fn deref(&self) -> &Self::Target {
+        self.0.as_ref()
     }
 }
 
@@ -248,17 +257,32 @@ fn with_s3_client(
     warp::any().map(move || s3_client.clone())
 }
 
+/// The main warp "filter" for the http server module, this lifts all of the information out of the HTTP request that we
+/// need and allows the [download] function to do it's work.  See [warp::Filter] for more details.  In a sense this
+/// function prepares the data that we need and [download] is the function that acts on that data.
+///
+/// # Arguments
+///
+/// * `s3_client` - The S3 client object, see [rusoto_s3::S3]
+/// * `bucket` - The bucket to serve over HTTP.
+/// * `index_html` - Wether to serve "index.html" in place of directory listings.
 /// * `allowed_prefixes` - specifies a list of prefixes which are allowed for access, all other prefixes will be
 /// rejected with HTTP status 404 (not found).
+///
+/// # Errors
+///
+/// This follows [warp]'s error model, see [warp::Rejection].
 ///
 pub fn esthri_filter(
     s3_client: S3Client,
     bucket: &str,
+    index_html: bool,
     allowed_prefixes: &[String],
 ) -> impl Filter<Extract = (http::Response<Body>,), Error = warp::Rejection> + Clone {
     warp::path::full()
         .and(with_s3_client(s3_client))
         .and(with_bucket(bucket.to_owned()))
+        .and(warp::any().map(move || index_html))
         .and(with_allowed_prefixes(allowed_prefixes))
         .and(warp::query::<DownloadParams>())
         .and(warp::header::optional::<String>("if-none-match"))
@@ -269,6 +293,7 @@ pub async fn run(
     s3_client: S3Client,
     bucket: &str,
     address: &SocketAddr,
+    index_html: bool,
     allowed_prefixes: &[String],
 ) -> Result<(), Infallible> {
     setup_termination_handler();
@@ -284,7 +309,12 @@ pub async fn run(
     let health_check = warp::path(".esthri_health_check").map(still_alive);
 
     let routes = health_check
-        .or(esthri_filter(s3_client, bucket, allowed_prefixes))
+        .or(esthri_filter(
+            s3_client,
+            bucket,
+            index_html,
+            allowed_prefixes,
+        ))
         .recover(handle_rejection);
 
     let (addr, server) = warp::serve(routes).bind_with_graceful_shutdown(*address, async {
@@ -308,7 +338,7 @@ async fn stream_object_to_archive<T: S3 + Send + Clone + Sync>(
     s3: &T,
     bucket: &str,
     path: &str,
-    archive: &mut ZipFileWriter<DuplexStreamWrapper>,
+    archive: &mut ZipFileWriter<DuplexStream>,
     error_tracker: ErrorTrackerArc,
 ) -> bool {
     let stream = match download_streaming(s3, bucket, path, true).await {
@@ -390,35 +420,6 @@ async fn create_error_monitor_stream<T: Stream<Item = io::Result<BytesMut>> + Un
     }
 }
 
-// Work around for https://github.com/Majored/rs-async-zip/issues/11 By default,
-// the writer calls shutdown on the Writer to finalize the compressed file. For
-// the duplex pipe, this causes the writer to no longer work so we work around
-// it by calling flush on shutdown instead.
-struct DuplexStreamWrapper(DuplexStream);
-impl AsyncWrite for DuplexStreamWrapper {
-    fn poll_write(
-        mut self: Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-        buf: &[u8],
-    ) -> std::task::Poll<Result<usize, io::Error>> {
-        Pin::new(&mut self.0).poll_write(cx, buf)
-    }
-
-    fn poll_flush(
-        mut self: Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Result<(), io::Error>> {
-        Pin::new(&mut self.0).poll_flush(cx)
-    }
-
-    fn poll_shutdown(
-        mut self: Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Result<(), io::Error>> {
-        Pin::new(&mut self.0).poll_flush(cx)
-    }
-}
-
 async fn create_archive_stream(
     s3: S3Client,
     bucket: String,
@@ -426,7 +427,7 @@ async fn create_archive_stream(
     error_tracker: ErrorTrackerArc,
 ) -> impl Stream<Item = io::Result<BytesMut>> {
     let (zip_reader, zip_writer) = tokio::io::duplex(MAX_BUF_SIZE);
-    let mut writer = ZipFileWriter::new(DuplexStreamWrapper(zip_writer));
+    let mut writer = ZipFileWriter::new(zip_writer);
 
     let error_tracker_reader = error_tracker.clone();
     tokio::spawn(async move {
@@ -559,10 +560,40 @@ fn format_title(bucket: &str, path: &str) -> Markup {
     }
 }
 
+async fn is_object<'a, T: S3 + Send>(
+    s3: &T,
+    bucket: &str,
+    path: &str,
+) -> Result<bool, warp::Rejection> {
+    if path.is_empty() {
+        Ok(false)
+    } else {
+        Ok(get_obj_info(s3, bucket, path).await.is_ok())
+    }
+}
+
+async fn is_directory<'a, T: S3 + Send>(
+    s3: &T,
+    bucket: &str,
+    path: &str,
+) -> Result<bool, warp::Rejection> {
+    if is_object(s3, bucket, path).await? {
+        return Ok(false);
+    }
+    let mut directory_list_stream = list_directory_stream(s3, bucket, path);
+    match directory_list_stream.try_next().await {
+        Ok(None) => Ok(false),
+        Ok(Some(_)) => Ok(true),
+        Err(err) => {
+            let message = format!("error listing item: {}", err);
+            EsthriRejection::warp_result(message)
+        }
+    }
+}
+
 async fn create_listing_page(s3: S3Client, bucket: String, path: String) -> io::Result<Bytes> {
     let mut directory_list_stream = list_directory_stream(&s3, &bucket, &path);
     let mut elements = vec![];
-
     loop {
         match directory_list_stream.try_next().await {
             Ok(None) => break,
@@ -582,7 +613,6 @@ async fn create_listing_page(s3: S3Client, bucket: String, path: String) -> io::
             }
         }
     }
-
     let document = html! {
         (DOCTYPE)
         meta charset="utf-8";
@@ -604,7 +634,6 @@ async fn create_listing_page(s3: S3Client, bucket: String, path: String) -> io::
             }
         }
     };
-
     Ok(Bytes::from(document.into_string()))
 }
 
@@ -661,31 +690,28 @@ async fn item_pre_response<'a, T: S3 + Send>(
     mut resp_builder: response::Builder,
 ) -> Result<(response::Builder, Option<(String, String)>), warp::Rejection> {
     let obj_info = get_obj_info(s3, &bucket, &path).await?;
-
     let not_modified = if_none_match
         .map(|etag| etag.strip_prefix("W/").map(String::from).unwrap_or(etag))
         .map(|etag| etag == obj_info.e_tag)
         .unwrap_or(false);
     if not_modified {
-        use warp::http::status::StatusCode;
         resp_builder = resp_builder.status(StatusCode::NOT_MODIFIED);
         Ok((resp_builder, None))
     } else {
-        resp_builder = resp_builder.header(CONTENT_LENGTH, obj_info.size);
-        resp_builder = resp_builder.header(ETAG, &obj_info.e_tag);
-        resp_builder = resp_builder.header(CACHE_CONTROL, "private,max-age=0");
-        resp_builder = resp_builder.header(
-            LAST_MODIFIED,
-            obj_info
-                .last_modified
-                .format(LAST_MODIFIED_TIME_FMT)
-                .to_string(),
-        );
-
+        resp_builder = resp_builder
+            .header(CONTENT_LENGTH, obj_info.size)
+            .header(ETAG, &obj_info.e_tag)
+            .header(CACHE_CONTROL, "private,max-age=0")
+            .header(
+                LAST_MODIFIED,
+                obj_info
+                    .last_modified
+                    .format(LAST_MODIFIED_TIME_FMT)
+                    .to_string(),
+            );
         if obj_info.is_esthri_compressed() {
             resp_builder = resp_builder.header(CONTENT_ENCODING, "gzip");
         }
-
         let mime = mime_guess::from_path(&path);
         let mime = mime.first();
         if let Some(mime) = mime {
@@ -700,7 +726,6 @@ async fn item_pre_response<'a, T: S3 + Send>(
 
 /// An API error serializable to JSON.
 async fn handle_rejection(err: warp::Rejection) -> Result<impl warp::Reply, Infallible> {
-    use warp::http::StatusCode;
     let code;
     let message;
     if err.is_not_found() {
@@ -747,6 +772,54 @@ fn sanitize_filename(filename: String) -> String {
     )
 }
 
+/// If a path is supplied that is actually a "directory" (or in S3, it is a prefix which lists multiple objects) then we
+/// redirect to a version of the path with a trailing slash.  This makes downstream logic around what is an isn't a
+/// directory much easier to implement.
+///
+async fn redirect_on_dir_without_slash<'a, T: S3 + Send>(
+    s3: &T,
+    bucket: &str,
+    path: &str,
+) -> Result<(bool, Option<Result<http::Response<Body>, warp::Rejection>>), warp::Rejection> {
+    let is_dir_listing = path.is_empty() || path.ends_with('/');
+    if !is_dir_listing && is_directory(s3, bucket, path).await? {
+        let path = String::from("/") + path + "/";
+        debug!("redirect for index-html: {}", path);
+        let response = Response::builder()
+            .header(LOCATION, path)
+            .status(StatusCode::FOUND)
+            .body(Body::empty())
+            .map_err(|err| EsthriRejection::warp_rejection(format!("{}", err)));
+        Ok((is_dir_listing, Some(response)))
+    } else {
+        Ok((is_dir_listing, None))
+    }
+}
+
+/// If we've enabled the "--index-html" feature to the http server and a "index.html" exists in the directory that's
+/// currently been requested, then we'll serve that file in place of the usualy directory listing.  This allows the
+/// server to behave more like a "real" http server.
+///
+async fn maybe_serve_index_html<'a, T: S3 + Send>(
+    s3: &T,
+    bucket: &str,
+    path: String,
+    index_html: bool,
+    is_dir_listing: bool,
+) -> Result<(bool, String), warp::Rejection> {
+    let index_html_path = if path.is_empty() {
+        "index.html".to_owned()
+    } else {
+        path.clone() + "index.html"
+    };
+    if is_dir_listing && index_html && is_object(s3, bucket, &index_html_path).await? {
+        Ok((false, index_html_path))
+    } else {
+        Ok((is_dir_listing, path))
+    }
+}
+
+/// Process list of allowed prefixes and reject the path if it's not allowed
 fn should_reject(path: &str, allowed_prefixes: &[String], params: &DownloadParams) -> bool {
     // The with_allowed_prefixes filter should ensure that allowed_prefixes is not
     //   empty by the time we get here.
@@ -765,10 +838,36 @@ fn should_reject(path: &str, allowed_prefixes: &[String], params: &DownloadParam
     }
 }
 
+/// The main entrypoint for fulfilling requests to the server.
+///
+/// Path patterns that are requested and handled here:
+///
+/// * HTTP GET request to `/<path/to/object/foo.bin` => results in fetch of `s3://<bucket>/path/to/object/foo.bin`
+///
+/// * HTTP GET request to `/<path/to/object/>` => results in a listing page showing all objects that match the prefix
+/// `path/to/object`
+///
+/// * HTTP GET request to `/<path/to/object/>?archive=true` => results in a zip archive being served with the contents
+/// of the directory `path/to/object` recursively populating said archive
+///
+/// * HTTP GET request to `/?archive=true&prefixes=prefix1|prefix2` => results in a zip archive being served with the
+/// contents all directories listed in the `prefixes` parameter populating the archive
+///
+/// # Arguments
+///
+/// * `path` - the full request path
+/// * `s3` - s3 client implementaiton, see [rusoto_s3::S3Client]
+/// * `bucket` - the bucket that objects are served from
+/// * `index_html` - if `index.html` from directory roots should be served instead of a directory listing
+/// * `allowed_prefixes` - the list of prefixes allowed for access
+/// * `params` - optional download parameter that can customize request behavior (see above)
+/// * `if_none_match` - hash from client to match against for client side cache processing
+///
 async fn download(
     path: warp::path::FullPath,
     s3: S3Client,
     bucket: String,
+    index_html: bool,
     allowed_prefixes: Option<Vec<String>>,
     params: DownloadParams,
     if_none_match: Option<String>,
@@ -779,18 +878,32 @@ async fn download(
         .get(1..)
         .map(Into::<String>::into)
         .unwrap_or_default();
-    let error_tracker = ErrorTrackerArc::new();
-    let resp_builder = Response::builder();
     debug!(
         "path: {}, params: archive: {:?}, prefixes: {:?}",
         path, params.archive, params.prefixes
     );
+
     if let Some(allowed_prefixes) = allowed_prefixes {
         if should_reject(&path, &allowed_prefixes[..], &params) {
             return Err(warp::reject::not_found());
         }
     }
+
+    let (is_dir_listing, maybe_redirect) =
+        redirect_on_dir_without_slash(&s3, &bucket, &path).await?;
+
+    if let Some(redirect) = maybe_redirect {
+        return redirect;
+    }
+
+    let (is_dir_listing, path) =
+        maybe_serve_index_html(&s3, &bucket, path, index_html, is_dir_listing).await?;
+
+    let resp_builder = Response::builder();
+    let error_tracker = ErrorTrackerArc::new();
+
     let is_archive = params.archive.unwrap_or(false);
+
     let (body, resp_builder) = if is_archive {
         let (archive_filename, prefixes) = if !path.is_empty() && params.prefixes.is_none() {
             let archive_filename = sanitize_filename(path.clone());
@@ -809,6 +922,7 @@ async fn download(
                 "path and prefixes were empty",
             ));
         };
+
         if let Some(prefixes) = prefixes {
             let stream = create_archive_stream(s3.clone(), bucket, prefixes, error_tracker).await;
             (
@@ -823,10 +937,9 @@ async fn download(
         } else {
             (None, resp_builder)
         }
-    } else if path.ends_with('/') || path.is_empty() {
+    } else if is_dir_listing {
         let listing_page = create_listing_page(s3.clone(), bucket, path).await;
         let header = resp_builder.header(CONTENT_TYPE, TEXT_HTML_UTF_8.essence_str());
-
         match listing_page {
             Ok(page) => (Some(Body::from(page)), header),
             Err(e) => (Some(Body::from(e.to_string())), header),
