@@ -112,8 +112,15 @@ impl ErrorTracker {
             the_error: Mutex::new(None),
         }
     }
+
+    /// Store a copy of the provided error in the error tracker for later retrieval.
+    ///
+    /// # Arguments
+    ///
+    /// * `error_tracker` - the error tracker pointer, see [ErrorTrackerArc]
+    /// * `err` - the error toe record
     fn record_error(error_tracker: ErrorTrackerArc, err: anyhow::Error) {
-        error_tracker.has_error.store(true, Ordering::Release);
+        error_tracked.has_error.store(true, Ordering::Release);
         let mut the_error = error_tracker.the_error.lock().expect("locking error field");
         *the_error = Some(Box::new(err));
     }
