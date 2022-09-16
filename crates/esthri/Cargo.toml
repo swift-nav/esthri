@@ -23,7 +23,6 @@ async-stream = "0.3"
 bytes = "1"
 chrono = "0.4"
 envy = "0.4"
-esthri-internals = { path = "../esthri-internals" }
 futures = { version = "0.3", default-features = false }
 glob = "0.3"
 hex = "0.4"
@@ -42,14 +41,8 @@ tokio-stream = "0.1"
 tokio-util = { version = "0.7", features = ["io"] }
 walkdir = "2"
 
-[dependencies.hyper-tls]
-version = "0.5"
-optional = true
-
-[dependencies.hyper-rustls]
-version = "0.23"
-optional = true
-features = ["webpki-roots"]
+[dependencies.esthri-internals]
+path = "../esthri-internals"
 
 [dev-dependencies]
 esthri-test = { path = "../esthri-test" }

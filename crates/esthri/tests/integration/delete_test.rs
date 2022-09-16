@@ -27,6 +27,20 @@ async fn test_delete_streaming() {
     assert_eq!(*result[0].as_ref().unwrap(), 2);
 }
 
+#[test]
+fn test_delete_blocking() {
+    let (s3client, s3_key, bucket, s3_key2) = blocking::upload_test_data();
+    let s3client = s3client.as_ref();
+    let result = esthri::blocking::delete(s3client, &bucket, &vec![&s3_key]);
+    assert!(result.is_ok());
+    let result = esthri::blocking::delete(s3client, &bucket, &vec![&s3_key2]);
+    assert!(result.is_ok());
+    let result = esthri::blocking::head_object(s3client, &bucket, &s3_key);
+    assert!(result.unwrap().is_none());
+    let result = esthri::blocking::head_object(s3client, &bucket, &s3_key2);
+    assert!(result.unwrap().is_none());
+}
+
 async fn upload_test_data() -> (Arc<S3Client>, String, String, String) {
     let s3client_owned = esthri_test::get_s3client();
     let s3client = s3client_owned.as_ref();
@@ -40,4 +54,13 @@ async fn upload_test_data() -> (Arc<S3Client>, String, String, String) {
     let res = esthri::upload(s3client, &bucket, &s3_key, &filepath).await;
     assert!(res.is_ok());
     (s3client_owned, s3_key.into(), bucket.into(), s3_key2.into())
+}
+
+mod blocking {
+    use super::*;
+
+    #[tokio::main]
+    pub async fn upload_test_data() -> (Arc<S3Client>, String, String, String) {
+        super::upload_test_data().await
+    }
 }

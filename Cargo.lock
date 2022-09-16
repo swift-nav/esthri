@@ -552,8 +552,6 @@ dependencies = [
  "futures",
  "glob",
  "hex",
- "hyper-rustls",
- "hyper-tls",
  "log",
  "log-derive",
  "md-5 0.10.4",
