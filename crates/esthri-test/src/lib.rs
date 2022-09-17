@@ -43,10 +43,9 @@ pub fn copy_test_data(name: &str) -> PathBuf {
 
     println!("copy_test_data: {source_data_dir:?} {target_data_dir:?}");
 
-    let opts = CopyOptions {
-        copy_inside: true,
-        ..Default::default()
-    };
+    let mut opts = CopyOptions::new();
+    opts.copy_inside = true;
+
     dir::copy(source_data_dir, &target_data_dir, &opts).expect("failed to copy test data dir");
 
     target_data_dir
