@@ -10,19 +10,19 @@ WORKSPACE = "${CARGO_MAKE_WORKING_DIRECTORY}"
 
 [env.release]
 BUILD_FLAVOR = "--release"
-RUSTFLAGS="-C link-arg=-fuse-ld=lld -C codegen-units=1 -C panic=abort"
+RUSTFLAGS="-C link-arg=-fuse-ld=lld -C codegen-units=1 -C panic=abort -C lto=fat -C opt-level=3"
 VERBOSE = "-vv"
 
 [env.'release+static']
 BUILD_FLAVOR = "--release"
 TARGET = "--target=x86_64-unknown-linux-musl"
-RUSTFLAGS="-C link-arg=-fuse-ld=lld -C codegen-units=1 -C panic=abort"
+RUSTFLAGS="-C link-arg=-fuse-ld=lld -C codegen-units=1 -C panic=abort -C lto=fat -C opt-level=3"
 VERBOSE = "-vv"
 
 [env.'release+mac']
 BUILD_FLAVOR = "--release"
 TARGET = "--target=x86_64-apple-darwin"
-RUSTFLAGS="-C link-arg=-fuse-ld=lld -C codegen-units=1 -C panic=abort"
+RUSTFLAGS="-C link-arg=-fuse-ld=lld -C codegen-units=1 -C panic=abort -C lto=fat -C opt-level=3"
 VERBOSE = "-vv"
 
 [env.'release+windows']
@@ -32,7 +32,7 @@ TARGET = "--target=x86_64-pc-windows-msvc -C panic=abort"
 [env.'release+nativetls']
 BUILD_FLAVOR = "--release"
 TLS_PROVIDER = "nativetls"
-RUSTFLAGS="-C link-arg=-fuse-ld=lld -C codegen-units=1 -C panic=abort"
+RUSTFLAGS="-C link-arg=-fuse-ld=lld -C codegen-units=1 -C panic=abort -C lto=fat -C opt-level=3"
 VERBOSE = "-vv"
 
 [env.'dev+nativetls']
