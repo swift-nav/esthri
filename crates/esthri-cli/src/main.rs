@@ -480,7 +480,7 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
                 destination.clone(),
                 filters.as_deref(),
                 transparent_compression,
-                delete
+                delete,
             )
             .await?;
         }

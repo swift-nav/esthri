@@ -122,7 +122,15 @@ pub async fn sync<T>(
 where
     T: S3 + Sync + Send + Clone,
 {
-    crate::sync(s3, source, destination, filters, transparent_compression, delete).await
+    crate::sync(
+        s3,
+        source,
+        destination,
+        filters,
+        transparent_compression,
+        delete,
+    )
+    .await
 }
 
 #[tokio::main]
