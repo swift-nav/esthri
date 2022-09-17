@@ -21,8 +21,8 @@ async fn test_delete() {
 async fn test_delete_streaming() {
     let (s3client, s3_key, bucket, s3_key2) = upload_test_data().await;
     let s3client = s3client.as_ref();
-    let stream = stream::iter(vec![s3_key.clone(), s3_key2.clone()]);
-    let result = esthri::delete_streaming(s3client, bucket, stream).await;
+    let stream = stream::iter(vec![Ok(s3_key.clone()), Ok(s3_key2.clone())]);
+    let result = esthri::delete_streaming(s3client, bucket, stream);
     let result: Vec<Result<usize>> = result.buffered(1).collect().await;
     assert_eq!(*result[0].as_ref().unwrap(), 2);
 }

@@ -12,10 +12,12 @@
 
 use std::{
     borrow::Cow,
+    io::ErrorKind,
     path::{Path, PathBuf},
 };
 
-use futures::{Future, Stream, StreamExt, TryStreamExt};
+use futures::{future, pin_mut, Future, Stream, StreamExt, TryStreamExt};
+
 use glob::Pattern;
 use log::{debug, info, warn};
 use log_derive::logfn;
@@ -80,6 +82,7 @@ pub async fn sync<T>(
     destination: S3PathParam,
     glob_filters: Option<&[GlobFilter]>,
     compressed: bool,
+    delete: bool,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
@@ -104,7 +107,7 @@ where
                 key
             );
 
-            sync_local_to_remote(s3, &bucket, &key, &path, &filters, compressed).await?;
+            sync_local_to_remote(s3, &bucket, &key, &path, &filters, compressed, delete).await?;
         }
         (S3PathParam::Bucket { bucket, key }, S3PathParam::Local { path }) => {
             info!(
@@ -325,7 +328,7 @@ where
                 bucket.clone(),
                 key.clone(),
                 directory.clone(),
-                entry.unwrap(),
+                entry,
             )
         })
         .map(move |clones| async move {
@@ -335,7 +338,7 @@ where
                 source_path,
                 local_etag,
                 metadata: object_info,
-            } = entry;
+            } = entry?;
             let path = Path::new(&source_path);
             let remote_path = Path::new(&key);
             let stripped_path = path.strip_prefix(&directory);
@@ -395,9 +398,10 @@ async fn sync_local_to_remote<T>(
     directory: impl AsRef<Path>,
     filters: &[GlobFilter],
     compressed: bool,
+    delete: bool,
 ) -> Result<()>
 where
-    T: S3 + Send + Clone,
+    T: S3 + Send + Sync + Clone,
 {
     let directory = directory.as_ref();
     let task_count = Config::global().concurrent_sync_tasks();
@@ -445,10 +449,51 @@ where
 
     sync_tasks
         .buffer_unordered(task_count)
-        .try_collect()
+        .try_for_each_concurrent(task_count, |_| future::ready(Ok(())))
         .await?;
 
-    Ok(())
+    if delete {
+        sync_delete_local(s3, bucket, key, directory, filters, task_count).await
+    } else {
+        Ok(())
+    }
+}
+
+async fn sync_delete_local<T>(
+    s3: &T,
+    bucket: &str,
+    key: &str,
+    directory: &Path,
+    filters: &[GlobFilter],
+    task_count: usize,
+) -> Result<()>
+where
+    T: S3 + Send + Sync + Clone,
+{
+    let stream = flattened_object_listing(s3, bucket, key, directory, filters, false);
+    let delete_paths_stream = stream.try_filter_map(|object_info| async {
+        let (path, s3_metadata) = object_info;
+        if let Some(s3_metadata) = s3_metadata {
+            let fs_metadata = fs::metadata(&path).await;
+            if let Err(err) = fs_metadata {
+                if err.kind() == ErrorKind::NotFound {
+                    let obj_path = String::from(key) + &s3_metadata.s3_suffix;
+                    Ok(Some(obj_path))
+                } else {
+                    Err(err.into())
+                }
+            } else {
+                Ok(None)
+            }
+        } else {
+            Err(Error::MetadataNone)
+        }
+    });
+    pin_mut!(delete_paths_stream);
+    crate::delete_streaming(s3, bucket, delete_paths_stream)
+        .buffer_unordered(task_count)
+        .try_for_each_concurrent(task_count, |_| future::ready(Ok(())))
+        .await
 }
 
 #[logfn(err = "ERROR")]
@@ -710,7 +755,7 @@ where
 
     sync_tasks
         .buffer_unordered(task_count)
-        .try_collect()
+        .try_for_each_concurrent(task_count, |_| future::ready(Ok(())))
         .await?;
 
     Ok(())

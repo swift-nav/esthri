@@ -117,11 +117,12 @@ pub async fn sync<T>(
     destination: S3PathParam,
     filters: Option<&[GlobFilter]>,
     transparent_compression: bool,
+    delete: bool,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
 {
-    crate::sync(s3, source, destination, filters, transparent_compression).await
+    crate::sync(s3, source, destination, filters, transparent_compression, delete).await
 }
 
 #[tokio::main]

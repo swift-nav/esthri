@@ -187,6 +187,9 @@ enum EsthriCommand {
         /// Enable compression, only valid on upload
         #[clap(long)]
         transparent_compression: bool,
+        /// Enable delete
+        #[clap(long)]
+        delete: bool,
     },
     /// Retreive the ETag for a remote object
     HeadObject {
@@ -346,6 +349,7 @@ async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
                         destination.clone(),
                         Some(&filters),
                         compress,
+                        false,
                     )
                     .await?;
                 }
@@ -459,6 +463,7 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
             ref include,
             ref exclude,
             transparent_compression,
+            delete,
         } => {
             if transparent_compression && (source.is_bucket() && destination.is_bucket()) {
                 return Err(esthri::errors::Error::InvalidSyncCompress.into());
@@ -475,6 +480,7 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
                 destination.clone(),
                 filters.as_deref(),
                 transparent_compression,
+                delete
             )
             .await?;
         }

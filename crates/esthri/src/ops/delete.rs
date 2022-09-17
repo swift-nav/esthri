@@ -11,9 +11,9 @@
  */
 
 use futures::stream::Stream;
-use futures::{Future, StreamExt, TryFutureExt};
+use futures::{Future, StreamExt, TryFutureExt, future};
 
-use log::info;
+use log::{debug, info};
 use log_derive::logfn;
 
 use crate::errors::Result;
@@ -63,10 +63,10 @@ where
 ///
 /// Returns a stream of [Result] values.  Any S3 errors are mapped into the local [crate::errors::Error] types.
 ///
-pub async fn delete_streaming<'a, T>(
+pub fn delete_streaming<'a, T>(
     s3: &'a T,
     bucket: impl AsRef<str> + 'a,
-    keys: impl Stream<Item = String> + Unpin + 'a,
+    keys: impl Stream<Item = Result<String>> + Unpin + 'a,
 ) -> impl Stream<Item = impl Future<Output = Result<usize>> + 'a> + 'a
 where
     T: S3 + Sync + Send + Clone,
@@ -80,10 +80,19 @@ where
     let chunks = keys.chunks(DELETE_BATCH_SIZE);
 
     chunks.map(move |keys| {
-        let len = keys.len();
-        let dor = create_request(&bucket, &keys);
-        let fut = s3.delete_objects(dor);
-        fut.map_ok(move |_| len).map_err(|e| e.into())
+        let keys: Result<Vec<String>> = keys.into_iter().collect();
+        match keys {
+            Ok(keys) => {
+                debug!("delete_streaming: keys={:?}", keys);
+                let len = keys.len();
+                let dor = create_request(&bucket, &keys);
+                let fut = s3.delete_objects(dor);
+                future::Either::Left(fut.map_ok(move |_| len).map_err(|e| e.into()))
+            }
+            Err(err) => {
+                future::Either::Right(future::ready(Err(err)))
+            }
+        }
     })
 }
 

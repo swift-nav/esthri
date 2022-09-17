@@ -122,6 +122,9 @@ pub enum Error {
     #[error("File is not gzip compressed")]
     FileNotCompressed,
 
+    #[error("Metadata was none during sync")]
+    MetadataNone,
+
     #[error("unknown storage class")]
     UnknownStorageClass(String),
 }

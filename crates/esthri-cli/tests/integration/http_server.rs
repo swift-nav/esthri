@@ -208,6 +208,7 @@ async fn upload_index_url_test_data() -> anyhow::Result<()> {
         esthri::S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key),
         None,
         false,
+        false,
     )
     .await?;
     Ok(())

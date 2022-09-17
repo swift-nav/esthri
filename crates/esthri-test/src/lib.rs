@@ -12,6 +12,9 @@ use tempdir::TempDir;
 
 use uuid::Uuid;
 
+use fs_extra::dir::CopyOptions;
+use fs_extra::dir;
+
 use esthri_internals::new_https_connector;
 use esthri_internals::rusoto::*;
 
@@ -30,6 +33,20 @@ pub type DateTime = chrono::DateTime<chrono::Utc>;
 
 pub fn test_data(name: &str) -> PathBuf {
     test_data_dir().join(name)
+}
+
+pub fn copy_test_data(name: &str) -> PathBuf {
+    let randomized_name = randomised_name(name);
+
+    let source_data_dir = test_data_dir().join(name);
+    let target_data_dir = test_data_dir().join(randomized_name);
+
+    println!("copy_test_data: {source_data_dir:?} {target_data_dir:?}");
+
+    let opts = CopyOptions { copy_inside: true, ..Default::default() };
+    dir::copy(source_data_dir, &target_data_dir, &opts).expect("failed to copy test data dir");
+
+    target_data_dir
 }
 
 pub fn randomised_name(name: &str) -> String {

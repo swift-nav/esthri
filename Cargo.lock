@@ -625,6 +625,7 @@ dependencies = [
  "env_logger",
  "esthri-internals",
  "flate2",
+ "fs_extra",
  "hyper",
  "md-5 0.10.4",
  "once_cell",
