@@ -2,6 +2,7 @@
     "rust-analyzer.linkedProjects": [
         "./Cargo.toml",
         "./crates/esthri/Cargo.toml",
+        "./crates/esthri-cli/Cargo.toml",
         "./crates/esthri-internals/Cargo.toml",
         "./crates/esthri-test/Cargo.toml",
     ]
