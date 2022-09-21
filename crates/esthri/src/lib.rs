@@ -46,6 +46,7 @@ use tokio::{
 pub use errors::{Error, Result};
 pub use ops::{
     copy::copy,
+    delete::delete,
     download::{download, download_streaming, download_with_transparent_decompression},
     sync::{sync, GlobFilter},
     upload::{

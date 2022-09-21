@@ -26,8 +26,9 @@ pub use rusoto_credential::DefaultCredentialsProvider;
 pub use rusoto_s3::{
     AbortMultipartUploadRequest, CompleteMultipartUploadRequest, CompletedMultipartUpload,
     CompletedPart, CopyObjectOutput, CopyObjectRequest, CreateMultipartUploadRequest,
-    GetObjectError, GetObjectOutput, GetObjectRequest, HeadObjectOutput, HeadObjectRequest,
-    ListObjectsV2Request, PutObjectRequest, S3Client, StreamingBody, UploadPartRequest, S3,
+    DeleteObjectRequest, GetObjectError, GetObjectOutput, GetObjectRequest, HeadObjectOutput,
+    HeadObjectRequest, ListObjectsV2Request, PutObjectRequest, S3Client, StreamingBody,
+    UploadPartRequest, S3,
 };
 
 /// The data returned from a head object request

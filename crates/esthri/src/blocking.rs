@@ -110,6 +110,7 @@ where
     crate::download_with_transparent_decompression(s3, bucket, key, file).await
 }
 
+#[allow(unused_variables)]
 #[tokio::main]
 pub async fn sync<T>(
     s3: &T,
@@ -117,11 +118,20 @@ pub async fn sync<T>(
     destination: S3PathParam,
     filters: Option<&[GlobFilter]>,
     transparent_compression: bool,
+    delete: bool,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
 {
-    crate::sync(s3, source, destination, filters, transparent_compression).await
+    crate::sync(
+        s3,
+        source,
+        destination,
+        filters,
+        transparent_compression,
+        delete,
+    )
+    .await
 }
 
 #[tokio::main]

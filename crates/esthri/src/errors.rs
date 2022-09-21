@@ -18,8 +18,8 @@ use glob::PatternError;
 use rusoto_core::RusotoError;
 use rusoto_s3::{
     AbortMultipartUploadError, CompleteMultipartUploadError, CopyObjectError,
-    CreateMultipartUploadError, GetObjectError, HeadObjectError, ListObjectsV2Error,
-    PutObjectError, UploadPartError,
+    CreateMultipartUploadError, DeleteObjectError, GetObjectError, HeadObjectError,
+    ListObjectsV2Error, PutObjectError, UploadPartError,
 };
 use tokio::task::JoinError;
 
@@ -89,6 +89,9 @@ pub enum Error {
 
     #[error(transparent)]
     GetObjectFailed(#[from] RusotoError<GetObjectError>),
+
+    #[error(transparent)]
+    DeleteObjecttFailed(#[from] RusotoError<DeleteObjectError>),
 
     #[error("invalid key, did not exist remotely: {0}")]
     GetObjectInvalidKey(String),

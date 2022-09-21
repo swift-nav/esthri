@@ -26,6 +26,8 @@ use tokio::{
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use walkdir::WalkDir;
 
+// use rusoto_s3;
+
 use crate::{
     compression::compress_to_tempfile,
     compute_etag,
@@ -74,12 +76,14 @@ impl GlobFilter {
 ///                   file will be included or excluded. If not supplied, then
 ///                   all files will be synced.
 #[logfn(err = "ERROR")]
+#[allow(unused_variables)]
 pub async fn sync<T>(
     s3: &T,
     source: S3PathParam,
     destination: S3PathParam,
     glob_filters: Option<&[GlobFilter]>,
     compressed: bool,
+    delete: bool,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
@@ -177,6 +181,61 @@ fn process_globs<'a, P: AsRef<Path> + 'a>(path: P, filters: &[GlobFilter]) -> Op
         None
     }
 }
+
+// // Finds all paths that pertain to what is within directory which abides by specified filters
+
+// // walkdir on the local depth contents_first.
+// // if parent
+// //
+
+// fn read_dir_chunks(
+//     directory: &Path,
+//     filters: &[GlobFilter],
+// ) -> impl Stream<Item = Result<PathBuf>> {
+//     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+//     let walk_dir = WalkDir::new(directory);
+//     let filters = filters.to_vec();
+//     tokio::task::spawn_blocking(move || {
+//         for entry in walk_dir {
+//             match entry {
+//                 Ok(entry) => {
+//                     if entry
+//                         .file_name()
+//                         .to_string_lossy()
+//                         .contains(TEMP_FILE_PREFIX)
+//                     {
+//                         continue;
+//                     }
+//                     let metadata = entry.metadata();
+//                     let stat = if let Ok(stat) = metadata {
+//                         stat
+//                     } else {
+//                         tx.send(Err(metadata.err().unwrap().into()))
+//                             .expect("failed to send error");
+//                         return;
+//                     };
+//                     if stat.is_dir() {
+//                         continue;
+//                     }
+//                     if entry.path_is_symlink() {
+//                         warn!("symlinks are ignored");
+//                         continue;
+//                     }
+//                     debug!("local path={}", entry.path().display());
+//                     if process_globs(entry.path(), &filters).is_some() {
+//                         tx.send(Ok(entry.into_path()))
+//                             .expect("failed to send file path");
+//                     }
+//                 }
+//                 Err(e) => {
+//                     tx.send(Err(e.into())).expect("failed to send error");
+//                     break;
+//                 }
+//             }
+//         }
+//     });
+//     UnboundedReceiverStream::new(rx)
+// }
 
 fn read_dir(directory: &Path, filters: &[GlobFilter]) -> impl Stream<Item = Result<PathBuf>> {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
@@ -388,6 +447,7 @@ where
         })
 }
 
+// ribbit must modify this
 async fn sync_local_to_remote<T>(
     s3: &T,
     bucket: &str,
@@ -395,6 +455,7 @@ async fn sync_local_to_remote<T>(
     directory: impl AsRef<Path>,
     filters: &[GlobFilter],
     compressed: bool,
+    // delete: bool,
 ) -> Result<()>
 where
     T: S3 + Send + Clone,
@@ -402,6 +463,25 @@ where
     let directory = directory.as_ref();
     let task_count = Config::global().concurrent_sync_tasks();
 
+    // // List bucket and collect _
+
+    // // Get manifest of files in the destination first.
+
+    // // Pass a mutable ref to manifest into dirent_stream.
+
+    // let stream_of_files: () = read_dir(directory, filters)
+    //     .chunk(100)
+    //     .map(|x| {
+    //         // Process chunks
+
+    //         // Return future
+    //         futures::future::ok(())
+    //     })
+    //     .buffer_unordered(5)
+    //     .try_collect()
+    //     .await?;
+
+    // let dirent_stream = stream_of_files.and_then(|path| async {
     let dirent_stream = read_dir(directory, filters).and_then(|path| async {
         let remote_path = Path::new(&key);
         let stripped_path = match path.strip_prefix(&directory) {
@@ -415,6 +495,7 @@ where
         };
         let remote_path = remote_path.join(&stripped_path);
         let remote_path = remote_path.to_string_lossy();
+        // Remove remote_path from manifest.
         match head_object_request(s3, bucket, &remote_path, None).await? {
             Some(metadata) => {
                 let esthri_compressed = metadata.is_esthri_compressed();
@@ -427,6 +508,8 @@ where
         }
     });
 
+    // Manifest of paths that we are not trying to upload.
+
     let cmd = if compressed {
         SyncCmd::UpCompressed
     } else {
@@ -434,6 +517,7 @@ where
     };
 
     let etag_stream = translate_paths(dirent_stream, cmd).buffer_unordered(task_count);
+    // uploading on a stream of these tasks which equates to uploading one file from local to remote.
     let sync_tasks = local_to_remote_sync_tasks(
         s3.clone(),
         bucket.into(),
@@ -442,6 +526,8 @@ where
         etag_stream,
         compressed,
     );
+
+    // Delete files in manifest.
 
     sync_tasks
         .buffer_unordered(task_count)
@@ -478,6 +564,7 @@ where
     Ok(res?)
 }
 
+// ribbit must modify this
 async fn sync_across<T>(
     s3: &T,
     source_bucket: &str,
@@ -485,14 +572,21 @@ async fn sync_across<T>(
     dest_bucket: &str,
     destination_key: &str,
     filters: &[GlobFilter],
+    // delete: bool,
 ) -> Result<()>
 where
     T: S3 + Send,
 {
+    // pers note: streams are async eq of iterators
     let mut stream = list_objects_stream(s3, source_bucket, source_prefix);
+    // create second objects stream from destination
 
+    // Loop across all files in bucket with given prefix
     while let Some(from_entries) = stream.try_next().await? {
+        // each time await finishes, evaluate derived entries
+        // each entry is a file in the source bucket (or prefix?)
         for entry in from_entries {
+            // if this entry represents a proper file RATHER than a file prefix
             if let S3ListingItem::S3Object(src_object) = entry {
                 let path = process_globs(&src_object.key, filters);
 
@@ -676,6 +770,7 @@ where
         )
 }
 
+// ribbit must modify this
 async fn sync_remote_to_local<T>(
     s3: &T,
     bucket: &str,
@@ -683,6 +778,7 @@ async fn sync_remote_to_local<T>(
     directory: impl AsRef<Path>,
     filters: &[GlobFilter],
     transparent_decompress: bool,
+    // delete: bool,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
@@ -744,6 +840,13 @@ where
 
     Ok(())
 }
+
+// fn delete_object<T>(s3: &T, dor: rusoto_s3::DeleteObjectRequest) -> i32 {
+//     5
+//     // rusoto_core = "0.48.0"
+//     // rusoto_sqs = "0.48.0"
+//     // rusoto_s3 = "0.48.0"
+// }
 
 #[cfg(test)]
 mod tests {

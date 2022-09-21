@@ -1,6 +1,8 @@
 use std::fs;
 
-use std::path::Path;
+// use std::path::Path;
+
+use rusoto_s3;
 
 use esthri::HeadObjectInfo;
 
@@ -190,10 +192,6 @@ async fn test_sync_up_delete_async() {
     let s3client = esthri_test::get_s3client();
     let local_directory = esthri_test::test_data_dir();
     let s3_key = esthri_test::randomised_name("test_folder/");
-    let filters: Option<Vec<GlobFilter>> = Some(vec![
-        GlobFilter::Include(Pattern::new("*.txt").unwrap()),
-        GlobFilter::Exclude(Pattern::new("*").unwrap()),
-    ]);
 
     let source = S3PathParam::new_local(&local_directory);
     let destination = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key);
@@ -506,59 +504,59 @@ fn test_sync_down_compressed_mixed() {
     }
 }
 
-#[test]
-fn test_sync_down_delete() {
-    // Initialize s3 client and path
-    let s3client = esthri_test::get_s3client();
-    let s3_key = "test_sync_down_default/";
+// #[test]
+// fn test_sync_down_delete() {
+//     // Initialize s3 client and path
+//     let s3client = esthri_test::get_s3client();
+//     let s3_key = "test_sync_down_default/";
 
-    // Create temporary directory and one dummy file to live in it.
-    let local_dir = TempDir::new("esthri_cli").unwrap();
-    let file_path = local_dir.path().join("to-be-deleted.txt");
-    #[allow(unused_variables)]
-    let tmp_file = fs::File::create(&file_path).expect("unable to create file in TempDir");
+//     // Create temporary directory and one dummy file to live in it.
+//     let local_dir = TempDir::new("esthri_cli").unwrap();
+//     let file_path = local_dir.path().join("to-be-deleted.txt");
+//     #[allow(unused_variables)]
+//     let tmp_file = fs::File::create(&file_path).expect("unable to create file in TempDir");
 
-    // copy the contents of an s3 bucket with test data into our temp directory
-    let source = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key);
-    let destination = S3PathParam::new_local(&local_dir);
-    let filters = FILTER_EMPTY;
-    let transparent_compression = false;
-    let delete = false;
-    let res = blocking::sync(
-        s3client.as_ref(),
-        source,
-        destination,
-        filters,
-        transparent_compression,
-        delete, // <- we care about this one
-    );
-    assert!(res.is_ok());
+//     // copy the contents of an s3 bucket with test data into our temp directory
+//     let source = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key);
+//     let destination = S3PathParam::new_local(&local_dir);
+//     let filters = FILTER_EMPTY;
+//     let transparent_compression = false;
+//     let delete = false;
+//     let res = blocking::sync(
+//         s3client.as_ref(),
+//         source,
+//         destination,
+//         filters,
+//         transparent_compression,
+//         delete, // <- we care about this one
+//     );
+//     assert!(res.is_ok());
 
-    // At this point in execution, TempDir contains the contents of the specified s3 bucket, as well as a dummy file.
+//     // At this point in execution, TempDir contains the contents of the specified s3 bucket, as well as a dummy file.
 
-    // Perform a sync with the delete flag set
-    let source = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key);
-    let destination = S3PathParam::new_local(&local_dir);
-    let filters = FILTER_EMPTY;
-    let transparent_compression = false;
-    let delete = false;
-    let res = blocking::sync(
-        s3client.as_ref(),
-        source,
-        destination,
-        filters,
-        transparent_compression,
-        delete, // <- we care about this one
-    );
-    assert!(res.is_ok());
+//     // Perform a sync with the delete flag set
+//     let source = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key);
+//     let destination = S3PathParam::new_local(&local_dir);
+//     let filters = FILTER_EMPTY;
+//     let transparent_compression = false;
+//     let delete = false;
+//     let res = blocking::sync(
+//         s3client.as_ref(),
+//         source,
+//         destination,
+//         filters,
+//         transparent_compression,
+//         delete, // <- we care about this one
+//     );
+//     assert!(res.is_ok());
 
-    // Expect dummy file to have been deleted during sync. // Expect other files to remain.
-    assert!(!(Path::new(&file_path).exists()));
+//     // Expect dummy file to have been deleted during sync. // Expect other files to remain.
+//     assert!(!(Path::new(&file_path).exists()));
 
-    local_dir
-        .close()
-        .expect("unable to clear temporary directory");
-}
+//     local_dir
+//         .close()
+//         .expect("unable to clear temporary directory");
+// }
 
 #[test]
 fn test_sync_up_delete() {
@@ -636,4 +634,26 @@ fn test_sync_up_delete() {
         delete, // <- we care about this one
     );
     assert!(res.is_ok());
+}
+
+#[test]
+fn test_delete_the_contents_of_a_bucket() {
+    // Initialize s3 client and path
+    // let s3client = esthri_test::get_s3client();
+    // let s3_key = "test_sync_up_delete/";
+
+    assert!(true);
+
+    // // create a delete object request
+    // let dor = rusoto_s3::DeleteObjectRequest {
+    //     bucket: esthri_test::TEST_BUCKET.to_string(),
+    //     key: s3_key.to_string(),
+    //     ..Default::default()
+    // };
+
+    // let result = client
+    //     .delete_object(del_req)
+    //     .await
+    //     .expect("Couldn't delete object");
+    // println!("{:#?}", result);
 }

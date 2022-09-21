@@ -327,12 +327,14 @@ async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
                     let compress =
                         compress || env::var("ESTHRI_AWS_COMPAT_MODE_COMPRESSION").is_ok();
 
+                    let delete = false;
                     esthri::sync(
                         s3,
                         source.clone(),
                         destination.clone(),
                         Some(&filters),
                         compress,
+                        delete,
                     )
                     .await?;
                 }
@@ -456,12 +458,14 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
                 .subcommand_matches("sync")
                 .expect("Expected sync command");
             let filters = globs_to_filter_list(include, exclude, matches);
+            let delete = false;
             esthri::sync(
                 s3,
                 source.clone(),
                 destination.clone(),
                 filters.as_deref(),
                 transparent_compression,
+                delete,
             )
             .await?;
         }
