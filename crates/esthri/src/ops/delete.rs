@@ -44,7 +44,7 @@ where
         keys.len()
     );
 
-    let dor = create_request(bucket, keys);
+    let dor = create_delete_request(bucket, keys);
     s3.delete_objects(dor).await?;
 
     Ok(())
@@ -85,16 +85,22 @@ where
             Ok(keys) => {
                 debug!("delete_streaming: keys={:?}", keys);
                 let len = keys.len();
-                let dor = create_request(&bucket, &keys);
+                let dor = create_delete_request(&bucket, &keys);
                 let fut = s3.delete_objects(dor);
                 future::Either::Left(fut.map_ok(move |_| len).map_err(|e| e.into()))
             }
-            Err(err) => future::Either::Right(future::ready(Err(err))),
+            Err(err) => {
+                println!("nothing found in delete_streaming keys");
+                future::Either::Right(future::ready(Err(err)))
+            }
         }
     })
 }
 
-fn create_request(bucket: impl AsRef<str>, keys: &[impl AsRef<str>]) -> DeleteObjectsRequest {
+fn create_delete_request(
+    bucket: impl AsRef<str>,
+    keys: &[impl AsRef<str>],
+) -> DeleteObjectsRequest {
     let objects = keys
         .iter()
         .map(|key| ObjectIdentifier {

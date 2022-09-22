@@ -117,7 +117,7 @@ where
                 key
             );
 
-            sync_remote_to_local(s3, &bucket, &key, &path, &filters, compressed).await?;
+            sync_remote_to_local(s3, &bucket, &key, &path, &filters, compressed, delete).await?;
         }
         (
             S3PathParam::Bucket {
@@ -181,10 +181,17 @@ fn process_globs<'a, P: AsRef<Path> + 'a>(path: P, filters: &[GlobFilter]) -> Op
     }
 }
 
-fn read_dir(directory: &Path, filters: &[GlobFilter]) -> impl Stream<Item = Result<PathBuf>> {
+// Returns a Stream of all files in a directory, recursively retrieving files in subdirecectories as well.
+fn flattened_local_directory(
+    directory: &Path,
+    filters: &[GlobFilter],
+) -> impl Stream<Item = Result<PathBuf>> {
+    // Take something that is blocking and adapt it so that it can run in an async context // TODO move to notes and remove from PR
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    // WalkDir: recursive directory discovery process. Blocking process because it interacts with filesystem (navigating dirs) // TODO move to notes and remove from PR
     let walk_dir = WalkDir::new(directory);
     let filters = filters.to_vec();
+    // Because WalkDir is blocking, must move it into its own thread // TODO move to notes and remove from PR
     tokio::task::spawn_blocking(move || {
         for entry in walk_dir {
             match entry {
@@ -406,7 +413,7 @@ where
     let directory = directory.as_ref();
     let task_count = Config::global().concurrent_sync_tasks();
 
-    let dirent_stream = read_dir(directory, filters).and_then(|path| async {
+    let dirent_stream = flattened_local_directory(directory, filters).and_then(|path| async {
         let remote_path = Path::new(&key);
         let stripped_path = match path.strip_prefix(&directory) {
             Ok(result) => result,
@@ -459,6 +466,7 @@ where
     }
 }
 
+/// Delete all files in `bucket's` `key` that do not exist within `directory`
 async fn sync_delete_local<T>(
     s3: &T,
     bucket: &str,
@@ -496,6 +504,35 @@ where
         .await
 }
 
+/// Delete all files in `directory` which do not exist withing a `bucket's` corresponding `directory` key prefix
+async fn sync_delete_remote<T>(
+    s3: &T,
+    bucket: &str,
+    directory: &Path,
+    filters: &[GlobFilter],
+) -> Result<()>
+where
+    T: S3 + Send + Sync + Clone,
+{
+    // All files in local directory
+    let local_stream = flattened_local_directory(directory, filters);
+
+    // For each local file, identify whether there is metadata for the corresponding remote file
+    local_stream
+        .try_for_each(|path| async move {
+            let padded_dir = directory.to_string_lossy() + "/";
+            let path = path.to_string_lossy();
+            let s3_key = path.as_ref().trim_start_matches(padded_dir.as_ref());
+            let head_object = head_object_request(s3, bucket, s3_key, None).await;
+            if matches!(head_object, Err(_) | Ok(None)) {
+                fs::remove_file(path.as_ref()).await?;
+            }
+            Ok(())
+        })
+        .await?;
+    Ok(())
+}
+
 #[logfn(err = "ERROR")]
 async fn copy_object_request<T>(
     s3: &T,
@@ -530,6 +567,7 @@ async fn sync_across<T>(
     dest_bucket: &str,
     destination_key: &str,
     filters: &[GlobFilter],
+    // delete: bool,
 ) -> Result<()>
 where
     T: S3 + Send,
@@ -728,6 +766,7 @@ async fn sync_remote_to_local<T>(
     directory: impl AsRef<Path>,
     filters: &[GlobFilter],
     transparent_decompress: bool,
+    delete: bool,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
@@ -736,7 +775,6 @@ where
     let task_count = Config::global().concurrent_sync_tasks();
     let object_listing =
         flattened_object_listing(s3, bucket, key, directory, filters, transparent_decompress);
-
     let cmd = if transparent_decompress {
         SyncCmd::DownCompressed
     } else {
@@ -758,7 +796,11 @@ where
         .try_for_each_concurrent(task_count, |_| future::ready(Ok(())))
         .await?;
 
-    Ok(())
+    if delete {
+        sync_delete_remote(s3, bucket, directory, filters).await
+    } else {
+        Ok(())
+    }
 }
 
 async fn download_with_dir<T>(

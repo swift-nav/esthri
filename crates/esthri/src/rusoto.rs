@@ -75,6 +75,7 @@ impl HeadObjectInfo {
     }
 }
 
+/// Fetches head object (metadata) of a S3 key
 pub async fn head_object_request<T>(
     s3: &T,
     bucket: &str,

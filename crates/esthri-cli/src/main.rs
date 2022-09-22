@@ -109,6 +109,8 @@ enum S3Command {
         acl: Option<String>,
         #[clap(long)]
         transparent_compression: bool,
+        #[clap(long)]
+        delete: bool,
     },
 }
 
@@ -310,12 +312,14 @@ async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
                     }
                 }
 
+                // ribbit
                 S3Command::Sync {
                     ref source,
                     ref destination,
                     ref include,
                     ref exclude,
                     transparent_compression: compress,
+                    delete,
                     ..
                 } => {
                     let command = AwsCompatCli::command();
@@ -349,7 +353,7 @@ async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
                         destination.clone(),
                         Some(&filters),
                         compress,
-                        false,
+                        delete,
                     )
                     .await?;
                 }
@@ -457,6 +461,7 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
             log_etag(&file).await?;
         }
 
+        // ribbit2
         Sync {
             ref source,
             ref destination,

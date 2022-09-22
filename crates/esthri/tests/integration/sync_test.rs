@@ -267,6 +267,46 @@ fn test_sync_up_delete() {
 }
 
 #[test]
+fn test_sync_down_delete() {
+    println!("ping1");
+    let s3client = esthri_test::get_s3client();
+    // Get path to some directory and populate it.
+    let local_directory = esthri_test::copy_test_data("sync_up");
+    // Create a key that correspods to non-existant data in an S3 bucket
+    let s3_key_prefix = esthri_test::randomised_name("test_sync_down_delete/");
+
+    let src = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, &s3_key_prefix);
+    let dst = S3PathParam::new_local(&local_directory);
+
+    let delete = true;
+
+    // Expect contents to have been copied to local directory
+    assert!(local_directory
+        .read_dir()
+        .expect("unable to read from directory")
+        .next()
+        .is_some());
+
+    // Perform sync with delete flag set. Because the target S3 directory is empty (TODO change term 'directory'), all contents in local directory should be deleted.
+    let res = blocking::sync(
+        s3client.as_ref(),
+        src.clone(),
+        dst.clone(),
+        FILTER_EMPTY,
+        false,
+        delete,
+    );
+    assert!(res.is_ok());
+
+    // Expect no files to exist within local_directory. Metadata such as directories are permissible.
+    let no_files = fs::read_dir(&local_directory)
+        .unwrap()
+        .all(|path| path.unwrap().file_type().unwrap().is_dir());
+
+    assert!(no_files);
+}
+
+#[test]
 fn test_sync_down_default() {
     let s3client = esthri_test::get_s3client();
     let local_directory = "tests/data/sync_down/d";
