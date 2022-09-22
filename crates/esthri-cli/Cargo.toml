@@ -1,7 +1,7 @@
 [package]
 name = "esthri-cli"
 description = "Extremely simple (memory stable) S3 client that supports get, put, head, list, and sync."
-version = "8.5.1"
+version = "8.7.0"
 authors = ["Swift Navigation <dev@swift-nav.com>"]
 edition = "2018"
 license = "MIT"
@@ -43,9 +43,9 @@ mime_guess = "2.0"
 once_cell = "1.7"
 sanitize-filename = "0.4"
 serde = "1"
-clap = { version = "3.2.18", features = ["derive"] }
+clap = { version = "3.2.22", features = ["derive"] }
 tokio = { version = "1.6", features = ["rt-multi-thread", "signal", "sync"] }
-tokio-util = { version = "0.7.3", features = ["compat", "codec"] }
+tokio-util = { version = "0.7.4", features = ["compat", "codec"] }
 warp = "0.3"
 
 [dev-dependencies]

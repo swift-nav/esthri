@@ -79,6 +79,7 @@ args = [
         "--no-default-features",
         "@@remove-empty(BUILD_FLAVOR)",
         "--",
+        "@@remove-empty(TEST_FILTER)",
         "--nocapture"
         ]
 
@@ -91,5 +92,6 @@ args = [
         "--no-default-features",
         "@@remove-empty(BUILD_FLAVOR)",
         "--",
+        "@@remove-empty(TEST_FILTER)",
         "--nocapture"
         ]

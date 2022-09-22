@@ -217,6 +217,12 @@ enum EsthriCommand {
         /// The listening address for the server
         #[clap(long, default_value = "127.0.0.1:3030")]
         address: std::net::SocketAddr,
+        /// Whether to serve "index.html" in place of "/" for directories
+        #[clap(long)]
+        index_html: bool,
+        /// A list of prefixes that are allowed for access, all other prefixes are rejected
+        #[clap(long = "allowed-prefix", multiple_occurrences = true)]
+        allowed_prefixes: Vec<String>,
     },
 }
 
@@ -231,13 +237,12 @@ fn call_real_aws() {
         .args(args)
         .stdout(Stdio::inherit())
         .status()
-        .expect(
-            format!(
+        .unwrap_or_else(|_| {
+            panic!(
                 "Executing aws didn't work. Is it installed and available as {:?} ",
                 aws_tool_path
             )
-            .as_str(),
-        );
+        });
     std::process::exit(status.code().unwrap_or(-1));
 }
 
@@ -478,8 +483,20 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
             esthri::list_objects(s3, &bucket, &key).await?;
         }
 
-        Serve { bucket, address } => {
-            http_server::run(s3.clone(), &bucket, &address).await?;
+        Serve {
+            bucket,
+            address,
+            index_html,
+            allowed_prefixes,
+        } => {
+            http_server::run(
+                s3.clone(),
+                &bucket,
+                &address,
+                index_html,
+                &allowed_prefixes[..],
+            )
+            .await?;
         }
     }
 
