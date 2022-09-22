@@ -23,6 +23,8 @@ use rusoto_s3::{
 };
 use tokio::task::JoinError;
 
+// use crate::rusoto::*;
+
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(thiserror::Error, Debug)]
@@ -91,7 +93,8 @@ pub enum Error {
     GetObjectFailed(#[from] RusotoError<GetObjectError>),
 
     #[error(transparent)]
-    DeleteObjecttFailed(#[from] RusotoError<DeleteObjectError>),
+    // DeleteObjecttFailed(#[from] RusotoError<DeleteObjectError>),
+    DeleteObjectsFailed(#[from] RusotoError<DeleteObjectsError>),
 
     #[error("invalid key, did not exist remotely: {0}")]
     GetObjectInvalidKey(String),
@@ -125,6 +128,9 @@ pub enum Error {
 
     #[error("File is not gzip compressed")]
     FileNotCompressed,
+
+    #[error("Metadata was none during sync")]
+    MetadataNone,
 
     #[error("unknown storage class")]
     UnknownStorageClass(String),

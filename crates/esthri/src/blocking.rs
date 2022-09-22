@@ -150,3 +150,11 @@ where
 pub async fn compute_etag(path: impl AsRef<Path>) -> Result<String> {
     crate::compute_etag(path).await
 }
+
+#[tokio::main]
+pub async fn delete<T>(s3: &T, bucket: impl AsRef<str>, keys: &[impl AsRef<str>]) -> Result<()>
+where
+    T: S3 + Sync + Send + Clone,
+{
+    crate::delete(s3, bucket, keys).await
+}

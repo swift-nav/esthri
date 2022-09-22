@@ -12,10 +12,12 @@
 
 use std::{
     borrow::Cow,
+    io::ErrorKind,
     path::{Path, PathBuf},
 };
 
-use futures::{Future, Stream, StreamExt, TryStreamExt};
+use futures::{future, pin_mut, Future, Stream, StreamExt, TryStreamExt};
+
 use glob::Pattern;
 use log::{debug, info, warn};
 use log_derive::logfn;
@@ -108,7 +110,7 @@ where
                 key
             );
 
-            sync_local_to_remote(s3, &bucket, &key, &path, &filters, compressed).await?;
+            sync_local_to_remote(s3, &bucket, &key, &path, &filters, compressed, delete).await?;
         }
         (S3PathParam::Bucket { bucket, key }, S3PathParam::Local { path }) => {
             info!(
@@ -118,7 +120,7 @@ where
                 key
             );
 
-            sync_remote_to_local(s3, &bucket, &key, &path, &filters, compressed).await?;
+            sync_remote_to_local(s3, &bucket, &key, &path, &filters, compressed, delete).await?;
         }
         (
             S3PathParam::Bucket {
@@ -182,65 +184,17 @@ fn process_globs<'a, P: AsRef<Path> + 'a>(path: P, filters: &[GlobFilter]) -> Op
     }
 }
 
-// // Finds all paths that pertain to what is within directory which abides by specified filters
-
-// // walkdir on the local depth contents_first.
-// // if parent
-// //
-
-// fn read_dir_chunks(
-//     directory: &Path,
-//     filters: &[GlobFilter],
-// ) -> impl Stream<Item = Result<PathBuf>> {
-//     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-//     let walk_dir = WalkDir::new(directory);
-//     let filters = filters.to_vec();
-//     tokio::task::spawn_blocking(move || {
-//         for entry in walk_dir {
-//             match entry {
-//                 Ok(entry) => {
-//                     if entry
-//                         .file_name()
-//                         .to_string_lossy()
-//                         .contains(TEMP_FILE_PREFIX)
-//                     {
-//                         continue;
-//                     }
-//                     let metadata = entry.metadata();
-//                     let stat = if let Ok(stat) = metadata {
-//                         stat
-//                     } else {
-//                         tx.send(Err(metadata.err().unwrap().into()))
-//                             .expect("failed to send error");
-//                         return;
-//                     };
-//                     if stat.is_dir() {
-//                         continue;
-//                     }
-//                     if entry.path_is_symlink() {
-//                         warn!("symlinks are ignored");
-//                         continue;
-//                     }
-//                     debug!("local path={}", entry.path().display());
-//                     if process_globs(entry.path(), &filters).is_some() {
-//                         tx.send(Ok(entry.into_path()))
-//                             .expect("failed to send file path");
-//                     }
-//                 }
-//                 Err(e) => {
-//                     tx.send(Err(e.into())).expect("failed to send error");
-//                     break;
-//                 }
-//             }
-//         }
-//     });
-//     UnboundedReceiverStream::new(rx)
-// }
-
-fn read_dir(directory: &Path, filters: &[GlobFilter]) -> impl Stream<Item = Result<PathBuf>> {
+// Returns a Stream of all files in a directory, recursively retrieving files in subdirecectories as well.
+fn flattened_local_directory(
+    directory: &Path,
+    filters: &[GlobFilter],
+) -> impl Stream<Item = Result<PathBuf>> {
+    // Take something that is blocking and adapt it so that it can run in an async context // TODO move to notes and remove from PR
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    // WalkDir: recursive directory discovery process. Blocking process because it interacts with filesystem (navigating dirs) // TODO move to notes and remove from PR
     let walk_dir = WalkDir::new(directory);
     let filters = filters.to_vec();
+    // Because WalkDir is blocking, must move it into its own thread // TODO move to notes and remove from PR
     tokio::task::spawn_blocking(move || {
         for entry in walk_dir {
             match entry {
@@ -384,7 +338,7 @@ where
                 bucket.clone(),
                 key.clone(),
                 directory.clone(),
-                entry.unwrap(),
+                entry,
             )
         })
         .map(move |clones| async move {
@@ -394,7 +348,7 @@ where
                 source_path,
                 local_etag,
                 metadata: object_info,
-            } = entry;
+            } = entry?;
             let path = Path::new(&source_path);
             let remote_path = Path::new(&key);
             let stripped_path = path.strip_prefix(&directory);
@@ -455,34 +409,15 @@ async fn sync_local_to_remote<T>(
     directory: impl AsRef<Path>,
     filters: &[GlobFilter],
     compressed: bool,
-    // delete: bool,
+    delete: bool,
 ) -> Result<()>
 where
-    T: S3 + Send + Clone,
+    T: S3 + Send + Sync + Clone,
 {
     let directory = directory.as_ref();
     let task_count = Config::global().concurrent_sync_tasks();
 
-    // // List bucket and collect _
-
-    // // Get manifest of files in the destination first.
-
-    // // Pass a mutable ref to manifest into dirent_stream.
-
-    // let stream_of_files: () = read_dir(directory, filters)
-    //     .chunk(100)
-    //     .map(|x| {
-    //         // Process chunks
-
-    //         // Return future
-    //         futures::future::ok(())
-    //     })
-    //     .buffer_unordered(5)
-    //     .try_collect()
-    //     .await?;
-
-    // let dirent_stream = stream_of_files.and_then(|path| async {
-    let dirent_stream = read_dir(directory, filters).and_then(|path| async {
+    let dirent_stream = flattened_local_directory(directory, filters).and_then(|path| async {
         let remote_path = Path::new(&key);
         let stripped_path = match path.strip_prefix(&directory) {
             Ok(result) => result,
@@ -531,9 +466,80 @@ where
 
     sync_tasks
         .buffer_unordered(task_count)
-        .try_collect()
+        .try_for_each_concurrent(task_count, |_| future::ready(Ok(())))
         .await?;
 
+    if delete {
+        sync_delete_local(s3, bucket, key, directory, filters, task_count).await
+    } else {
+        Ok(())
+    }
+}
+
+/// Delete all files in `bucket's` `key` that do not exist within `directory`
+async fn sync_delete_local<T>(
+    s3: &T,
+    bucket: &str,
+    key: &str,
+    directory: &Path,
+    filters: &[GlobFilter],
+    task_count: usize,
+) -> Result<()>
+where
+    T: S3 + Send + Sync + Clone,
+{
+    let stream = flattened_object_listing(s3, bucket, key, directory, filters, false);
+    let delete_paths_stream = stream.try_filter_map(|object_info| async {
+        let (path, s3_metadata) = object_info;
+        if let Some(s3_metadata) = s3_metadata {
+            let fs_metadata = fs::metadata(&path).await;
+            if let Err(err) = fs_metadata {
+                if err.kind() == ErrorKind::NotFound {
+                    let obj_path = String::from(key) + &s3_metadata.s3_suffix;
+                    Ok(Some(obj_path))
+                } else {
+                    Err(err.into())
+                }
+            } else {
+                Ok(None)
+            }
+        } else {
+            Err(Error::MetadataNone)
+        }
+    });
+    pin_mut!(delete_paths_stream);
+    crate::delete_streaming(s3, bucket, delete_paths_stream)
+        .buffer_unordered(task_count)
+        .try_for_each_concurrent(task_count, |_| future::ready(Ok(())))
+        .await
+}
+
+/// Delete all files in `directory` which do not exist withing a `bucket's` corresponding `directory` key prefix
+async fn sync_delete_remote<T>(
+    s3: &T,
+    bucket: &str,
+    directory: &Path,
+    filters: &[GlobFilter],
+) -> Result<()>
+where
+    T: S3 + Send + Sync + Clone,
+{
+    // All files in local directory
+    let local_stream = flattened_local_directory(directory, filters);
+
+    // For each local file, identify whether there is metadata for the corresponding remote file
+    local_stream
+        .try_for_each(|path| async move {
+            let padded_dir = directory.to_string_lossy() + "/";
+            let path = path.to_string_lossy();
+            let s3_key = path.as_ref().trim_start_matches(padded_dir.as_ref());
+            let head_object = head_object_request(s3, bucket, s3_key, None).await;
+            if matches!(head_object, Err(_) | Ok(None)) {
+                fs::remove_file(path.as_ref()).await?;
+            }
+            Ok(())
+        })
+        .await?;
     Ok(())
 }
 
@@ -778,7 +784,7 @@ async fn sync_remote_to_local<T>(
     directory: impl AsRef<Path>,
     filters: &[GlobFilter],
     transparent_decompress: bool,
-    // delete: bool,
+    delete: bool,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
@@ -787,7 +793,6 @@ where
     let task_count = Config::global().concurrent_sync_tasks();
     let object_listing =
         flattened_object_listing(s3, bucket, key, directory, filters, transparent_decompress);
-
     let cmd = if transparent_decompress {
         SyncCmd::DownCompressed
     } else {
@@ -806,10 +811,14 @@ where
 
     sync_tasks
         .buffer_unordered(task_count)
-        .try_collect()
+        .try_for_each_concurrent(task_count, |_| future::ready(Ok(())))
         .await?;
 
-    Ok(())
+    if delete {
+        sync_delete_remote(s3, bucket, directory, filters).await
+    } else {
+        Ok(())
+    }
 }
 
 async fn download_with_dir<T>(

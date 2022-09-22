@@ -34,7 +34,6 @@ use crate::retry::handle_dispatch_error;
 use crate::rusoto::*;
 use crate::types::S3Listing;
 use futures::{stream, TryStream, TryStreamExt};
-use hyper::client::connect::HttpConnector;
 use log::{info, warn};
 use log_derive::logfn;
 use md5::{Digest, Md5};
@@ -46,7 +45,7 @@ use tokio::{
 pub use errors::{Error, Result};
 pub use ops::{
     copy::copy,
-    delete::delete,
+    delete::{delete, delete_streaming},
     download::{download, download_streaming, download_with_transparent_decompression},
     sync::{sync, GlobFilter},
     upload::{
@@ -54,8 +53,11 @@ pub use ops::{
         upload_with_storage_class, PendingUpload,
     },
 };
+
 pub use rusoto::HeadObjectInfo;
 pub use types::{S3ListingItem, S3Object, S3PathParam};
+
+pub use esthri_internals::new_https_connector;
 
 pub const FILTER_EMPTY: Option<&[GlobFilter]> = None;
 
@@ -325,24 +327,4 @@ where
     }
 
     Ok(listing)
-}
-
-#[cfg(feature = "rustls")]
-pub use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
-
-#[cfg(feature = "rustls")]
-pub fn new_https_connector() -> HttpsConnector<HttpConnector> {
-    HttpsConnectorBuilder::new()
-        .with_webpki_roots()
-        .https_only()
-        .enable_http1()
-        .build()
-}
-
-#[cfg(feature = "nativetls")]
-pub use hyper_tls::HttpsConnector;
-
-#[cfg(feature = "nativetls")]
-pub fn new_https_connector() -> hyper_tls::HttpsConnector<HttpConnector> {
-    HttpsConnector::new()
 }

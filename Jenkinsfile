@@ -36,37 +36,37 @@ pipeline {
         stage('Build (rustls)') {
           agent { dockerfile { reuseNode true } }
           steps {
-            sh("cargo make --profile release build")
+            sh("cargo make build")
           }
         }
         stage('Build library (rustls)') {
           agent { dockerfile { reuseNode true } }
           steps {
-            sh("cargo make --profile release build-lib")
+            sh("cargo make build-lib")
           }
         }
         stage('Build CLI with minimum features (rustls)') {
           agent { dockerfile { reuseNode true } }
           steps {
-            sh("cargo make --profile release build-min-cli")
+            sh("cargo make build-min-cli")
           }
         }
         stage('Build (nativetls)') {
           agent { dockerfile { reuseNode true } }
           steps {
-            sh("cargo make --profile release+nativetls build")
+            sh("cargo make --profile dev+nativetls build")
           }
         }
         stage('Build library (nativetls)') {
           agent { dockerfile { reuseNode true } }
           steps {
-            sh("cargo make --profile release+nativetls build-lib")
+            sh("cargo make --profile dev+nativetls build-lib")
           }
         }
         stage('Build CLI with minimum features (nativetls)') {
           agent { dockerfile { reuseNode true } }
           steps {
-            sh("cargo make --profile release+nativetls build-min-cli")
+            sh("cargo make --profile dev+nativetls build-min-cli")
           }
         }
         stage('Test (rustls)') {
@@ -85,7 +85,7 @@ pipeline {
                     | git lfs install
                     | git lfs pull
                     |
-                    | cargo make --profile release test
+                    | cargo make test
                     |
                    """.stripMargin())
               }
@@ -108,7 +108,7 @@ pipeline {
                     | git lfs install
                     | git lfs pull
                     |
-                    | cargo make --profile release test-min
+                    | cargo make test-min
                     |
                    """.stripMargin())
               }
@@ -131,7 +131,7 @@ pipeline {
                     | git lfs install
                     | git lfs pull
                     |
-                    | cargo make --profile release+nativetls test
+                    | cargo make --profile dev+nativetls test
                     |
                    """.stripMargin())
               }
@@ -154,7 +154,7 @@ pipeline {
                     | git lfs install
                     | git lfs pull
                     |
-                    | cargo make --profile release+nativetls test-min
+                    | cargo make --profile dev+nativetls test-min
                     |
                    """.stripMargin())
               }
@@ -165,7 +165,7 @@ pipeline {
           agent { dockerfile { reuseNode true } }
           steps {
             script {
-              sh("cargo make --profile release lint")
+              sh("cargo make lint")
             }
           }
         }
@@ -173,7 +173,7 @@ pipeline {
           agent { dockerfile { reuseNode true } }
           steps {
             script {
-              sh("cargo make --profile release+nativetls lint")
+              sh("cargo make --profile dev+nativetls lint")
             }
           }
         }
