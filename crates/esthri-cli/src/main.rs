@@ -312,7 +312,6 @@ async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
                     }
                 }
 
-                // ribbit
                 S3Command::Sync {
                     ref source,
                     ref destination,
@@ -461,7 +460,6 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
             log_etag(&file).await?;
         }
 
-        // ribbit2
         Sync {
             ref source,
             ref destination,
