@@ -12,33 +12,10 @@
 
 use log_derive::logfn;
 
-use crate::errors::Result;
-use crate::rusoto::{DeleteObjectRequest, S3};
-// use crate::{
-//     download, download_with_transparent_decompression, upload, upload_compressed, S3PathParam,
-// };
-
-#[logfn(err = "ERROR")]
-pub async fn delete<T>(s3: &T, bucket: impl AsRef<str>, key: impl AsRef<str>) -> Result<()>
-where
-    T: S3 + Sync + Send + Clone,
-{
-    let bucket: &str = bucket.as_ref();
-    let key: &str = key.as_ref();
-    let dor: DeleteObjectRequest = DeleteObjectRequest {
-        bucket: bucket.to_owned(),
-        key: key.to_owned(),
-        ..Default::default()
-    };
-    s3.delete_object(dor).await?;
-    eprintln!("delete invoked");
-    Ok(())
-}
 use futures::stream::Stream;
 use futures::{future, Future, StreamExt, TryFutureExt};
 
 use log::{debug, info};
-use log_derive::logfn;
 
 use crate::errors::Result;
 use crate::rusoto::{Delete, DeleteObjectsRequest, ObjectIdentifier, S3};
