@@ -89,10 +89,7 @@ where
                 let fut = s3.delete_objects(dor);
                 future::Either::Left(fut.map_ok(move |_| len).map_err(|e| e.into()))
             }
-            Err(err) => {
-                println!("nothing found in delete_streaming keys");
-                future::Either::Right(future::ready(Err(err)))
-            }
+            Err(err) => future::Either::Right(future::ready(Err(err))),
         }
     })
 }

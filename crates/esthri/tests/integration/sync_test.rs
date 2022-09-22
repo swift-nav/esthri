@@ -268,7 +268,6 @@ fn test_sync_up_delete() {
 
 #[test]
 fn test_sync_down_delete() {
-    println!("ping1");
     let s3client = esthri_test::get_s3client();
     // Get path to some directory and populate it.
     let local_directory = esthri_test::copy_test_data("sync_up");
