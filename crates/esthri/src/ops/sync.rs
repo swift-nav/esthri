@@ -644,7 +644,7 @@ where
         s3,
         destination_bucket,
         destination_prefix,
-        &std::path::Path::new(source_prefix),
+        std::path::Path::new(source_prefix),
         filters,
         false,
     );
@@ -653,7 +653,7 @@ where
     let delete_paths_stream = all_files_in_destination_bucket_stream.try_filter_map(
         |(_path, key, _s3_metadata)| async move {
             let filename = key.strip_prefix(destination_prefix).unwrap();
-            let source_key = source_prefix.to_string() + &filename.to_string();
+            let source_key = source_prefix.to_string() + filename;
             if head_object_request(s3, source_bucket, &source_key, None)
                 .await?
                 .is_none()
