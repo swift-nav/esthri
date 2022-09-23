@@ -16,7 +16,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use futures::{future, pin_mut, Future, Stream, StreamExt, TryStreamExt};
+use futures::{future, pin_mut, Future, Stream, StreamExt, stream, TryStreamExt};
 
 use glob::Pattern;
 use log::{debug, info, warn};
@@ -100,6 +100,7 @@ where
 
     match (source, destination) {
         (S3PathParam::Local { path }, S3PathParam::Bucket { bucket, key }) => {
+            println!("SYNC local to remote");
             info!(
                 "sync-up, local directory: {}, bucket: {}, key: {}",
                 path.display(),
@@ -110,6 +111,7 @@ where
             sync_local_to_remote(s3, &bucket, &key, &path, &filters, compressed, delete).await?;
         }
         (S3PathParam::Bucket { bucket, key }, S3PathParam::Local { path }) => {
+            println!("SYNC remote to local");
             info!(
                 "sync-down, local directory: {}, bucket: {}, key: {}",
                 path.display(),
@@ -129,6 +131,7 @@ where
                 key: destination_key,
             },
         ) => {
+            println!("SYNC across");
             info!(
                 "sync-across, bucket: {}, source_key: {}, bucket: {}, destination_key: {}",
                 source_bucket, source_key, destination_bucket, destination_key
@@ -141,6 +144,7 @@ where
                 &destination_bucket,
                 &destination_key,
                 &filters,
+                delete,
             )
             .await?;
         }
@@ -410,6 +414,7 @@ async fn sync_local_to_remote<T>(
 where
     T: S3 + Send + Sync + Clone,
 {
+    println!("key: {}", key);
     let directory = directory.as_ref();
     let task_count = Config::global().concurrent_sync_tasks();
 
@@ -426,6 +431,8 @@ where
         };
         let remote_path = remote_path.join(&stripped_path);
         let remote_path = remote_path.to_string_lossy();
+        println!("bucket: {}", bucket);
+        println!("remote_path: {}", &remote_path);
         match head_object_request(s3, bucket, &remote_path, None).await? {
             Some(metadata) => {
                 let esthri_compressed = metadata.is_esthri_compressed();
@@ -437,6 +444,7 @@ where
             None => Ok((path, ListingMetadata::none())),
         }
     });
+    println!("post");
 
     let cmd = if compressed {
         SyncCmd::UpCompressed
@@ -454,10 +462,14 @@ where
         compressed,
     );
 
+    println!("post1");
+
     sync_tasks
         .buffer_unordered(task_count)
         .try_for_each_concurrent(task_count, |_| future::ready(Ok(())))
         .await?;
+
+    println!("post2");
 
     if delete {
         sync_delete_local(s3, bucket, key, directory, filters, task_count).await
@@ -567,14 +579,16 @@ async fn sync_across<T>(
     dest_bucket: &str,
     destination_key: &str,
     filters: &[GlobFilter],
-    // delete: bool,
+    delete: bool,
 ) -> Result<()>
 where
-    T: S3 + Send,
+    T: S3 + Send + Sync + Clone,
 {
+    println!("sync_across");
     let mut stream = list_objects_stream(s3, source_bucket, source_prefix);
 
     while let Some(from_entries) = stream.try_next().await? {
+        println!("while iteration");
         for entry in from_entries {
             if let S3ListingItem::S3Object(src_object) = entry {
                 let path = process_globs(&src_object.key, filters);
@@ -607,6 +621,118 @@ where
         }
     }
 
+    if delete {
+        sync_delete_across(
+            s3,
+            source_bucket,
+            source_prefix,
+            dest_bucket,
+            destination_key,
+            filters,
+        )
+        .await
+    } else {
+        Ok(())
+    }
+}
+
+/// Delete all files in `directory` which do not exist withing a `bucket's` corresponding `directory` key prefix
+async fn sync_delete_across<T>(
+    s3: &T,
+    source_bucket: &str,
+    source_prefix: &str,
+    destination_bucket: &str,
+    destination_prefix: &str,
+    filters: &[GlobFilter],
+) -> Result<()>
+where
+    T: S3 + Send + Sync + Clone,
+{
+    println!("source_bucket: {}", source_bucket);
+    println!("source_prefix: {}", source_prefix);
+    println!("destination_bucket: {}", destination_bucket);
+    println!("destination_prefix: {}", destination_prefix);
+
+    // For each file, perform a head_object_request on the destination directory
+    // If Ok, continue
+    // Else, add to delete_paths_stream
+
+    // All files in destination bucket
+    let mut all_files_in_destination_bucket_stream =
+        list_objects_stream(s3, destination_bucket, destination_prefix);
+
+    // TryStream = Stream of results
+    // If you want to know what type of item is
+    let delete_paths_stream =
+        all_files_in_destination_bucket_stream.flat_map(|vector_elements| match vector_elements {
+            Ok(els) => stream::iter(els),
+            Err(e) => stream::once(e),
+        })
+        .try_filter_map(|destination_objects| async {
+            // let delete_paths_stream = all_files_in_destination_bucket_stream.try_filter(|entry| async {
+            // if let S3ListingItem::S3Object(destination_object) = entry {
+
+            for item in destination_objects {
+                if let S3ListingItem::S3Object(destination_object) = item {
+                    let filename = destination_object
+                        .key
+                        .strip_prefix(destination_prefix)
+                        .unwrap();
+                    println!("filename: {}", filename);
+                    println!("destination_object.key: {}", destination_object.key);
+                    println!("destination_object.e_tag: {}", destination_object.e_tag);
+                    let source_key = source_prefix.to_string() + &filename.to_string();
+                    println!("source_key: {}", source_key);
+                    let dest_obj_info =
+                        head_object_request(s3, source_bucket, &source_key, None).await?;
+                    match dest_obj_info {
+                        Some(doi) => {
+                            println!("Some!");
+                            Ok(None)
+                        }
+                        None => {
+                            // ****** ADD to delete_paths_stream
+                            println!("not so Some...");
+                            Ok(source_key)
+                        }
+                    }
+                }
+            }
+        });
+        let xxxx = delete_paths_stream.try_next().await;
+
+    while let Some(from_entries) = all_files_in_destination_bucket_stream.try_next().await? {
+        for entry in from_entries {
+            if let S3ListingItem::S3Object(destination_object) = entry {
+                let filename = destination_object
+                    .key
+                    .strip_prefix(destination_prefix)
+                    .unwrap();
+                println!("filename: {}", filename);
+                println!("destination_object.key: {}", destination_object.key);
+                println!("destination_object.e_tag: {}", destination_object.e_tag);
+                let source_key = source_prefix.to_string() + &filename.to_string();
+                println!("source_key: {}", source_key);
+                let dest_obj_info =
+                    head_object_request(s3, source_bucket, &source_key, None).await?;
+                match dest_obj_info {
+                    Some() => {
+                        // Do nothing
+                        println!("Some!"),
+                    }
+                    None => {
+                        // ****** ADD to delete_paths_stream
+                        println!("not so Some...")
+                    }
+                }
+            }
+        }
+    }
+    // pin_mut!(delete_paths_stream);
+    crate::delete_streaming(s3, bucket, delete_paths_stream)
+        .buffer_unordered(task_count)
+        .try_for_each_concurrent(task_count, |_| future::ready(Ok(())))
+        .await
     Ok(())
 }
 

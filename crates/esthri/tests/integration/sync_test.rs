@@ -189,6 +189,7 @@ fn test_sync_up_default() {
     }
 }
 
+// Validate local to remote sync with delete flag set
 #[test]
 fn test_sync_up_delete() {
     let s3client = esthri_test::get_s3client();
@@ -266,6 +267,7 @@ fn test_sync_up_delete() {
     }
 }
 
+// Validate remote to local sync with delete flag set
 #[test]
 fn test_sync_down_delete() {
     let s3client = esthri_test::get_s3client();
@@ -303,6 +305,137 @@ fn test_sync_down_delete() {
         .all(|path| path.unwrap().file_type().unwrap().is_dir());
 
     assert!(no_files);
+}
+
+#[test]
+fn test_sync_across_delete() {
+    println!("\n======================\n======================\n======================");
+    let s3client = esthri_test::get_s3client();
+    let local_directory = esthri_test::copy_test_data("sync_up");
+    // Indicate two empty S3 keys to perform opperations on.
+    let s3_key_src_prefix = esthri_test::randomised_name("test_sync_across_delete_src/");
+    let s3_key_dst_prefix = esthri_test::randomised_name("test_sync_across_delete_dst/");
+
+    println!("s3_key_dst_prefix: {}", &s3_key_dst_prefix);
+
+    // Create a dummy file. Deletion of this file will be indicative of test success
+    let file_pathbuf = esthri_test::test_data("sync_across/delete-me.txt");
+    println!("file_pathbuf: {}", file_pathbuf.display());
+    let expect_to_be_deleted =
+        fs::File::create(file_pathbuf.as_path()).expect("Error encountered while creating file");
+
+    // Create 2 empty buckets
+    let source = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, &s3_key_src_prefix);
+    let destination = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, &s3_key_dst_prefix);
+
+    // let local_source = S3PathParam::new_local(&file_pathbuf);
+    let local_dir = esthri_test::test_data("sync_across/");
+    println!("local_dir: {}", local_dir.display());
+    let local_source = S3PathParam::new_local(esthri_test::test_data(
+        local_dir.display().to_string().as_ref(),
+    ));
+
+    // Copy the dummy file to one of the test buckets
+    let res = blocking::sync(
+        s3client.as_ref(),
+        local_source.clone(),
+        destination.clone(),
+        FILTER_EMPTY,
+        false,
+        false,
+    );
+    assert!(res.is_ok());
+
+    // Expect bucket to have been populated
+    let keys = ["delete-me.txt"];
+    for key in &keys[..] {
+        let key = format!("{}{}", &s3_key_dst_prefix, key);
+        let res = blocking::head_object(s3client.as_ref(), esthri_test::TEST_BUCKET, &key);
+        assert!(res.is_ok(), "head object failed for: {}", key);
+        let res = res.unwrap();
+        assert!(
+            res.is_some(),
+            "head object info returned was nil for: {}",
+            key
+        );
+    }
+
+    // Local cleanup
+    fs::remove_file(file_pathbuf).expect("Unable to remove file");
+
+    // At this point in execution, two buckets exist, one (dst) with a single file, one (src) which is empty
+
+    println!("^v^v^v^v^v^v^v^v^v^");
+
+    // Perform a sync with delete flag set between the two buckets
+    let res = blocking::sync(
+        s3client.as_ref(),
+        source,
+        destination,
+        FILTER_EMPTY,
+        false,
+        true,
+    );
+    assert!(res.is_ok());
+
+    // // Expect destination bucket to have no contents
+    // let keys = ["delete-me.txt"];
+    // for key in &keys[..] {
+    //     let key = format!("{}{}", &s3_key_dst_prefix, key);
+    //     let res = blocking::head_object(s3client.as_ref(), esthri_test::TEST_BUCKET, &key);
+    //     assert!(res.is_ok(), "head object failed for: {}", key);
+    //     let res = res.unwrap();
+    //     assert!(
+    //         res.is_some(),
+    //         "head object info returned was nil for: {}",
+    //         key
+    //     );
+    // }
+
+    // TODO create randomized local dir name and ultimately delete that
+
+    // let remove_path_target = "nested/2MiB.bin";
+    // let remove_path_target = local_directory.join(remove_path_target);
+
+    // fs::remove_file(&remove_path_target).expect("could not remove file");
+    // assert!(fs::metadata(remove_path_target).is_err());
+
+    // let res = blocking::sync(
+    //     s3client.as_ref(),
+    //     source,
+    //     destination,
+    //     FILTER_EMPTY,
+    //     false,
+    //     true,
+    // );
+    // assert!(res.is_ok());
+
+    // let keyexists_pairs = [
+    //     ("1-one.data", true),
+    //     ("2-two.bin", true),
+    //     ("3-three.junk", true),
+    //     ("nested/2MiB.bin", false),
+    // ];
+
+    // for (key, exists) in &keyexists_pairs[..] {
+    //     let key = format!("{}{}", &s3_key_prefix, key);
+    //     let res = blocking::head_object(s3client.as_ref(), esthri_test::TEST_BUCKET, &key);
+    //     assert!(res.is_ok(), "head object failed for: {}", key);
+    //     let res = res.unwrap();
+    //     if *exists {
+    //         assert!(
+    //             res.is_some(),
+    //             "head object info returned was nil for: {}",
+    //             key
+    //         );
+    //     } else {
+    //         assert!(
+    //             res.is_none(),
+    //             "expected head object to fail for key: {}",
+    //             key
+    //         );
+    //     }
+    // }
 }
 
 #[test]
