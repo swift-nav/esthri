@@ -378,64 +378,19 @@ fn test_sync_across_delete() {
     );
     assert!(res.is_ok());
 
-    // // Expect destination bucket to have no contents
-    // let keys = ["delete-me.txt"];
-    // for key in &keys[..] {
-    //     let key = format!("{}{}", &s3_key_dst_prefix, key);
-    //     let res = blocking::head_object(s3client.as_ref(), esthri_test::TEST_BUCKET, &key);
-    //     assert!(res.is_ok(), "head object failed for: {}", key);
-    //     let res = res.unwrap();
-    //     assert!(
-    //         res.is_some(),
-    //         "head object info returned was nil for: {}",
-    //         key
-    //     );
-    // }
-
-    // TODO create randomized local dir name and ultimately delete that
-
-    // let remove_path_target = "nested/2MiB.bin";
-    // let remove_path_target = local_directory.join(remove_path_target);
-
-    // fs::remove_file(&remove_path_target).expect("could not remove file");
-    // assert!(fs::metadata(remove_path_target).is_err());
-
-    // let res = blocking::sync(
-    //     s3client.as_ref(),
-    //     source,
-    //     destination,
-    //     FILTER_EMPTY,
-    //     false,
-    //     true,
-    // );
-    // assert!(res.is_ok());
-
-    // let keyexists_pairs = [
-    //     ("1-one.data", true),
-    //     ("2-two.bin", true),
-    //     ("3-three.junk", true),
-    //     ("nested/2MiB.bin", false),
-    // ];
-
-    // for (key, exists) in &keyexists_pairs[..] {
-    //     let key = format!("{}{}", &s3_key_prefix, key);
-    //     let res = blocking::head_object(s3client.as_ref(), esthri_test::TEST_BUCKET, &key);
-    //     assert!(res.is_ok(), "head object failed for: {}", key);
-    //     let res = res.unwrap();
-    //     if *exists {
-    //         assert!(
-    //             res.is_some(),
-    //             "head object info returned was nil for: {}",
-    //             key
-    //         );
-    //     } else {
-    //         assert!(
-    //             res.is_none(),
-    //             "expected head object to fail for key: {}",
-    //             key
-    //         );
-    //     }
-    // }
+    // Expect destination bucket to have no contents
+    let keys = ["delete-me.txt"];
+    for key in &keys[..] {
+        let key = format!("{}{}", &s3_key_dst_prefix, key);
+        let res = blocking::head_object(s3client.as_ref(), esthri_test::TEST_BUCKET, &key);
+        assert!(res.is_ok(), "head object failed for: {}", key);
+        let res = res.unwrap();
+        assert!(
+            res.is_some(),
+            "head object info returned was nil for: {}",
+            key
+        );
+    }
 }
 
 #[test]

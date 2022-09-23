@@ -16,7 +16,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use futures::{future, pin_mut, Future, Stream, StreamExt, stream, TryStreamExt};
+use futures::{future, pin_mut, stream, Future, Stream, StreamExt, TryStreamExt};
 
 use glob::Pattern;
 use log::{debug, info, warn};
@@ -492,7 +492,7 @@ where
 {
     let stream = flattened_object_listing(s3, bucket, key, directory, filters, false);
     let delete_paths_stream = stream.try_filter_map(|object_info| async {
-        let (path, s3_metadata) = object_info;
+        let (path, _, s3_metadata) = object_info;
         if let Some(s3_metadata) = s3_metadata {
             let fs_metadata = fs::metadata(&path).await;
             if let Err(err) = fs_metadata {
@@ -629,6 +629,7 @@ where
             dest_bucket,
             destination_key,
             filters,
+            Config::global().concurrent_sync_tasks(),
         )
         .await
     } else {
@@ -644,6 +645,7 @@ async fn sync_delete_across<T>(
     destination_bucket: &str,
     destination_prefix: &str,
     filters: &[GlobFilter],
+    task_count: usize,
 ) -> Result<()>
 where
     T: S3 + Send + Sync + Clone,
@@ -657,83 +659,43 @@ where
     // If Ok, continue
     // Else, add to delete_paths_stream
 
-    // All files in destination bucket
-    let mut all_files_in_destination_bucket_stream =
-        list_objects_stream(s3, destination_bucket, destination_prefix);
+    let all_files_in_destination_bucket_stream = flattened_object_listing(
+        s3,
+        destination_bucket,
+        destination_prefix,
+        &std::path::Path::new(source_prefix),
+        filters,
+        false,
+    );
 
-    // TryStream = Stream of results
-    // If you want to know what type of item is
-    let delete_paths_stream =
-        all_files_in_destination_bucket_stream.flat_map(|vector_elements| match vector_elements {
-            Ok(els) => stream::iter(els),
-            Err(e) => stream::once(e),
-        })
-        .try_filter_map(|destination_objects| async {
-            // let delete_paths_stream = all_files_in_destination_bucket_stream.try_filter(|entry| async {
-            // if let S3ListingItem::S3Object(destination_object) = entry {
+    // // All files in destination bucket
+    // let mut all_files_in_destination_bucket_stream =
+    //     list_objects_stream(s3, destination_bucket, destination_prefix);
 
-            for item in destination_objects {
-                if let S3ListingItem::S3Object(destination_object) = item {
-                    let filename = destination_object
-                        .key
-                        .strip_prefix(destination_prefix)
-                        .unwrap();
-                    println!("filename: {}", filename);
-                    println!("destination_object.key: {}", destination_object.key);
-                    println!("destination_object.e_tag: {}", destination_object.e_tag);
-                    let source_key = source_prefix.to_string() + &filename.to_string();
-                    println!("source_key: {}", source_key);
-                    let dest_obj_info =
-                        head_object_request(s3, source_bucket, &source_key, None).await?;
-                    match dest_obj_info {
-                        Some(doi) => {
-                            println!("Some!");
-                            Ok(None)
-                        }
-                        None => {
-                            // ****** ADD to delete_paths_stream
-                            println!("not so Some...");
-                            Ok(source_key)
-                        }
-                    }
-                }
+    // // TryStream = Stream of results
+    // // If you want to know what type of item is
+    let delete_paths_stream = all_files_in_destination_bucket_stream.try_filter_map(
+        |(path, key, s3_metadata)| async move {
+            let filename = key.strip_prefix(destination_prefix).unwrap();
+            println!("filename: {}", filename);
+            println!("key: {}", key);
+            let source_key = source_prefix.to_string() + &filename.to_string();
+            if head_object_request(s3, source_bucket, &source_key, None)
+                .await?
+                .is_none()
+            {
+                Ok(Some(source_key))
+            } else {
+                Ok(None)
             }
-        });
-        let xxxx = delete_paths_stream.try_next().await;
+        },
+    );
 
-    while let Some(from_entries) = all_files_in_destination_bucket_stream.try_next().await? {
-        for entry in from_entries {
-            if let S3ListingItem::S3Object(destination_object) = entry {
-                let filename = destination_object
-                    .key
-                    .strip_prefix(destination_prefix)
-                    .unwrap();
-                println!("filename: {}", filename);
-                println!("destination_object.key: {}", destination_object.key);
-                println!("destination_object.e_tag: {}", destination_object.e_tag);
-                let source_key = source_prefix.to_string() + &filename.to_string();
-                println!("source_key: {}", source_key);
-                let dest_obj_info =
-                    head_object_request(s3, source_bucket, &source_key, None).await?;
-                match dest_obj_info {
-                    Some() => {
-                        // Do nothing
-                        println!("Some!"),
-                    }
-                    None => {
-                        // ****** ADD to delete_paths_stream
-                        println!("not so Some...")
-                    }
-                }
-            }
-        }
-    }
-    // pin_mut!(delete_paths_stream);
-    crate::delete_streaming(s3, bucket, delete_paths_stream)
+    pin_mut!(delete_paths_stream);
+    crate::delete_streaming(s3, destination_bucket, delete_paths_stream)
         .buffer_unordered(task_count)
         .try_for_each_concurrent(task_count, |_| future::ready(Ok(())))
         .await
-    Ok(())
 }
 
 fn flattened_object_listing<'a, ClientT>(
@@ -743,7 +705,7 @@ fn flattened_object_listing<'a, ClientT>(
     directory: &'a Path,
     filters: &'a [GlobFilter],
     transparent_decompress: bool,
-) -> impl Stream<Item = Result<(PathBuf, Option<ListingMetadata>)>> + 'a
+) -> impl Stream<Item = Result<(PathBuf, String, Option<ListingMetadata>)>> + 'a
 where
     ClientT: S3 + Send + Clone,
 {
@@ -795,6 +757,7 @@ where
                         let s3_suffix = s3_suffix.to_string_lossy().into();
                         yield Ok((
                             local_path,
+                            entry.key,
                             ListingMetadata::some(s3_suffix, entry.e_tag, compressed),
                         ));
                     }
@@ -900,7 +863,8 @@ where
     let directory = directory.as_ref();
     let task_count = Config::global().concurrent_sync_tasks();
     let object_listing =
-        flattened_object_listing(s3, bucket, key, directory, filters, transparent_decompress);
+        flattened_object_listing(s3, bucket, key, directory, filters, transparent_decompress)
+            .map_ok(|(path, key, s3_metadata)| (path, s3_metadata));
     let cmd = if transparent_decompress {
         SyncCmd::DownCompressed
     } else {
