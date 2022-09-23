@@ -16,7 +16,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use futures::{future, pin_mut, stream, Future, Stream, StreamExt, TryStreamExt};
+use futures::{future, pin_mut, Future, Stream, StreamExt, TryStreamExt};
 
 use glob::Pattern;
 use log::{debug, info, warn};
@@ -131,7 +131,6 @@ where
                 key: destination_key,
             },
         ) => {
-            println!("SYNC across");
             info!(
                 "sync-across, bucket: {}, source_key: {}, bucket: {}, destination_key: {}",
                 source_bucket, source_key, destination_bucket, destination_key
@@ -185,7 +184,7 @@ fn process_globs<'a, P: AsRef<Path> + 'a>(path: P, filters: &[GlobFilter]) -> Op
     }
 }
 
-// Returns a Stream of all files in a directory, recursively retrieving files in subdirecectories as well.
+/// Returns a Stream of all files in a directory, recursively retrieving files in subdirecectories as well.
 fn flattened_local_directory(
     directory: &Path,
     filters: &[GlobFilter],
@@ -428,8 +427,6 @@ where
         };
         let remote_path = remote_path.join(&stripped_path);
         let remote_path = remote_path.to_string_lossy();
-        println!("bucket: {}", bucket);
-        println!("remote_path: {}", &remote_path);
         match head_object_request(s3, bucket, &remote_path, None).await? {
             Some(metadata) => {
                 let esthri_compressed = metadata.is_esthri_compressed();
@@ -441,7 +438,6 @@ where
             None => Ok((path, ListingMetadata::none())),
         }
     });
-    println!("post");
 
     let cmd = if compressed {
         SyncCmd::UpCompressed
@@ -459,14 +455,10 @@ where
         compressed,
     );
 
-    println!("post1");
-
     sync_tasks
         .buffer_unordered(task_count)
         .try_for_each_concurrent(task_count, |_| future::ready(Ok(())))
         .await?;
-
-    println!("post2");
 
     if delete {
         sync_delete_local(s3, bucket, key, directory, filters, task_count).await
@@ -848,7 +840,7 @@ where
     let task_count = Config::global().concurrent_sync_tasks();
     let object_listing =
         flattened_object_listing(s3, bucket, key, directory, filters, transparent_decompress)
-            .map_ok(|(path, key, s3_metadata)| (path, s3_metadata));
+            .map_ok(|(path, _key, s3_metadata)| (path, s3_metadata));
     let cmd = if transparent_decompress {
         SyncCmd::DownCompressed
     } else {

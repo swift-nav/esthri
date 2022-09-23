@@ -310,14 +310,13 @@ fn test_sync_down_delete() {
 #[test]
 fn test_sync_across_delete() {
     let s3client = esthri_test::get_s3client();
-    let local_directory = esthri_test::copy_test_data("sync_up");
     // Indicate two empty S3 keys to perform opperations on.
     let s3_key_src_prefix = esthri_test::randomised_name("test_sync_across_delete_src/");
     let s3_key_dst_prefix = esthri_test::randomised_name("test_sync_across_delete_dst/");
 
     // Create a dummy file. Deletion of this file will be indicative of test success
     let file_pathbuf = esthri_test::test_data("sync_across/delete-me.txt");
-    let expect_to_be_deleted =
+    let _expect_to_be_deleted =
         fs::File::create(file_pathbuf.as_path()).expect("Error encountered while creating file");
 
     // Create 2 empty buckets
