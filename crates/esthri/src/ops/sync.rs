@@ -190,12 +190,9 @@ fn flattened_local_directory(
     directory: &Path,
     filters: &[GlobFilter],
 ) -> impl Stream<Item = Result<PathBuf>> {
-    // Take something that is blocking and adapt it so that it can run in an async context // TODO move to notes and remove from PR
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-    // WalkDir: recursive directory discovery process. Blocking process because it interacts with filesystem (navigating dirs) // TODO move to notes and remove from PR
     let walk_dir = WalkDir::new(directory);
     let filters = filters.to_vec();
-    // Because WalkDir is blocking, must move it into its own thread // TODO move to notes and remove from PR
     tokio::task::spawn_blocking(move || {
         for entry in walk_dir {
             match entry {
@@ -650,15 +647,7 @@ async fn sync_delete_across<T>(
 where
     T: S3 + Send + Sync + Clone,
 {
-    println!("source_bucket: {}", source_bucket);
-    println!("source_prefix: {}", source_prefix);
-    println!("destination_bucket: {}", destination_bucket);
-    println!("destination_prefix: {}", destination_prefix);
-
-    // For each file, perform a head_object_request on the destination directory
-    // If Ok, continue
-    // Else, add to delete_paths_stream
-
+    // Identify all files in destination bucket
     let all_files_in_destination_bucket_stream = flattened_object_listing(
         s3,
         destination_bucket,
@@ -668,17 +657,10 @@ where
         false,
     );
 
-    // // All files in destination bucket
-    // let mut all_files_in_destination_bucket_stream =
-    //     list_objects_stream(s3, destination_bucket, destination_prefix);
-
-    // // TryStream = Stream of results
-    // // If you want to know what type of item is
+    // For each file, perform a head_object_request on the source directory to determine if file only exists in the destination
     let delete_paths_stream = all_files_in_destination_bucket_stream.try_filter_map(
-        |(path, key, s3_metadata)| async move {
+        |(_path, key, _s3_metadata)| async move {
             let filename = key.strip_prefix(destination_prefix).unwrap();
-            println!("filename: {}", filename);
-            println!("key: {}", key);
             let source_key = source_prefix.to_string() + &filename.to_string();
             if head_object_request(s3, source_bucket, &source_key, None)
                 .await?
@@ -691,6 +673,7 @@ where
         },
     );
 
+    // Delete files that exist in destination, but not in source
     pin_mut!(delete_paths_stream);
     crate::delete_streaming(s3, destination_bucket, delete_paths_stream)
         .buffer_unordered(task_count)
@@ -698,6 +681,7 @@ where
         .await
 }
 
+// Create a result stream consisting of tuples for all files in bucket/prefix. Tuples are of the form (path to file locally <if applicable>, file prefix, file metadata)
 fn flattened_object_listing<'a, ClientT>(
     s3: &'a ClientT,
     bucket: &'a str,

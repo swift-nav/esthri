@@ -288,7 +288,7 @@ fn test_sync_down_delete() {
         .next()
         .is_some());
 
-    // Perform sync with delete flag set. Because the target S3 directory is empty (TODO change term 'directory'), all contents in local directory should be deleted.
+    // Perform sync with delete flag set. Because the target S3 key is empty, all contents in local directory should be deleted.
     let res = blocking::sync(
         s3client.as_ref(),
         src.clone(),
@@ -309,18 +309,14 @@ fn test_sync_down_delete() {
 
 #[test]
 fn test_sync_across_delete() {
-    println!("\n======================\n======================\n======================");
     let s3client = esthri_test::get_s3client();
     let local_directory = esthri_test::copy_test_data("sync_up");
     // Indicate two empty S3 keys to perform opperations on.
     let s3_key_src_prefix = esthri_test::randomised_name("test_sync_across_delete_src/");
     let s3_key_dst_prefix = esthri_test::randomised_name("test_sync_across_delete_dst/");
 
-    println!("s3_key_dst_prefix: {}", &s3_key_dst_prefix);
-
     // Create a dummy file. Deletion of this file will be indicative of test success
     let file_pathbuf = esthri_test::test_data("sync_across/delete-me.txt");
-    println!("file_pathbuf: {}", file_pathbuf.display());
     let expect_to_be_deleted =
         fs::File::create(file_pathbuf.as_path()).expect("Error encountered while creating file");
 
@@ -330,7 +326,6 @@ fn test_sync_across_delete() {
 
     // let local_source = S3PathParam::new_local(&file_pathbuf);
     let local_dir = esthri_test::test_data("sync_across/");
-    println!("local_dir: {}", local_dir.display());
     let local_source = S3PathParam::new_local(esthri_test::test_data(
         local_dir.display().to_string().as_ref(),
     ));
@@ -364,8 +359,6 @@ fn test_sync_across_delete() {
     fs::remove_file(file_pathbuf).expect("Unable to remove file");
 
     // At this point in execution, two buckets exist, one (dst) with a single file, one (src) which is empty
-
-    println!("^v^v^v^v^v^v^v^v^v^");
 
     // Perform a sync with delete flag set between the two buckets
     let res = blocking::sync(
