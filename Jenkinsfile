@@ -82,7 +82,6 @@ pipeline {
               script {
                 sh("""/bin/bash -ex
                     |
-                    | git lfs install
                     | git lfs pull
                     |
                     | cargo make test
@@ -105,7 +104,6 @@ pipeline {
               script {
                 sh("""/bin/bash -ex
                     |
-                    | git lfs install
                     | git lfs pull
                     |
                     | cargo make test-min
@@ -128,7 +126,6 @@ pipeline {
               script {
                 sh("""/bin/bash -ex
                     |
-                    | git lfs install
                     | git lfs pull
                     |
                     | cargo make --profile dev+nativetls test
@@ -151,7 +148,6 @@ pipeline {
               script {
                 sh("""/bin/bash -ex
                     |
-                    | git lfs install
                     | git lfs pull
                     |
                     | cargo make --profile dev+nativetls test-min
