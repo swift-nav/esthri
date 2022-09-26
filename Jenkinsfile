@@ -79,16 +79,10 @@ pipeline {
           steps {
             gitPrep()
             lock(resource: "esthri-integration-tests") {
-              retry (10) {
-                sh("""/bin/bash -ex
-                    |
-                    | git lfs install || { sleep \$((1 + (RANDOM % 10))); false; }
-                    |
-                   """.stripMargin())
-              }
               script {
                 sh("""/bin/bash -ex
                     |
+                    | strace -v -f -o strace.log git lfs install || cat strace.log
                     | git lfs pull
                     |
                     | cargo make test
@@ -108,16 +102,10 @@ pipeline {
           steps {
             gitPrep()
             lock(resource: "esthri-integration-tests") {
-              retry (10) {
-                sh("""/bin/bash -ex
-                    |
-                    | git lfs install || { sleep \$((1 + (RANDOM % 10))); false; }
-                    |
-                   """.stripMargin())
-              }
               script {
                 sh("""/bin/bash -ex
                     |
+                    | strace -v -f -o strace.log git lfs install || cat strace.log
                     | git lfs pull
                     |
                     | cargo make test-min
@@ -137,16 +125,10 @@ pipeline {
           steps {
             gitPrep()
             lock(resource: "esthri-integration-tests") {
-              retry (10) {
-                sh("""/bin/bash -ex
-                    |
-                    | git lfs install || { sleep \$((1 + (RANDOM % 10))); false; }
-                    |
-                   """.stripMargin())
-              }
               script {
                 sh("""/bin/bash -ex
                     |
+                    | strace -v -f -o strace.log git lfs install || cat strace.log
                     | git lfs pull
                     |
                     | cargo make --profile dev+nativetls test
@@ -166,16 +148,10 @@ pipeline {
           steps {
             gitPrep()
             lock(resource: "esthri-integration-tests") {
-              retry (10) {
-                sh("""/bin/bash -ex
-                    |
-                    | git lfs install || { sleep \$((1 + (RANDOM % 10))); false; }
-                    |
-                   """.stripMargin())
-              }
               script {
                 sh("""/bin/bash -ex
                     |
+                    | strace -v -f -o strace.log git lfs install || cat strace.log
                     | git lfs pull
                     |
                     | cargo make --profile dev+nativetls test-min
