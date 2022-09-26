@@ -188,8 +188,10 @@ fn flattened_local_directory(
     filters: &[GlobFilter],
 ) -> impl Stream<Item = Result<PathBuf>> {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    // WalkDir: recursive directory discovery process. Blocking process because it interacts with filesystem (navigating dirs) // TODO move to notes and remove from PR
     let walk_dir = WalkDir::new(directory);
     let filters = filters.to_vec();
+    // Because WalkDir is blocking, must move it into its own thread // TODO move to notes and remove from PR
     tokio::task::spawn_blocking(move || {
         for entry in walk_dir {
             match entry {
