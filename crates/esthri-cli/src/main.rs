@@ -109,6 +109,8 @@ enum S3Command {
         acl: Option<String>,
         #[clap(long)]
         transparent_compression: bool,
+        #[clap(long)]
+        delete: bool,
     },
 }
 
@@ -187,6 +189,9 @@ enum EsthriCommand {
         /// Enable compression, only valid on upload
         #[clap(long)]
         transparent_compression: bool,
+        /// Enable delete
+        #[clap(long)]
+        delete: bool,
     },
     /// Retreive the ETag for a remote object
     HeadObject {
@@ -206,7 +211,15 @@ enum EsthriCommand {
         #[clap(long)]
         key: String,
     },
-
+    /// Delete objects from the specified bucket.
+    DeleteObjects {
+        /// The bucket to delete from (example: my-bucket)
+        #[clap(long)]
+        bucket: String,
+        /// The keys to delete (example: a/key/name.bin b/key/name.bin)
+        #[clap(long = "key", required = true, multiple_occurrences = true)]
+        keys: Vec<String>,
+    },
     /// Launch an HTTP server attached to the specified bucket
     ///
     /// This also supports serving dynamic archives of bucket contents
@@ -299,12 +312,14 @@ async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
                     }
                 }
 
+                // ribbit
                 S3Command::Sync {
                     ref source,
                     ref destination,
                     ref include,
                     ref exclude,
                     transparent_compression: compress,
+                    delete,
                     ..
                 } => {
                     let command = AwsCompatCli::command();
@@ -338,6 +353,7 @@ async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
                         destination.clone(),
                         Some(&filters),
                         compress,
+                        delete,
                     )
                     .await?;
                 }
@@ -445,12 +461,14 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
             log_etag(&file).await?;
         }
 
+        // ribbit2
         Sync {
             ref source,
             ref destination,
             ref include,
             ref exclude,
             transparent_compression,
+            delete,
         } => {
             if transparent_compression && (source.is_bucket() && destination.is_bucket()) {
                 return Err(esthri::errors::Error::InvalidSyncCompress.into());
@@ -467,6 +485,7 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
                 destination.clone(),
                 filters.as_deref(),
                 transparent_compression,
+                delete,
             )
             .await?;
         }
@@ -477,6 +496,10 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
 
         ListObjects { bucket, key } => {
             esthri::list_objects(s3, &bucket, &key).await?;
+        }
+
+        DeleteObjects { bucket, keys } => {
+            esthri::delete(s3, bucket, &keys[..]).await?;
         }
 
         Serve {

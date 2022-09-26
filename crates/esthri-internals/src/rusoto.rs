@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Swift Navigation Inc.
+ * Copyright (C) 2022 Swift Navigation Inc.
  * Contact: Swift Navigation <dev@swiftnav.com>
  *
  * This source is subject to the license found in the file 'LICENSE' which must
@@ -10,8 +10,7 @@
  * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-pub(super) mod copy;
-pub(super) mod delete;
-pub(super) mod download;
-pub(super) mod sync;
-pub(super) mod upload;
+pub use rusoto_core::{ByteStream, HttpClient, Region, RusotoError, RusotoResult};
+pub use rusoto_credential::DefaultCredentialsProvider;
+
+pub use rusoto_s3::*;

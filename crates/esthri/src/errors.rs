@@ -15,13 +15,9 @@ use std::path::StripPrefixError;
 
 use chrono::ParseError;
 use glob::PatternError;
-use rusoto_core::RusotoError;
-use rusoto_s3::{
-    AbortMultipartUploadError, CompleteMultipartUploadError, CopyObjectError,
-    CreateMultipartUploadError, GetObjectError, HeadObjectError, ListObjectsV2Error,
-    PutObjectError, UploadPartError,
-};
 use tokio::task::JoinError;
+
+use crate::rusoto::*;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -90,6 +86,9 @@ pub enum Error {
     #[error(transparent)]
     GetObjectFailed(#[from] RusotoError<GetObjectError>),
 
+    #[error(transparent)]
+    DeleteObjectsFailed(#[from] RusotoError<DeleteObjectsError>),
+
     #[error("invalid key, did not exist remotely: {0}")]
     GetObjectInvalidKey(String),
 
@@ -122,6 +121,9 @@ pub enum Error {
 
     #[error("File is not gzip compressed")]
     FileNotCompressed,
+
+    #[error("Metadata was none during sync")]
+    MetadataNone,
 
     #[error("unknown storage class")]
     UnknownStorageClass(String),

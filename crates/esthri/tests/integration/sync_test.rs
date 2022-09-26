@@ -3,7 +3,7 @@ use std::fs;
 use glob::Pattern;
 use tempdir::TempDir;
 
-use esthri::{blocking, sync, GlobFilter, S3PathParam, FILTER_EMPTY};
+use esthri::{blocking, rusoto::S3Client, sync, GlobFilter, S3PathParam, FILTER_EMPTY};
 use esthri_test::{validate_key_hash_pairs, KeyHashPair};
 
 #[test]
@@ -25,6 +25,7 @@ fn test_sync_down() {
         source,
         destination,
         filters.as_deref(),
+        false,
         false,
     );
     assert!(res.is_ok(), "s3_sync result: {:?}", res);
@@ -48,6 +49,7 @@ async fn test_sync_down_async() {
         source,
         destination,
         filters.as_deref(),
+        false,
         false,
     )
     .await;
@@ -73,6 +75,7 @@ fn test_sync_down_without_slash() {
         destination,
         filters.as_deref(),
         false,
+        false,
     );
     assert!(res.is_ok());
 }
@@ -95,6 +98,7 @@ fn test_sync_up_without_slash() {
         source,
         destination,
         filters.as_deref(),
+        false,
         false,
     );
     assert!(res.is_ok());
@@ -119,6 +123,7 @@ fn test_sync_up() {
         destination,
         filters.as_deref(),
         false,
+        false,
     );
     assert!(res.is_ok());
 }
@@ -142,6 +147,7 @@ async fn test_sync_up_async() {
         destination,
         filters.as_deref(),
         false,
+        false,
     )
     .await;
     assert!(res.is_ok());
@@ -156,7 +162,14 @@ fn test_sync_up_default() {
     let source = S3PathParam::new_local(&local_directory);
     let destination = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, &s3_key);
 
-    let res = blocking::sync(s3client.as_ref(), source, destination, FILTER_EMPTY, false);
+    let res = blocking::sync(
+        s3client.as_ref(),
+        source,
+        destination,
+        FILTER_EMPTY,
+        false,
+        false,
+    );
     assert!(res.is_ok());
 
     let key_hash_pairs = [
@@ -174,6 +187,123 @@ fn test_sync_up_default() {
         assert!(res.is_some(), "s3 etag returned was nil for: {}", key);
         assert_eq!(res.unwrap().e_tag, key_hash_pair.1, "invalid hash: {}", key);
     }
+}
+
+#[test]
+fn test_sync_up_delete() {
+    let s3client = esthri_test::get_s3client();
+    let local_directory = esthri_test::copy_test_data("sync_up");
+    let s3_key_prefix = esthri_test::randomised_name("test_sync_up_delete/");
+
+    let source = S3PathParam::new_local(&local_directory);
+    let destination = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, &s3_key_prefix);
+
+    let res = blocking::sync(
+        s3client.as_ref(),
+        source.clone(),
+        destination.clone(),
+        FILTER_EMPTY,
+        false,
+        true,
+    );
+    assert!(res.is_ok());
+
+    let keys = ["1-one.data", "2-two.bin", "3-three.junk", "nested/2MiB.bin"];
+
+    for key in &keys[..] {
+        let key = format!("{}{}", &s3_key_prefix, key);
+        let res = blocking::head_object(s3client.as_ref(), esthri_test::TEST_BUCKET, &key);
+        assert!(res.is_ok(), "head object failed for: {}", key);
+        let res = res.unwrap();
+        assert!(
+            res.is_some(),
+            "head object info returned was nil for: {}",
+            key
+        );
+    }
+
+    let remove_path_target = "nested/2MiB.bin";
+    let remove_path_target = local_directory.join(remove_path_target);
+
+    fs::remove_file(&remove_path_target).expect("could not remove file");
+    assert!(fs::metadata(remove_path_target).is_err());
+
+    let res = blocking::sync(
+        s3client.as_ref(),
+        source,
+        destination,
+        FILTER_EMPTY,
+        false,
+        true,
+    );
+    assert!(res.is_ok());
+
+    let keyexists_pairs = [
+        ("1-one.data", true),
+        ("2-two.bin", true),
+        ("3-three.junk", true),
+        ("nested/2MiB.bin", false),
+    ];
+
+    for (key, exists) in &keyexists_pairs[..] {
+        let key = format!("{}{}", &s3_key_prefix, key);
+        let res = blocking::head_object(s3client.as_ref(), esthri_test::TEST_BUCKET, &key);
+        assert!(res.is_ok(), "head object failed for: {}", key);
+        let res = res.unwrap();
+        if *exists {
+            assert!(
+                res.is_some(),
+                "head object info returned was nil for: {}",
+                key
+            );
+        } else {
+            assert!(
+                res.is_none(),
+                "expected head object to fail for key: {}",
+                key
+            );
+        }
+    }
+}
+
+#[test]
+fn test_sync_down_delete() {
+    println!("ping1");
+    let s3client = esthri_test::get_s3client();
+    // Get path to some directory and populate it.
+    let local_directory = esthri_test::copy_test_data("sync_up");
+    // Create a key that correspods to non-existant data in an S3 bucket
+    let s3_key_prefix = esthri_test::randomised_name("test_sync_down_delete/");
+
+    let src = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, &s3_key_prefix);
+    let dst = S3PathParam::new_local(&local_directory);
+
+    let delete = true;
+
+    // Expect contents to have been copied to local directory
+    assert!(local_directory
+        .read_dir()
+        .expect("unable to read from directory")
+        .next()
+        .is_some());
+
+    // Perform sync with delete flag set. Because the target S3 directory is empty (TODO change term 'directory'), all contents in local directory should be deleted.
+    let res = blocking::sync(
+        s3client.as_ref(),
+        src.clone(),
+        dst.clone(),
+        FILTER_EMPTY,
+        false,
+        delete,
+    );
+    assert!(res.is_ok());
+
+    // Expect no files to exist within local_directory. Metadata such as directories are permissible.
+    let no_files = fs::read_dir(&local_directory)
+        .unwrap()
+        .all(|path| path.unwrap().file_type().unwrap().is_dir());
+
+    assert!(no_files);
 }
 
 #[test]
@@ -196,7 +326,14 @@ fn test_sync_down_default() {
     let source = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key);
     let destination = S3PathParam::new_local(&local_directory);
 
-    let res = blocking::sync(s3client.as_ref(), source, destination, FILTER_EMPTY, false);
+    let res = blocking::sync(
+        s3client.as_ref(),
+        source,
+        destination,
+        FILTER_EMPTY,
+        false,
+        false,
+    );
     assert!(res.is_ok());
 
     let key_hash_pairs = [
@@ -228,6 +365,7 @@ fn test_sync_down_filter() {
         destination,
         filters.as_deref(),
         false,
+        false,
     );
     assert!(res.is_ok());
 
@@ -257,12 +395,13 @@ async fn test_sync_across() {
         destination,
         filters.as_deref(),
         false,
+        false,
     )
     .await;
     assert!(res.is_ok(), "s3_sync result: {:?}", res);
 }
 
-fn sync_test_files_up_compressed(s3client: &rusoto_s3::S3Client, s3_key: &str) -> String {
+fn sync_test_files_up_compressed(s3client: &S3Client, s3_key: &str) -> String {
     let data_dir = esthri_test::test_data("sync_up/");
     let temp_data_dir = "sync_up_compressed/";
     let old_cwd = std::env::current_dir().unwrap();
@@ -276,7 +415,7 @@ fn sync_test_files_up_compressed(s3client: &rusoto_s3::S3Client, s3_key: &str) -
     fs_extra::dir::copy(data_dir_fp, temp_data_dir, &opts).unwrap();
     let source = S3PathParam::new_local(temp_data_dir);
     let destination = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key);
-    let res = blocking::sync(s3client, source, destination, FILTER_EMPTY, true);
+    let res = blocking::sync(s3client, source, destination, FILTER_EMPTY, true, false);
     assert!(res.is_ok());
     s3_key.to_string()
 }
@@ -329,6 +468,7 @@ fn test_sync_down_compressed() {
         destination,
         FILTER_EMPTY,
         true,
+        false,
     );
     assert!(res.is_ok());
 
@@ -383,6 +523,7 @@ fn test_sync_down_compressed_mixed() {
             destination,
             FILTER_EMPTY,
             false,
+            false,
         );
         assert!(res.is_ok());
 
@@ -411,6 +552,7 @@ fn test_sync_down_compressed_mixed() {
             destination,
             FILTER_EMPTY,
             true,
+            false,
         );
         assert!(res.is_ok());
 

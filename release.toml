@@ -1,7 +1,7 @@
-pre-release-commit-message = "Release: {{version}}"
 post-release-commit-message = "Start next development iteration: {{next_version}}"
-tag-message = "{{tag_name}}"
+pre-release-commit-message = "release: {{crate_name}}: version {{version}}"
+tag-message = "Esthri version {{tag_name}}"
 tag-name = "{{version}}"
 allow-branch = ["master"]
-consolidate-commits = true
+consolidate-commits = false
 consolidate-pushes = true
