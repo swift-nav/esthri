@@ -100,7 +100,6 @@ where
 
     match (source, destination) {
         (S3PathParam::Local { path }, S3PathParam::Bucket { bucket, key }) => {
-            println!("SYNC local to remote");
             info!(
                 "sync-up, local directory: {}, bucket: {}, key: {}",
                 path.display(),
@@ -111,7 +110,6 @@ where
             sync_local_to_remote(s3, &bucket, &key, &path, &filters, compressed, delete).await?;
         }
         (S3PathParam::Bucket { bucket, key }, S3PathParam::Local { path }) => {
-            println!("SYNC remote to local");
             info!(
                 "sync-down, local directory: {}, bucket: {}, key: {}",
                 path.display(),
@@ -410,7 +408,6 @@ async fn sync_local_to_remote<T>(
 where
     T: S3 + Send + Sync + Clone,
 {
-    println!("key: {}", key);
     let directory = directory.as_ref();
     let task_count = Config::global().concurrent_sync_tasks();
 
@@ -573,11 +570,9 @@ async fn sync_across<T>(
 where
     T: S3 + Send + Sync + Clone,
 {
-    println!("sync_across");
     let mut stream = list_objects_stream(s3, source_bucket, source_prefix);
 
     while let Some(from_entries) = stream.try_next().await? {
-        println!("while iteration");
         for entry in from_entries {
             if let S3ListingItem::S3Object(src_object) = entry {
                 let path = process_globs(&src_object.key, filters);
