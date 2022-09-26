@@ -105,7 +105,7 @@ pipeline {
               script {
                 sh("""/bin/bash -ex
                     |
-                    | git lfs install
+                    | strace -v -f -o strace.log git lfs install || cat strace.log
                     | git lfs pull
                     |
                     | cargo make test-min
@@ -128,7 +128,7 @@ pipeline {
               script {
                 sh("""/bin/bash -ex
                     |
-                    | git lfs install
+                    | strace -v -f -o strace.log git lfs install || cat strace.log
                     | git lfs pull
                     |
                     | cargo make --profile dev+nativetls test
@@ -151,7 +151,7 @@ pipeline {
               script {
                 sh("""/bin/bash -ex
                     |
-                    | git lfs install
+                    | strace -v -f -o strace.log git lfs install || cat strace.log
                     | git lfs pull
                     |
                     | cargo make --profile dev+nativetls test-min
