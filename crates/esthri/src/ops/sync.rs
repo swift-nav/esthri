@@ -615,7 +615,6 @@ where
             dest_bucket,
             destination_key,
             filters,
-            Config::global().concurrent_sync_tasks(),
         )
         .await
     } else {
@@ -631,7 +630,6 @@ async fn sync_delete_across<T>(
     destination_bucket: &str,
     destination_prefix: &str,
     filters: &[GlobFilter],
-    task_count: usize,
 ) -> Result<()>
 where
     T: S3 + Send + Sync + Clone,
@@ -665,8 +663,10 @@ where
     // Delete files that exist in destination, but not in source
     pin_mut!(delete_paths_stream);
     crate::delete_streaming(s3, destination_bucket, delete_paths_stream)
-        .buffer_unordered(task_count)
-        .try_for_each_concurrent(task_count, |_| future::ready(Ok(())))
+        .buffer_unordered(Config::global().concurrent_sync_tasks())
+        .try_for_each_concurrent(Config::global().concurrent_sync_tasks(), |_| {
+            future::ready(Ok(()))
+        })
         .await
 }
 
