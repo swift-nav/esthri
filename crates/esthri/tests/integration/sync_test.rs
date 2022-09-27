@@ -1,5 +1,7 @@
 use std::fs;
 
+use tempfile::tempdir;
+
 use glob::Pattern;
 use tempdir::TempDir;
 
@@ -315,19 +317,18 @@ fn test_sync_across_delete() {
     let s3_key_dst_prefix = esthri_test::randomised_name("test_sync_across_delete_dst/");
 
     // Create a dummy file. Deletion of this file will be indicative of test success
-    let file_pathbuf = esthri_test::test_data("sync_across/delete-me.txt");
-    let _expect_to_be_deleted =
-        fs::File::create(file_pathbuf.as_path()).expect("Error encountered while creating file");
+    let temp_directory = tempdir().expect("Unabel to create temp directory");
+    let file_pathbuf = temp_directory.path().join("delete-me.txt");
+    let mut _to_be_delete_file =
+        fs::File::create(&file_pathbuf).expect("Error encountered while creating file");
+
+    let temp_directory_as_pathbuf = temp_directory.as_ref().to_path_buf();
 
     // Create 2 empty buckets
     let source = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, &s3_key_src_prefix);
     let destination = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, &s3_key_dst_prefix);
 
-    // let local_source = S3PathParam::new_local(&file_pathbuf);
-    let local_dir = esthri_test::test_data("sync_across/");
-    let local_source = S3PathParam::new_local(esthri_test::test_data(
-        local_dir.display().to_string().as_ref(),
-    ));
+    let local_source = S3PathParam::new_local(temp_directory_as_pathbuf.as_path());
 
     // Copy the dummy file to one of the test buckets
     let res = blocking::sync(
