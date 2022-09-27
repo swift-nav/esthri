@@ -133,3 +133,22 @@ fn init_s3client() {
         Some(_) => {}
     }
 }
+
+#[cfg(test)]
+mod panic_test {
+    use super::*;
+
+    #[test]
+    #[should_panic]
+    fn test_dir_unset() {
+        let key = "WORKSPACE";
+        std::env::set_var(key, "somedir");
+        // no panic since env is set
+        test_data_dir();
+        assert_eq!(std::env::var(key), Ok("somedir".to_string()));
+
+        std::env::remove_var(key);
+        // panic due to unset env
+        test_data_dir();
+    }
+}
