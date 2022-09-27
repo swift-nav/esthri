@@ -278,3 +278,21 @@ where
     .await
     .map_err(Error::CreateMultipartUploadFailed)
 }
+
+pub async fn get_bucket_location<T>(s3: &T, bucket: &str) -> Result<String>
+where
+    T: S3,
+{
+    let region = handle_dispatch_error(|| {
+        s3.get_bucket_location(GetBucketLocationRequest {
+            bucket: bucket.to_owned(),
+            ..Default::default()
+        })
+    })
+    .await
+    .map_err(Error::GetBucketLocationFailed)?
+    .location_constraint
+    .ok_or(Error::LocationConstraintNone)?;
+    log::debug!("got region={}", region);
+    Ok(region)
+}
