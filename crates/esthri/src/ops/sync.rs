@@ -141,6 +141,7 @@ where
                 &destination_bucket,
                 &destination_key,
                 &filters,
+                delete,
             )
             .await?;
         }
@@ -181,12 +182,11 @@ fn process_globs<'a, P: AsRef<Path> + 'a>(path: P, filters: &[GlobFilter]) -> Op
     }
 }
 
-// Returns a Stream of all files in a directory, recursively retrieving files in subdirecectories as well.
+/// Returns a Stream of all files in a directory, recursively retrieving files in subdirecectories as well.
 fn flattened_local_directory(
     directory: &Path,
     filters: &[GlobFilter],
 ) -> impl Stream<Item = Result<PathBuf>> {
-    // Take something that is blocking and adapt it so that it can run in an async context // TODO move to notes and remove from PR
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
     // WalkDir: recursive directory discovery process. Blocking process because it interacts with filesystem (navigating dirs) // TODO move to notes and remove from PR
     let walk_dir = WalkDir::new(directory);
@@ -480,7 +480,7 @@ where
 {
     let stream = flattened_object_listing(s3, bucket, key, directory, filters, false);
     let delete_paths_stream = stream.try_filter_map(|object_info| async {
-        let (path, s3_metadata) = object_info;
+        let (path, _, s3_metadata) = object_info;
         if let Some(s3_metadata) = s3_metadata {
             let fs_metadata = fs::metadata(&path).await;
             if let Err(err) = fs_metadata {
@@ -567,10 +567,10 @@ async fn sync_across<T>(
     dest_bucket: &str,
     destination_key: &str,
     filters: &[GlobFilter],
-    // delete: bool,
+    delete: bool,
 ) -> Result<()>
 where
-    T: S3 + Send,
+    T: S3 + Send + Sync + Clone,
 {
     let mut stream = list_objects_stream(s3, source_bucket, source_prefix);
 
@@ -607,9 +607,70 @@ where
         }
     }
 
-    Ok(())
+    if delete {
+        sync_delete_across(
+            s3,
+            source_bucket,
+            source_prefix,
+            dest_bucket,
+            destination_key,
+            filters,
+        )
+        .await
+    } else {
+        Ok(())
+    }
 }
 
+/// Delete all files in `directory` which do not exist withing a `bucket's` corresponding `directory` key prefix
+async fn sync_delete_across<T>(
+    s3: &T,
+    source_bucket: &str,
+    source_prefix: &str,
+    destination_bucket: &str,
+    destination_prefix: &str,
+    filters: &[GlobFilter],
+) -> Result<()>
+where
+    T: S3 + Send + Sync + Clone,
+{
+    // Identify all files in destination bucket
+    let all_files_in_destination_bucket_stream = flattened_object_listing(
+        s3,
+        destination_bucket,
+        destination_prefix,
+        std::path::Path::new(source_prefix),
+        filters,
+        false,
+    );
+
+    // For each file, perform a head_object_request on the source directory to determine if file only exists in the destination
+    let delete_paths_stream = all_files_in_destination_bucket_stream.try_filter_map(
+        |(_path, key, _s3_metadata)| async move {
+            let filename = key.strip_prefix(destination_prefix).unwrap();
+            let source_key = source_prefix.to_string() + filename;
+            if head_object_request(s3, source_bucket, &source_key, None)
+                .await?
+                .is_none()
+            {
+                Ok(Some(source_key))
+            } else {
+                Ok(None)
+            }
+        },
+    );
+
+    // Delete files that exist in destination, but not in source
+    pin_mut!(delete_paths_stream);
+    crate::delete_streaming(s3, destination_bucket, delete_paths_stream)
+        .buffer_unordered(Config::global().concurrent_sync_tasks())
+        .try_for_each_concurrent(Config::global().concurrent_sync_tasks(), |_| {
+            future::ready(Ok(()))
+        })
+        .await
+}
+
+// Create a result stream consisting of tuples for all files in bucket/prefix. Tuples are of the form (path to file locally <if applicable>, file prefix, file metadata)
 fn flattened_object_listing<'a, ClientT>(
     s3: &'a ClientT,
     bucket: &'a str,
@@ -617,7 +678,7 @@ fn flattened_object_listing<'a, ClientT>(
     directory: &'a Path,
     filters: &'a [GlobFilter],
     transparent_decompress: bool,
-) -> impl Stream<Item = Result<(PathBuf, Option<ListingMetadata>)>> + 'a
+) -> impl Stream<Item = Result<(PathBuf, String, Option<ListingMetadata>)>> + 'a
 where
     ClientT: S3 + Send + Clone,
 {
@@ -669,6 +730,7 @@ where
                         let s3_suffix = s3_suffix.to_string_lossy().into();
                         yield Ok((
                             local_path,
+                            entry.key,
                             ListingMetadata::some(s3_suffix, entry.e_tag, compressed),
                         ));
                     }
@@ -774,7 +836,8 @@ where
     let directory = directory.as_ref();
     let task_count = Config::global().concurrent_sync_tasks();
     let object_listing =
-        flattened_object_listing(s3, bucket, key, directory, filters, transparent_decompress);
+        flattened_object_listing(s3, bucket, key, directory, filters, transparent_decompress)
+            .map_ok(|(path, _key, s3_metadata)| (path, s3_metadata));
     let cmd = if transparent_decompress {
         SyncCmd::DownCompressed
     } else {
