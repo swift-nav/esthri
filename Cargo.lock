@@ -546,7 +546,6 @@ dependencies = [
  "bytes",
  "chrono",
  "envy",
- "esthri",
  "esthri-internals",
  "esthri-test",
  "fs_extra",
