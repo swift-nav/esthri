@@ -119,7 +119,7 @@ fn test_upload_zero_size() {
 }
 
 #[test]
-fn test_upload_staroge_class_all() {
+fn test_upload_storage_class_all() {
     let s3client = esthri_test::get_s3client();
     let filename = "test5mb.bin";
     let filepath = esthri_test::test_data(filename);
