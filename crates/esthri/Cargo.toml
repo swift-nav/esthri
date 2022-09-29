@@ -40,12 +40,15 @@ tokio-retry = "0.3"
 tokio-stream = "0.1"
 tokio-util = { version = "0.7", features = ["io"] }
 walkdir = "2"
+strum = "0.24.1"
+strum_macros = "0.24.3"
 
 [dependencies.esthri-internals]
 path = "../esthri-internals"
 
 [dev-dependencies]
 esthri-test = { path = "../esthri-test" }
+esthri = { path = "../esthri"}
 tar = "0.4"
 tempdir = "0.3"
 backtrace = "0.3"
