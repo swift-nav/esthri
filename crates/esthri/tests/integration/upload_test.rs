@@ -6,6 +6,8 @@ use esthri::upload;
 use esthri::upload_from_reader;
 use esthri::HeadObjectInfo;
 
+use strum::IntoEnumIterator;
+
 #[test]
 fn test_upload() {
     let s3client = esthri_test::get_s3client();
@@ -117,47 +119,36 @@ fn test_upload_zero_size() {
 }
 
 #[test]
-fn test_upload_storage_class_rrs() {
+fn test_upload_storage_class_all() {
     let s3client = esthri_test::get_s3client();
     let filename = "test5mb.bin";
     let filepath = esthri_test::test_data(filename);
     let s3_key = esthri_test::randomised_name(&format!("test_upload/{}", filename));
 
-    let res = esthri::blocking::upload_with_storage_class(
-        s3client.as_ref(),
-        esthri_test::TEST_BUCKET,
-        &s3_key,
-        &filepath,
-        S3StorageClass::RRS,
-    );
-    assert!(res.is_ok());
+    // 1. Glacier Class might take hours to populate metadata, skipping tests...
+    // Reference: https://aws.amazon.com/s3/faqs/
+    // 2. Uploading to S3 bucket in AWS region via OUTPOSTS is not supported, skipping test...
+    // Reference: https://docs.aws.amazon.com/AmazonS3/latest/userguide/storage-class-intro.html#s3-outposts
+    for class in S3StorageClass::iter().filter(|x| {
+        !x.eq(&S3StorageClass::GlacierDeepArchive)
+            && !x.eq(&S3StorageClass::GlacierFlexibleRetrieval)
+            && !x.eq(&S3StorageClass::GlacierInstantRetrieval)
+            && !x.eq(&S3StorageClass::Outposts)
+    }) {
+        let res = esthri::blocking::upload_with_storage_class(
+            s3client.as_ref(),
+            esthri_test::TEST_BUCKET,
+            &s3_key,
+            &filepath,
+            class,
+        );
+        assert!(res.is_ok());
 
-    let res = esthri::blocking::head_object(s3client.as_ref(), esthri_test::TEST_BUCKET, &s3_key);
-    let obj_info: Option<HeadObjectInfo> = res.unwrap();
-    assert!(obj_info.is_some());
-    let obj_info: HeadObjectInfo = obj_info.unwrap();
-    assert_eq!(obj_info.storage_class, S3StorageClass::RRS);
-}
-
-#[test]
-fn test_upload_storage_class_standard() {
-    let s3client = esthri_test::get_s3client();
-    let filename = "test5mb.bin";
-    let filepath = esthri_test::test_data(filename);
-    let s3_key = esthri_test::randomised_name(&format!("test_upload/{}", filename));
-
-    let res = esthri::blocking::upload_with_storage_class(
-        s3client.as_ref(),
-        esthri_test::TEST_BUCKET,
-        &s3_key,
-        &filepath,
-        S3StorageClass::Standard,
-    );
-    assert!(res.is_ok());
-
-    let res = esthri::blocking::head_object(s3client.as_ref(), esthri_test::TEST_BUCKET, &s3_key);
-    let obj_info: Option<HeadObjectInfo> = res.unwrap();
-    assert!(obj_info.is_some());
-    let obj_info: HeadObjectInfo = obj_info.unwrap();
-    assert_eq!(obj_info.storage_class, S3StorageClass::Standard);
+        let res =
+            esthri::blocking::head_object(s3client.as_ref(), esthri_test::TEST_BUCKET, &s3_key);
+        let obj_info: Option<HeadObjectInfo> = res.unwrap();
+        assert!(obj_info.is_some());
+        let obj_info: HeadObjectInfo = obj_info.unwrap();
+        assert_eq!(obj_info.storage_class, class);
+    }
 }

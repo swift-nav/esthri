@@ -18,6 +18,7 @@ use std::str::FromStr;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use futures::Stream;
+use strum_macros::EnumIter;
 
 use crate::{retry::handle_dispatch_error, Error, Result};
 
@@ -102,7 +103,7 @@ where
     }
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Deserialize)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Deserialize, EnumIter)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum S3StorageClass {
     Standard,
