@@ -285,6 +285,7 @@ fn should_always_fallback_to_aws() -> bool {
 }
 
 async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
+    setup_upload_termination_handler(s3.clone());
     match cmd {
         AwsCommand::S3 { cmd } => {
             match cmd {
@@ -424,6 +425,7 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
             storage_class,
             compress,
         } => {
+            setup_upload_termination_handler(s3.clone());
             let storage_class = storage_class.unwrap_or_else(|| Config::global().storage_class());
 
             if compress {
@@ -469,6 +471,7 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
             transparent_compression,
             delete,
         } => {
+            setup_upload_termination_handler(s3.clone());
             if transparent_compression && (source.is_bucket() && destination.is_bucket()) {
                 return Err(esthri::errors::Error::InvalidSyncCompress.into());
             }
@@ -575,8 +578,6 @@ async fn async_main() -> Result<()> {
 
     let credentials_provider = DefaultCredentialsProvider::new().unwrap();
     let s3 = S3Client::new_with(http_client, credentials_provider, Region::default());
-
-    setup_upload_termination_handler(s3.clone());
 
     match cli {
         Cli::Esthri(esthri_cli) => dispatch_esthri_cli(esthri_cli.cmd, &s3).await?,
