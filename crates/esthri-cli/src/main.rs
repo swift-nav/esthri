@@ -461,7 +461,6 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
             log_etag(&file).await?;
         }
 
-        // ribbit2
         Sync {
             ref source,
             ref destination,
