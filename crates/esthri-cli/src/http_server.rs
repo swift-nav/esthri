@@ -11,7 +11,6 @@
  */
 
 use std::{
-    cell::Cell,
     convert::Infallible,
     io::{self, ErrorKind},
     net::SocketAddr,
@@ -23,9 +22,7 @@ use std::{
 };
 
 use anyhow::anyhow;
-
 use async_stream::stream;
-
 use async_zip::{
     write::{EntryOptions, ZipFileWriter},
     Compression,
@@ -36,9 +33,7 @@ use hyper::header::{CONTENT_ENCODING, LOCATION};
 use log::*;
 use maud::{html, Markup, DOCTYPE};
 use mime_guess::mime::{APPLICATION_OCTET_STREAM, TEXT_HTML_UTF_8};
-use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
-
 use tokio::{io::DuplexStream, sync::oneshot};
 use tokio_util::codec::{BytesCodec, FramedRead};
 use warp::{
@@ -187,36 +182,25 @@ struct ErrorMessage {
     message: String,
 }
 
-type SenderT = oneshot::Sender<bool>;
-type MaybeSenderT = Option<SenderT>;
-type SharedSenderT = Mutex<Cell<MaybeSenderT>>;
-
-static SHUTDOWN_TX: OnceCell<SharedSenderT> = OnceCell::new();
+static SHUTDOWN_TX: Mutex<Option<oneshot::Sender<()>>> = Mutex::new(None);
 
 fn setup_termination_handler() {
     tokio::spawn(async {
         tokio::signal::ctrl_c()
             .await
             .expect("failed to listen for ctrl-c");
-        let _: Result<_, _> = (|| {
-            SHUTDOWN_TX
-                .get()
-                .ok_or_else(|| {
-                    error!("shutdown signaler not initialized");
-                })?
-                .lock()
-                .map_err(|_| {
-                    error!("failed to lock shutdown signaler");
-                })?
-                .take()
-                .ok_or_else(|| {
-                    error!("termination handler already triggered");
-                })
-                .map(|tx| tx.send(true))
-                .map_err(|_| {
-                    error!("error triggering termination handler");
-                })
-        })();
+        let res = SHUTDOWN_TX
+            .lock()
+            .expect("shutdown tx lock poisoned")
+            .take()
+            .ok_or_else(|| anyhow!("termination handler already triggered"))
+            .and_then(|tx| {
+                tx.send(())
+                    .map_err(|_| anyhow!("failed to send shutdown signal"))
+            });
+        if let Err(err) = res {
+            error!("{}", err);
+        }
     });
 }
 
@@ -300,10 +284,7 @@ pub async fn run(
 
     let (tx, rx) = oneshot::channel();
 
-    SHUTDOWN_TX
-        .set(Mutex::new(Cell::new(Some(tx))))
-        .ok()
-        .expect("failed to set termination signaler");
+    *SHUTDOWN_TX.lock().expect("shutdown tx lock poisoned") = Some(tx);
 
     let still_alive = || "still alive";
     let health_check = warp::path(".esthri_health_check").map(still_alive);
