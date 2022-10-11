@@ -25,10 +25,18 @@ pipeline {
     buildDiscarder(logRotator(daysToKeepStr: '30'))
   }
   stages {
-    stage('Prepare Jenkins docker') {
-      agent { dockerfile { reuseNode true } }
-      steps {
-        sh("echo done")
+    parallel {
+      stage('Prepare docker (Rust latest)') {
+        agent { dockerfile { reuseNode true } }
+        steps {
+          sh("echo done")
+        }
+      }
+      stage('Prepare docker (Rust MSRV)') {
+        agent { dockerfile { reuseNode true; additionalBuildArgs "--build-arg=RUST_VERSION=1.56.1"} }
+        steps {
+          sh("echo done")
+        }
       }
     }
     stage('Build checks') {
