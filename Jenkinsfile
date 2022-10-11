@@ -45,10 +45,22 @@ pipeline {
             sh("cargo make build-lib")
           }
         }
-        stage('Build CLI with minimum features (rustls)') {
+        stage('Build MSRV (rustls)') {
+          agent { dockerfile { reuseNode true; args "--build-arg=RUST_VERSION=1.56.1"} }
+          steps {
+            sh("cargo make -p dev+msrv build-lib")
+          }
+        }
+        stage('Build MSRV (nativetls)') {
+          agent { dockerfile { reuseNode true; args "--build-arg=RUST_VERSION=1.56.1"} }
+          steps {
+            sh("cargo make -p dev+msrv+nativetls build-lib")
+          }
+        }
+        stage('Build CLI (rustls)') {
           agent { dockerfile { reuseNode true } }
           steps {
-            sh("cargo make build-min-cli")
+            sh("cargo make build-cli")
           }
         }
         stage('Build (nativetls)') {

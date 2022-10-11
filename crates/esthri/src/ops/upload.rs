@@ -529,7 +529,11 @@ fn upload_part_requests<'a>(
 ) -> impl Stream<Item = UploadPartRequest> + 'a {
     let last_part = {
         let remaining = file_size % part_size;
-        (remaining > 0).then_some((file_size / part_size + 1, remaining))
+        if remaining > 0 {
+            Some((file_size / part_size + 1, remaining))
+        } else {
+            None
+        }
     };
     let sizes = (1..=file_size / part_size)
         .map(move |part_number| (part_number, part_size))

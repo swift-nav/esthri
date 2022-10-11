@@ -1,4 +1,6 @@
-FROM rust:1.64-slim-buster
+ARG RUST_VERSION=1.64
+
+FROM rust:${RUST_VERSION}-slim-buster
 
 ARG DEBIAN_FRONTEND=noninterative
 

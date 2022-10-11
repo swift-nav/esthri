@@ -10,6 +10,8 @@
  * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
  */
 
+#![cfg_attr(feature = "aggressive_lint", deny(warnings))]
+
 pub use hyper;
 
 use hyper::client::connect::HttpConnector;
