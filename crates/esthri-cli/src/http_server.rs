@@ -34,7 +34,10 @@ use log::*;
 use maud::{html, Markup, DOCTYPE};
 use mime_guess::mime::{APPLICATION_OCTET_STREAM, TEXT_HTML_UTF_8};
 use serde::{Deserialize, Serialize};
-use tokio::{io::DuplexStream, sync::oneshot};
+use tokio::{
+    io::DuplexStream,
+    signal::unix::{signal as unix_signal, SignalKind},
+};
 use tokio_util::codec::{BytesCodec, FramedRead};
 use warp::{
     http::{
@@ -182,28 +185,6 @@ struct ErrorMessage {
     message: String,
 }
 
-static SHUTDOWN_TX: Mutex<Option<oneshot::Sender<()>>> = Mutex::new(None);
-
-fn setup_termination_handler() {
-    tokio::spawn(async {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("failed to listen for ctrl-c");
-        let res = SHUTDOWN_TX
-            .lock()
-            .expect("shutdown tx lock poisoned")
-            .take()
-            .ok_or_else(|| anyhow!("termination handler already triggered"))
-            .and_then(|tx| {
-                tx.send(())
-                    .map_err(|_| anyhow!("failed to send shutdown signal"))
-            });
-        if let Err(err) = res {
-            error!("{}", err);
-        }
-    });
-}
-
 fn with_bucket(bucket: String) -> impl Filter<Extract = (String,), Error = Infallible> + Clone {
     warp::any().map(move || bucket.clone())
 }
@@ -280,11 +261,8 @@ pub async fn run(
     index_html: bool,
     allowed_prefixes: &[String],
 ) -> Result<(), Infallible> {
-    setup_termination_handler();
-
-    let (tx, rx) = oneshot::channel();
-
-    *SHUTDOWN_TX.lock().expect("shutdown tx lock poisoned") = Some(tx);
+    let mut terminate_signal_stream =
+        unix_signal(SignalKind::terminate()).expect("could not setup tokio signal handler");
 
     let still_alive = || "still alive";
     let health_check = warp::path(".esthri_health_check").map(still_alive);
@@ -298,8 +276,8 @@ pub async fn run(
         ))
         .recover(handle_rejection);
 
-    let (addr, server) = warp::serve(routes).bind_with_graceful_shutdown(*address, async {
-        rx.await.ok();
+    let (addr, server) = warp::serve(routes).bind_with_graceful_shutdown(*address, async move {
+        terminate_signal_stream.recv().await;
         debug!("got shutdown signal, waiting for all open connections to complete...");
     });
 
