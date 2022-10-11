@@ -46,13 +46,13 @@ pipeline {
           }
         }
         stage('Build MSRV (rustls)') {
-          agent { dockerfile { reuseNode true; args "--build-arg=RUST_VERSION=1.56.1"} }
+          agent { dockerfile { reuseNode true; additionalBuildArgs "--build-arg=RUST_VERSION=1.56.1"} }
           steps {
             sh("cargo make -p dev+msrv build-lib")
           }
         }
         stage('Build MSRV (nativetls)') {
-          agent { dockerfile { reuseNode true; args "--build-arg=RUST_VERSION=1.56.1"} }
+          agent { dockerfile { reuseNode true; additionalBuildArgs "--build-arg=RUST_VERSION=1.56.1"} }
           steps {
             sh("cargo make -p dev+msrv+nativetls build-lib")
           }
