@@ -25,10 +25,20 @@ pipeline {
     buildDiscarder(logRotator(daysToKeepStr: '30'))
   }
   stages {
-    stage('Prepare Jenkins docker') {
-      agent { dockerfile { reuseNode true } }
-      steps {
-        sh("echo done")
+    stage('Prepare docker') {
+      parallel {
+        stage('Prepare docker (Rust latest)') {
+          agent { dockerfile { reuseNode true } }
+          steps {
+            sh("echo done")
+          }
+        }
+        stage('Prepare docker (Rust MSRV)') {
+          agent { dockerfile { reuseNode true; additionalBuildArgs "--build-arg=RUST_VERSION=1.56.1"} }
+          steps {
+            sh("echo done")
+          }
+        }
       }
     }
     stage('Build checks') {
@@ -45,10 +55,22 @@ pipeline {
             sh("cargo make build-lib")
           }
         }
-        stage('Build CLI with minimum features (rustls)') {
+        stage('Build MSRV (rustls)') {
+          agent { dockerfile { reuseNode true; additionalBuildArgs "--build-arg=RUST_VERSION=1.56.1"} }
+          steps {
+            sh("cargo make -p dev+msrv build-lib")
+          }
+        }
+        stage('Build MSRV (nativetls)') {
+          agent { dockerfile { reuseNode true; additionalBuildArgs "--build-arg=RUST_VERSION=1.56.1"} }
+          steps {
+            sh("cargo make -p dev+msrv+nativetls build-lib")
+          }
+        }
+        stage('Build CLI (rustls)') {
           agent { dockerfile { reuseNode true } }
           steps {
-            sh("cargo make build-min-cli")
+            sh("cargo make build-cli")
           }
         }
         stage('Build (nativetls)') {
@@ -61,12 +83,6 @@ pipeline {
           agent { dockerfile { reuseNode true } }
           steps {
             sh("cargo make --profile dev+nativetls build-lib")
-          }
-        }
-        stage('Build CLI with minimum features (nativetls)') {
-          agent { dockerfile { reuseNode true } }
-          steps {
-            sh("cargo make --profile dev+nativetls build-min-cli")
           }
         }
         stage('Test (rustls)') {

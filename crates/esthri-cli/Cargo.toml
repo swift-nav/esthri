@@ -15,6 +15,7 @@ keywords = ["aws", "s3"]
 default = ["rustls"]
 nativetls = ["esthri/nativetls"]
 rustls = ["esthri/rustls"]
+aggressive_lint = []
 
 [[bin]]
 name = "esthri"

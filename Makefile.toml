@@ -7,22 +7,23 @@ VERBOSE = ""
 TLS_PROVIDER = "rustls"
 TARGET = ""
 WORKSPACE = "${CARGO_MAKE_WORKING_DIRECTORY}"
+MSRV = ""
 
 [env.release]
 BUILD_FLAVOR = "--release"
-RUSTFLAGS="-C link-arg=-fuse-ld=lld -C codegen-units=1 -C panic=abort -C lto=fat -C opt-level=3"
+RUSTFLAGS="-C codegen-units=1 -C panic=abort -C lto=fat -C opt-level=3"
 VERBOSE = "-vv"
 
 [env.'release+static']
 BUILD_FLAVOR = "--release"
 TARGET = "--target=x86_64-unknown-linux-musl"
-RUSTFLAGS="-C link-arg=-fuse-ld=lld -C codegen-units=1 -C panic=abort -C lto=fat -C opt-level=3"
+RUSTFLAGS="-C codegen-units=1 -C panic=abort -C lto=fat -C opt-level=3"
 VERBOSE = "-vv"
 
 [env.'release+mac']
 BUILD_FLAVOR = "--release"
 TARGET = "--target=x86_64-apple-darwin"
-RUSTFLAGS="-C link-arg=-fuse-ld=lld -C codegen-units=1 -C panic=abort -C lto=fat -C opt-level=3"
+RUSTFLAGS="-C codegen-units=1 -C panic=abort -C lto=fat -C opt-level=3"
 VERBOSE = "-vv"
 
 [env.'release+windows']
@@ -32,11 +33,20 @@ TARGET = "--target=x86_64-pc-windows-msvc -C panic=abort"
 [env.'release+nativetls']
 BUILD_FLAVOR = "--release"
 TLS_PROVIDER = "nativetls"
-RUSTFLAGS="-C link-arg=-fuse-ld=lld -C codegen-units=1 -C panic=abort -C lto=fat -C opt-level=3"
+RUSTFLAGS="-C codegen-units=1 -C panic=abort -C lto=fat -C opt-level=3"
 VERBOSE = "-vv"
 
 [env.'dev+nativetls']
 TLS_PROVIDER = "nativetls"
+VERBOSE = "-vv"
+
+[env.'dev+msrv']
+MSRV = "+1.56.1"
+VERBOSE = "-vv"
+
+[env.'dev+msrv+nativetls']
+TLS_PROVIDER = "nativetls"
+MSRV = "+1.56.1"
 VERBOSE = "-vv"
 
 [tasks.check]
@@ -63,25 +73,38 @@ args = [
         "@@remove-empty(TARGET)"
         ]
 
-[tasks.build-min-cli]
+[tasks.do-cargo]
+private = true
+install_crate = false
+command = "cargo"
+args = [
+        "@@remove-empty(MSRV)",
+        "${CARGO_SUBCOMMAND}",
+        "--features=${TLS_PROVIDER},aggressive_lint",
+        "--no-default-features",
+        "@@remove-empty(BUILD_FLAVOR)",
+        "@@remove-empty(TARGET)",
+        "@@split(PACKAGE, )",
+        ]
+
+[tasks.build-cli]
 command = "cargo"
 args = [
         "build",
         "--features=${TLS_PROVIDER},aggressive_lint",
         "--no-default-features",
         "@@remove-empty(BUILD_FLAVOR)",
-        "@@remove-empty(TARGET)"
+        "@@remove-empty(TARGET)",
+        "-p", "esthri-cli",
         ]
 
 [tasks.build-lib]
-command = "cargo"
-args = [
-        "build",
-        "--features=${TLS_PROVIDER},aggressive_lint",
-        "--no-default-features",
-        "@@remove-empty(BUILD_FLAVOR)",
-        "@@remove-empty(TARGET)"
-        ]
+run_task = "do-cargo"
+env = { PACKAGE="-p esthri", CARGO_SUBCOMMAND = "build" }
+
+[tasks.check-lib]
+run_task = "do-cargo"
+env = { PACKAGE="-p esthri", CARGO_SUBCOMMAND = "check" }
 
 [tasks.test]
 env = { RUST_LOG = "esthri=debug", RUST_BACKTRACE = "1" }

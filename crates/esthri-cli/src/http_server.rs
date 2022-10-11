@@ -11,7 +11,6 @@
  */
 
 use std::{
-    cell::Cell,
     convert::Infallible,
     io::{self, ErrorKind},
     net::SocketAddr,
@@ -23,9 +22,7 @@ use std::{
 };
 
 use anyhow::anyhow;
-
 use async_stream::stream;
-
 use async_zip::{
     write::{EntryOptions, ZipFileWriter},
     Compression,
@@ -36,10 +33,11 @@ use hyper::header::{CONTENT_ENCODING, LOCATION};
 use log::*;
 use maud::{html, Markup, DOCTYPE};
 use mime_guess::mime::{APPLICATION_OCTET_STREAM, TEXT_HTML_UTF_8};
-use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
-
-use tokio::{io::DuplexStream, sync::oneshot};
+use tokio::{
+    io::DuplexStream,
+    signal::unix::{signal as unix_signal, SignalKind},
+};
 use tokio_util::codec::{BytesCodec, FramedRead};
 use warp::{
     http::{
@@ -187,39 +185,6 @@ struct ErrorMessage {
     message: String,
 }
 
-type SenderT = oneshot::Sender<bool>;
-type MaybeSenderT = Option<SenderT>;
-type SharedSenderT = Mutex<Cell<MaybeSenderT>>;
-
-static SHUTDOWN_TX: OnceCell<SharedSenderT> = OnceCell::new();
-
-fn setup_termination_handler() {
-    tokio::spawn(async {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("failed to listen for ctrl-c");
-        let _: Result<_, _> = (|| {
-            SHUTDOWN_TX
-                .get()
-                .ok_or_else(|| {
-                    error!("shutdown signaler not initialized");
-                })?
-                .lock()
-                .map_err(|_| {
-                    error!("failed to lock shutdown signaler");
-                })?
-                .take()
-                .ok_or_else(|| {
-                    error!("termination handler already triggered");
-                })
-                .map(|tx| tx.send(true))
-                .map_err(|_| {
-                    error!("error triggering termination handler");
-                })
-        })();
-    });
-}
-
 fn with_bucket(bucket: String) -> impl Filter<Extract = (String,), Error = Infallible> + Clone {
     warp::any().map(move || bucket.clone())
 }
@@ -296,14 +261,8 @@ pub async fn run(
     index_html: bool,
     allowed_prefixes: &[String],
 ) -> Result<(), Infallible> {
-    setup_termination_handler();
-
-    let (tx, rx) = oneshot::channel();
-
-    SHUTDOWN_TX
-        .set(Mutex::new(Cell::new(Some(tx))))
-        .ok()
-        .expect("failed to set termination signaler");
+    let mut terminate_signal_stream =
+        unix_signal(SignalKind::terminate()).expect("could not setup tokio signal handler");
 
     let still_alive = || "still alive";
     let health_check = warp::path(".esthri_health_check").map(still_alive);
@@ -317,8 +276,8 @@ pub async fn run(
         ))
         .recover(handle_rejection);
 
-    let (addr, server) = warp::serve(routes).bind_with_graceful_shutdown(*address, async {
-        rx.await.ok();
+    let (addr, server) = warp::serve(routes).bind_with_graceful_shutdown(*address, async move {
+        terminate_signal_stream.recv().await;
         debug!("got shutdown signal, waiting for all open connections to complete...");
     });
 
