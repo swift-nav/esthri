@@ -25,17 +25,19 @@ pipeline {
     buildDiscarder(logRotator(daysToKeepStr: '30'))
   }
   stages {
-    parallel {
-      stage('Prepare docker (Rust latest)') {
-        agent { dockerfile { reuseNode true } }
-        steps {
-          sh("echo done")
+    stage('Prepare docker') {
+      parallel {
+        stage('Prepare docker (Rust latest)') {
+          agent { dockerfile { reuseNode true } }
+          steps {
+            sh("echo done")
+          }
         }
-      }
-      stage('Prepare docker (Rust MSRV)') {
-        agent { dockerfile { reuseNode true; additionalBuildArgs "--build-arg=RUST_VERSION=1.56.1"} }
-        steps {
-          sh("echo done")
+        stage('Prepare docker (Rust MSRV)') {
+          agent { dockerfile { reuseNode true; additionalBuildArgs "--build-arg=RUST_VERSION=1.56.1"} }
+          steps {
+            sh("echo done")
+          }
         }
       }
     }
@@ -81,12 +83,6 @@ pipeline {
           agent { dockerfile { reuseNode true } }
           steps {
             sh("cargo make --profile dev+nativetls build-lib")
-          }
-        }
-        stage('Build CLI with minimum features (nativetls)') {
-          agent { dockerfile { reuseNode true } }
-          steps {
-            sh("cargo make --profile dev+nativetls build-min-cli")
           }
         }
         stage('Test (rustls)') {
