@@ -162,7 +162,7 @@ fn process_globs<'a, P: AsRef<Path> + 'a>(path: P, filters: &[GlobFilter]) -> Op
                 }
             }
             GlobFilter::Exclude(filter) => {
-                if filter.matches(&path.as_ref().to_string_lossy().as_ref()) {
+                if filter.matches(path.as_ref().to_string_lossy().as_ref()) {
                     return None;
                 }
             }
@@ -348,7 +348,7 @@ where
                 }
                 Ok(result) => result,
             };
-            let remote_path = remote_path.join(&stripped_path);
+            let remote_path = remote_path.join(stripped_path);
             let remote_path = remote_path.to_string_lossy();
             debug!("checking remote: {}", remote_path);
             let local_etag = local_etag?;
@@ -404,7 +404,7 @@ where
 
     let dirent_stream = flattened_local_directory(directory, filters).and_then(|path| async {
         let remote_path = Path::new(&key);
-        let stripped_path = match path.strip_prefix(&directory) {
+        let stripped_path = match path.strip_prefix(directory) {
             Ok(result) => result,
             Err(e) => {
                 unreachable!(
@@ -413,7 +413,7 @@ where
                 );
             }
         };
-        let remote_path = remote_path.join(&stripped_path);
+        let remote_path = remote_path.join(stripped_path);
         let remote_path = remote_path.to_string_lossy();
         match head_object_request(s3, bucket, &remote_path, None).await? {
             Some(metadata) => {
