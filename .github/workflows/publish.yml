@@ -63,6 +63,8 @@ jobs:
           clang
           llvm
           musl-tools
+          gcc-multilib
+          g++-multilib
           gcc-aarch64-linux-gnu
           g++-aarch64-linux-gnu
           binutils-aarch64-linux-gnu
