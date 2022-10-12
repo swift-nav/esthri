@@ -54,6 +54,7 @@ command = "cargo"
 args = [
         "check",
         "--features=${TLS_PROVIDER},blocking",
+        "--no-default-features",
         "@@remove-empty(BUILD_FLAVOR)",
         "@@remove-empty(TARGET)"
         ]
