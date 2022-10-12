@@ -16,7 +16,7 @@ on:
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
   release:
-    name: Release ${{ matrix.os }}
+    name: Release ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -62,7 +62,8 @@ jobs:
       - name: Install stable Rust
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: stable-${{ matrix.target }}
+          toolchain: stable
+          target: ${{ matrix.target }}
           profile: minimal
           default: true
 
