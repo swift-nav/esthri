@@ -154,32 +154,21 @@ where
 }
 
 fn process_globs<'a, P: AsRef<Path> + 'a>(path: P, filters: &[GlobFilter]) -> Option<P> {
-    let mut excluded = false;
-    let mut included = false;
-    {
-        let path = path.as_ref();
-        for pattern in filters {
-            match pattern {
-                GlobFilter::Include(filter) => {
-                    if filter.matches(path.to_string_lossy().as_ref()) {
-                        included = true;
-                        break;
-                    }
+    for pattern in filters {
+        match pattern {
+            GlobFilter::Include(filter) => {
+                if filter.matches(path.as_ref().to_string_lossy().as_ref()) {
+                    return Some(path);
                 }
-                GlobFilter::Exclude(filter) => {
-                    if filter.matches(path.to_string_lossy().as_ref()) {
-                        excluded = true;
-                        break;
-                    }
+            }
+            GlobFilter::Exclude(filter) => {
+                if filter.matches(&path.as_ref().to_string_lossy().as_ref()) {
+                    return None;
                 }
             }
         }
     }
-    if included && !excluded {
-        Some(path)
-    } else {
-        None
-    }
+    None
 }
 
 /// Returns a Stream of all files in a directory, recursively retrieving files in subdirecectories as well.
