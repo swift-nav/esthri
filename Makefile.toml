@@ -20,9 +20,21 @@ TARGET = "--target=x86_64-unknown-linux-musl"
 RUSTFLAGS="-C codegen-units=1 -C panic=abort -C lto=fat -C opt-level=3"
 VERBOSE = "-vv"
 
+[env.'release+static+aarch64']
+BUILD_FLAVOR = "--release"
+TARGET = "--target=aarch64-unknown-linux-musl"
+RUSTFLAGS="-C codegen-units=1 -C panic=abort -C lto=fat -C opt-level=3"
+VERBOSE = "-vv"
+
 [env.'release+mac']
 BUILD_FLAVOR = "--release"
 TARGET = "--target=x86_64-apple-darwin"
+RUSTFLAGS="-C codegen-units=1 -C panic=abort -C lto=fat -C opt-level=3"
+VERBOSE = "-vv"
+
+[env.'release+mac+aarch64']
+BUILD_FLAVOR = "--release"
+TARGET = "--target=aarch64-apple-darwin"
 RUSTFLAGS="-C codegen-units=1 -C panic=abort -C lto=fat -C opt-level=3"
 VERBOSE = "-vv"
 

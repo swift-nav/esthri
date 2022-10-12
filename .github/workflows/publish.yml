@@ -16,38 +16,40 @@ on:
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
   release:
-    name: Release ${{ matrix.target }}
+    name: Release ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-22.04
+            profile: release+static
             target: x86_64-unknown-linux-musl
             needs_musl: true
-            tar: tar
+
+          - os: macos-11
+            profile: release+mac
+            target: x86_64-apple-darwin
 
           - os: windows-2022
+            profile: release+windows
             target: x86_64-pc-windows-msvc
             suffix: .exe
-            tar: tar
 
           - os: macos-11
-            target: x86_64-apple-darwin
-            tar: gtar
-
-          - os: macos-11
+            profile: release+mac+aarch64
             target: aarch64-apple-darwin
-            tar: gtar
 
           - os: ubuntu-latest
+            profile: release+static+aarch64
             target: aarch64-unknown-linux-musl
-            use_cross: true
-            tar: tar
 
     steps:
       - name: Checkout source
         uses: actions/checkout@v2
+
+      - name: Setup cargo make
+        uses: davidB/rust-cargo-make@v1
 
       - name: Store git tag vars
         shell: bash
@@ -60,22 +62,18 @@ jobs:
       - name: Install stable Rust
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: stable
-          target: ${{ matrix.target }}
+          toolchain: stable-${{ matrix.target }}
           profile: minimal
           default: true
 
       - name: Build
-        uses: actions-rs/cargo@v1
-        with:
-          use-cross: ${{ matrix.use_cross }}
-          command: build
-          args: --release --all-features --target ${{ matrix.binary_target }}
+        shell: bash
+        run: cargo make --profile ${{ matrix.profile }} build
 
       - name: Package release
         shell: bash
         run: |
-          ${{ matrix.tar }} -C target/${{ matrix.target }}/release -czf esthri-${{ env.VERSION }}-${{ matrix.target }}.tar.gz esthri${{ matrix.suffix }}
+          tar -C target/${{ matrix.target }}/release -czf esthri-${{ env.VERSION }}-${{ matrix.target }}.tar.gz esthri${{ matrix.suffix }}
 
       - name: Upload Release
         uses: svenstaro/upload-release-action@v1-release
