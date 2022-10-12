@@ -27,22 +27,23 @@ jobs:
             target: x86_64-unknown-linux-musl
             needs_musl: true
 
+          - os: ubuntu-latest
+            profile: release+static+aarch64
+            target: aarch64-unknown-linux-musl
+            needs_musl: true
+
           - os: macos-11
             profile: release+mac
             target: x86_64-apple-darwin
-
-          - os: windows-2022
-            profile: release+windows
-            target: x86_64-pc-windows-msvc
-            suffix: .exe
 
           - os: macos-11
             profile: release+mac+aarch64
             target: aarch64-apple-darwin
 
-          - os: ubuntu-latest
-            profile: release+static+aarch64
-            target: aarch64-unknown-linux-musl
+          - os: windows-2022
+            profile: release+windows
+            target: x86_64-pc-windows-msvc
+            suffix: .exe
 
     steps:
       - name: Checkout source
