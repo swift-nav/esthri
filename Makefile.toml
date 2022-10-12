@@ -21,9 +21,11 @@ RUSTFLAGS="-C codegen-units=1 -C panic=abort -C lto=fat -C opt-level=3"
 VERBOSE = "-vv"
 
 [env.'release+static+aarch64']
+CC_aarch64_unknown_linux_musl="clang"
+AR_aarch64_unknown_linux_musl="llvm-ar"
+CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="-C link-self-contained=yes -C linker=rust-lld -C codegen-units=1 -C panic=abort -C lto=fat -C opt-level=3"
 BUILD_FLAVOR = "--release"
 TARGET = "--target=aarch64-unknown-linux-musl"
-RUSTFLAGS="-C codegen-units=1 -C panic=abort -C lto=fat -C opt-level=3"
 VERBOSE = "-vv"
 
 [env.'release+mac']
