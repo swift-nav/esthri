@@ -11,6 +11,7 @@
 */
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
+#[cfg(not(windows))]
 mod http_server;
 
 use std::env;
@@ -220,6 +221,7 @@ enum EsthriCommand {
         #[clap(long = "key", required = true, multiple_occurrences = true)]
         keys: Vec<String>,
     },
+    #[cfg(not(windows))]
     /// Launch an HTTP server attached to the specified bucket
     ///
     /// This also supports serving dynamic archives of bucket contents
@@ -504,6 +506,7 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
             esthri::delete(s3, bucket, &keys[..]).await?;
         }
 
+        #[cfg(not(windows))]
         Serve {
             bucket,
             address,

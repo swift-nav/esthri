@@ -28,7 +28,9 @@ VERBOSE = "-vv"
 
 [env.'release+windows']
 BUILD_FLAVOR = "--release"
-TARGET = "--target=x86_64-pc-windows-msvc -C panic=abort"
+RUSTFLAGS="-C codegen-units=1 -C panic=abort -C lto=fat -C opt-level=3"
+TARGET = "--target=x86_64-pc-windows-msvc"
+VERBOSE = "-vv"
 
 [env.'release+nativetls']
 BUILD_FLAVOR = "--release"

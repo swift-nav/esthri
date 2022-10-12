@@ -13,7 +13,6 @@
 use std::{
     convert::Infallible,
     io::{self, ErrorKind},
-    net::SocketAddr,
     ops::Deref,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -34,10 +33,7 @@ use log::*;
 use maud::{html, Markup, DOCTYPE};
 use mime_guess::mime::{APPLICATION_OCTET_STREAM, TEXT_HTML_UTF_8};
 use serde::{Deserialize, Serialize};
-use tokio::{
-    io::DuplexStream,
-    signal::unix::{signal as unix_signal, SignalKind},
-};
+use tokio::io::DuplexStream;
 use tokio_util::codec::{BytesCodec, FramedRead};
 use warp::{
     http::{
@@ -254,13 +250,16 @@ pub fn esthri_filter(
         .and_then(download)
 }
 
+#[cfg(not(windows))]
 pub async fn run(
     s3_client: S3Client,
     bucket: &str,
-    address: &SocketAddr,
+    address: &std::net::SocketAddr,
     index_html: bool,
     allowed_prefixes: &[String],
 ) -> Result<(), Infallible> {
+    use tokio::signal::unix::{signal as unix_signal, SignalKind};
+
     let mut terminate_signal_stream =
         unix_signal(SignalKind::terminate()).expect("could not setup tokio signal handler");
 
@@ -683,6 +682,7 @@ async fn item_pre_response<'a, T: S3 + Send>(
     }
 }
 
+#[cfg(not(windows))]
 /// An API error serializable to JSON.
 async fn handle_rejection(err: warp::Rejection) -> Result<impl warp::Reply, Infallible> {
     let code;
