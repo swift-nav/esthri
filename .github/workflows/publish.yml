@@ -66,6 +66,7 @@ jobs:
           gcc-aarch64-linux-gnu
           g++-aarch64-linux-gnu
           binutils-aarch64-linux-gnu
+          qemu-user
 
       - name: Install stable Rust
         uses: actions-rs/toolchain@v1
