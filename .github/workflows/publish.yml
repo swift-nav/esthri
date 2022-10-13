@@ -1,6 +1,6 @@
 # This is a basic workflow to help you get started with Actions
 
-name: Build macOS and Windows
+name: Build macOS and Ubuntu
 
 # Controls when the workflow will run
 on:
@@ -20,6 +20,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
+      # Specify which operating systems these jobs are to run on
       matrix:
         include:
           - os: ubuntu-latest
@@ -39,11 +40,6 @@ jobs:
           - os: macos-11
             profile: release+mac+aarch64
             target: aarch64-apple-darwin
-
-          - os: windows-2022
-            profile: release+windows
-            target: x86_64-pc-windows-msvc
-            suffix: .exe
 
     steps:
       - name: Checkout source
@@ -108,7 +104,6 @@ jobs:
         env:
           DL_LINUX: "esthri-${{ env.VERSION }}-x86_64-unknown-linux-musl.tar.gz"
           DL_MAC: "esthri-${{ env.VERSION }}-x86_64-apple-darwin.tar.gz"
-          DL_WIN: "esthri-${{ env.VERSION }}-x86_64-pc-windows-msvc.tar.gz"
           TOOLS: "esthri"
         with:
           token: ${{ secrets.GH_TOKEN }}
