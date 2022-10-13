@@ -566,19 +566,16 @@ async fn async_main() -> Result<()> {
     let credentials_provider = DefaultCredentialsProvider::new().unwrap();
     let s3 = S3Client::new_with(http_client, credentials_provider, Region::default());
 
-    match aws_compat_mode {
-        false => {
-            let esthri_cli = EsthriCli::parse();
-            dispatch_esthri_cli(esthri_cli.cmd, &s3).await?;
-        }
-        true => {
-            let aws_cli = AwsCompatCli::try_parse().map_err(|e| {
-                call_real_aws();
-                anyhow::anyhow!(e)
-            })?;
-            dispatch_aws_cli(aws_cli.cmd, &s3).await?
-        }
-    };
+    if aws_compat_mode.eq(&false) {
+        let esthri_cli = EsthriCli::parse();
+        dispatch_esthri_cli(esthri_cli.cmd, &s3).await?;
+    } else {
+        let aws_cli = AwsCompatCli::try_parse().map_err(|e| {
+            call_real_aws();
+            anyhow::anyhow!(e)
+        })?;
+        dispatch_aws_cli(aws_cli.cmd, &s3).await?
+    }
 
     Ok(())
 }
