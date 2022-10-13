@@ -64,10 +64,12 @@ pub const FILTER_EMPTY: Option<&[GlobFilter]> = None;
 pub async fn compute_etag(path: impl AsRef<Path>) -> Result<String> {
     let f = match fs::File::open(path).await {
         Ok(f) => f,
-        Err(e) => if e.kind() == std::io::ErrorKind::NotFound {
-            return Err(Error::ETagNotPresent);
-        } else {
-            return Err(e.into());
+        Err(e) => {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                return Err(Error::ETagNotPresent);
+            } else {
+                return Err(e.into());
+            }
         }
     };
     let file_size = f.metadata().await?.len();
@@ -116,11 +118,7 @@ where
 }
 
 #[logfn(err = "ERROR")]
-pub async fn head_object<T>(
-    s3: &T,
-    bucket: &str,
-    key: &str,
-) -> Result<Option<HeadObjectInfo>>
+pub async fn head_object<T>(s3: &T, bucket: &str, key: &str) -> Result<Option<HeadObjectInfo>>
 where
     T: S3 + Send,
 {
@@ -130,11 +128,7 @@ where
 }
 
 #[logfn(err = "ERROR")]
-pub async fn list_objects<T>(
-    s3: &T,
-    bucket: &str,
-    key: &str,
-) -> Result<Vec<String>>
+pub async fn list_objects<T>(s3: &T, bucket: &str, key: &str) -> Result<Vec<String>>
 where
     T: S3 + Send,
 {
@@ -143,11 +137,7 @@ where
 }
 
 #[logfn(err = "ERROR")]
-pub async fn list_directory<T>(
-    s3: &T,
-    bucket: &str,
-    dir_path: &str,
-) -> Result<Vec<String>>
+pub async fn list_directory<T>(s3: &T, bucket: &str, dir_path: &str) -> Result<Vec<String>>
 where
     T: S3 + Send,
 {

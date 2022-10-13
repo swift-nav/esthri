@@ -570,7 +570,7 @@ async fn async_main() -> Result<()> {
         false => {
             let esthri_cli = EsthriCli::parse();
             dispatch_esthri_cli(esthri_cli.cmd, &s3).await?;
-        },
+        }
         true => {
             let aws_cli = AwsCompatCli::try_parse().map_err(|e| {
                 call_real_aws();

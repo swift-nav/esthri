@@ -100,12 +100,7 @@ fn add_pending(u: PendingUpload) {
 }
 
 #[logfn(err = "ERROR")]
-pub async fn upload<T>(
-    s3: &T,
-    bucket: &str,
-    key: &str,
-    file: impl AsRef<Path>,
-) -> Result<()>
+pub async fn upload<T>(s3: &T, bucket: &str, key: &str, file: impl AsRef<Path>) -> Result<()>
 where
     T: S3,
 {
@@ -147,15 +142,7 @@ where
     );
 
     let compressed = false;
-    upload_file_helper(
-        s3,
-        bucket,
-        key,
-        file.as_ref(),
-        compressed,
-        storage_class,
-    )
-    .await
+    upload_file_helper(s3, bucket, key, file.as_ref(), compressed, storage_class).await
 }
 
 #[logfn(err = "ERROR")]
@@ -177,15 +164,7 @@ where
     );
 
     let compressed = true;
-    upload_file_helper(
-        s3,
-        bucket,
-        key,
-        file.as_ref(),
-        compressed,
-        storage_class,
-    )
-    .await
+    upload_file_helper(s3, bucket, key, file.as_ref(), compressed, storage_class).await
 }
 
 #[logfn(err = "ERROR")]

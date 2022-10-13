@@ -318,15 +318,7 @@ where
 {
     use super::upload::upload_from_reader;
     dirent_stream
-        .map(move |entry| {
-            (
-                s3.clone(),
-                bucket,
-                key,
-                directory.clone(),
-                entry,
-            )
-        })
+        .map(move |entry| (s3.clone(), bucket, key, directory.clone(), entry))
         .map(move |clones| async move {
             let (s3, bucket, key, directory, entry) = clones;
             let MappedPathResult {

@@ -19,11 +19,7 @@ use crate::Result;
 use crate::S3PathParam;
 
 #[tokio::main]
-pub async fn head_object<T>(
-    s3: &T,
-    bucket: &str,
-    key: &str,
-) -> Result<Option<HeadObjectInfo>>
+pub async fn head_object<T>(s3: &T, bucket: &str, key: &str) -> Result<Option<HeadObjectInfo>>
 where
     T: S3 + Send,
 {
@@ -31,12 +27,7 @@ where
 }
 
 #[tokio::main]
-pub async fn upload<T>(
-    s3: &T,
-    bucket: &str,
-    key: &str,
-    file: impl AsRef<Path>,
-) -> Result<()>
+pub async fn upload<T>(s3: &T, bucket: &str, key: &str, file: impl AsRef<Path>) -> Result<()>
 where
     T: S3 + Send + Clone,
 {
@@ -85,12 +76,7 @@ where
 }
 
 #[tokio::main]
-pub async fn download<T>(
-    s3: &T,
-    bucket: &str,
-    key: &str,
-    file: impl AsRef<Path>,
-) -> Result<()>
+pub async fn download<T>(s3: &T, bucket: &str, key: &str, file: impl AsRef<Path>) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
 {
@@ -134,11 +120,7 @@ where
 }
 
 #[tokio::main]
-pub async fn list_objects<T>(
-    s3: &T,
-    bucket: &str,
-    key: &str,
-) -> Result<Vec<String>>
+pub async fn list_objects<T>(s3: &T, bucket: &str, key: &str) -> Result<Vec<String>>
 where
     T: S3 + Send,
 {

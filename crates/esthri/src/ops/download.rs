@@ -30,12 +30,7 @@ use crate::rusoto::*;
 use crate::tempfile::TempFile;
 
 #[logfn(err = "ERROR")]
-pub async fn download<T>(
-    s3: &T,
-    bucket: &str,
-    key: &str,
-    file: impl AsRef<Path>,
-) -> Result<()>
+pub async fn download<T>(s3: &T, bucket: &str, key: &str, file: impl AsRef<Path>) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
 {

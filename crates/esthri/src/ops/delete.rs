@@ -40,11 +40,7 @@ pub async fn delete<T>(s3: &T, bucket: &str, keys: Vec<String>) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
 {
-    info!(
-        "delete: bucket={}, keys.len()={:?}",
-        bucket,
-        keys.len()
-    );
+    info!("delete: bucket={}, keys.len()={:?}", bucket, keys.len());
 
     let dor = create_delete_request(bucket, keys);
     s3.delete_objects(dor).await?;
@@ -75,8 +71,7 @@ where
 {
     info!(
         "delete_streaming: bucket={}, batch_size={}",
-        bucket,
-        DELETE_BATCH_SIZE
+        bucket, DELETE_BATCH_SIZE
     );
 
     let chunks = keys.chunks(DELETE_BATCH_SIZE);
@@ -99,10 +94,7 @@ where
     })
 }
 
-fn create_delete_request(
-    bucket: &str,
-    keys: Vec<String>,
-) -> DeleteObjectsRequest {
+fn create_delete_request(bucket: &str, keys: Vec<String>) -> DeleteObjectsRequest {
     let objects = keys
         .iter()
         .map(|key| ObjectIdentifier {
