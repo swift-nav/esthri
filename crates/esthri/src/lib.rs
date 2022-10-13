@@ -111,7 +111,7 @@ where
         let count = digests.len();
         let mut etag_hash = Md5::new();
         for digest_bytes in digests {
-            etag_hash.update(&digest_bytes);
+            etag_hash.update(digest_bytes);
         }
         let final_hash = etag_hash.finalize();
         let hex_digest = hex::encode(final_hash);

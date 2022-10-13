@@ -16,19 +16,30 @@ on:
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
   release:
-    name: Release ${{ matrix.os }}
+    name: Release ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-22.04
+          - os: ubuntu-latest
             profile: release+static
             target: x86_64-unknown-linux-musl
             needs_musl: true
+
+          - os: ubuntu-latest
+            profile: release+static+aarch64
+            target: aarch64-unknown-linux-musl
+            needs_musl: true
+
           - os: macos-11
             profile: release+mac
             target: x86_64-apple-darwin
+
+          - os: macos-11
+            profile: release+mac+aarch64
+            target: aarch64-apple-darwin
+
           - os: windows-2022
             profile: release+windows
             target: x86_64-pc-windows-msvc
@@ -47,19 +58,27 @@ jobs:
 
       - name: Install musl tools
         if: matrix.needs_musl
-        run: sudo apt-get install musl-tools
+        run: >-
+          sudo apt-get install
+          clang
+          llvm
+          musl-tools
+          gcc-aarch64-linux-gnu
+          g++-aarch64-linux-gnu
+          binutils-aarch64-linux-gnu
+          qemu-user
 
       - name: Install stable Rust
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: stable-${{ matrix.target }}
+          toolchain: stable
+          target: ${{ matrix.target }}
           profile: minimal
+          default: true
 
       - name: Build
         shell: bash
-        run: |
-          rustup target add ${{ matrix.target }}
-          cargo make --profile ${{ matrix.profile }} build
+        run: cargo make --profile ${{ matrix.profile }} build
 
       - name: Package release
         shell: bash
@@ -74,7 +93,7 @@ jobs:
           tag: ${{ github.ref }}
           overwrite: true
           file_glob: true
-          
+
   post_release:
     name: Post release
     needs: [ release ]
