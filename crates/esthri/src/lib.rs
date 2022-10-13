@@ -62,20 +62,16 @@ pub use esthri_internals::new_https_connector;
 pub const FILTER_EMPTY: Option<&[GlobFilter]> = None;
 
 pub async fn compute_etag(path: impl AsRef<Path>) -> Result<String> {
-    async fn inner(path: &Path) -> Result<String> {
-        let f = match fs::File::open(path).await {
-            Ok(f) => f,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                return Err(Error::ETagNotPresent);
-            }
-            Err(e) => {
-                return Err(e.into());
-            }
-        };
-        let file_size = f.metadata().await?.len();
-        compute_etag_from_reader(f, file_size).await
-    }
-    inner(path.as_ref()).await
+    let f = match fs::File::open(path).await {
+        Ok(f) => f,
+        Err(e) => if e.kind() == std::io::ErrorKind::NotFound {
+            return Err(Error::ETagNotPresent);
+        } else {
+            return Err(e.into());
+        }
+    };
+    let file_size = f.metadata().await?.len();
+    compute_etag_from_reader(f, file_size).await
 }
 
 pub async fn compute_etag_from_reader<T>(reader: T, length: u64) -> Result<String>
@@ -122,13 +118,13 @@ where
 #[logfn(err = "ERROR")]
 pub async fn head_object<T>(
     s3: &T,
-    bucket: impl AsRef<str>,
-    key: impl AsRef<str>,
+    bucket: &str,
+    key: &str,
 ) -> Result<Option<HeadObjectInfo>>
 where
     T: S3 + Send,
 {
-    let (bucket, key) = (bucket.as_ref(), key.as_ref());
+    let (bucket, key) = (bucket, key);
     info!("head-object: bucket={}, key={}", bucket, key);
     head_object_request(s3, bucket, key, None).await
 }
@@ -136,8 +132,8 @@ where
 #[logfn(err = "ERROR")]
 pub async fn list_objects<T>(
     s3: &T,
-    bucket: impl AsRef<str>,
-    key: impl AsRef<str>,
+    bucket: &str,
+    key: &str,
 ) -> Result<Vec<String>>
 where
     T: S3 + Send,
@@ -149,8 +145,8 @@ where
 #[logfn(err = "ERROR")]
 pub async fn list_directory<T>(
     s3: &T,
-    bucket: impl AsRef<str>,
-    dir_path: impl AsRef<str>,
+    bucket: &str,
+    dir_path: &str,
 ) -> Result<Vec<String>>
 where
     T: S3 + Send,
@@ -158,19 +154,16 @@ where
     list_objects_with_delim(s3, bucket, dir_path, Some("/")).await
 }
 
-async fn list_objects_with_delim<T, S0, S1, S2>(
+async fn list_objects_with_delim<T>(
     s3: &T,
-    bucket: S0,
-    key: S1,
-    delim: Option<S2>,
+    bucket: &str,
+    key: &str,
+    delim: Option<&str>,
 ) -> Result<Vec<String>>
 where
     T: S3 + Send,
-    S0: AsRef<str>,
-    S1: AsRef<str>,
-    S2: AsRef<str>,
 {
-    let (bucket, key, delim) = (bucket.as_ref(), key.as_ref(), delim.as_ref());
+    let (bucket, key, delim) = (bucket, key, delim);
 
     let batches: Vec<_> = list_objects_stream_with_delim(s3, bucket, key, delim)
         .try_collect()
@@ -194,8 +187,8 @@ where
 
 pub fn list_objects_stream<'a, T>(
     s3: &'a T,
-    bucket: impl AsRef<str> + 'a,
-    key: impl AsRef<str> + 'a,
+    bucket: &'a str,
+    key: &'a str,
 ) -> impl TryStream<Ok = Vec<S3ListingItem>, Error = Error> + Unpin + 'a
 where
     T: S3 + Send,
@@ -216,21 +209,21 @@ where
     list_objects_stream_with_delim(s3, bucket, key, slash_delim)
 }
 
-fn list_objects_stream_with_delim<T>(
-    s3: &'_ T,
-    bucket: impl AsRef<str>,
-    key: impl AsRef<str>,
-    delimiter: Option<impl AsRef<str>>,
-) -> impl TryStream<Ok = Vec<S3ListingItem>, Error = Error> + Unpin + '_
+fn list_objects_stream_with_delim<'a, T>(
+    s3: &'a T,
+    bucket: &'a str,
+    key: &'a str,
+    delimiter: Option<&'a str>,
+) -> impl TryStream<Ok = Vec<S3ListingItem>, Error = Error> + Unpin + 'a
 where
     T: S3 + Send,
 {
-    let (bucket, key) = (bucket.as_ref().to_owned(), key.as_ref().to_owned());
+    let (bucket, key) = (bucket.to_owned(), key.to_owned());
 
     info!("stream-objects: bucket={}, key={}", bucket, key);
 
     let continuation: Option<String> = None;
-    let delimiter = delimiter.map(|s| s.as_ref().to_owned());
+    let delimiter = delimiter.map(|s| s.to_owned());
 
     let state = (s3, bucket, key, continuation, delimiter, false);
 

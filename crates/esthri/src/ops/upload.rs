@@ -102,8 +102,8 @@ fn add_pending(u: PendingUpload) {
 #[logfn(err = "ERROR")]
 pub async fn upload<T>(
     s3: &T,
-    bucket: impl AsRef<str>,
-    key: impl AsRef<str>,
+    bucket: &str,
+    key: &str,
     file: impl AsRef<Path>,
 ) -> Result<()>
 where
@@ -111,16 +111,16 @@ where
 {
     info!(
         "put: bucket={}, key={}, file={}",
-        bucket.as_ref(),
-        key.as_ref(),
+        bucket,
+        key,
         file.as_ref().display()
     );
 
     let compressed = false;
     upload_file_helper(
         s3,
-        bucket.as_ref(),
-        key.as_ref(),
+        bucket,
+        key,
         file.as_ref(),
         compressed,
         Config::global().storage_class(),
@@ -131,8 +131,8 @@ where
 #[logfn(err = "ERROR")]
 pub async fn upload_with_storage_class<T>(
     s3: &T,
-    bucket: impl AsRef<str>,
-    key: impl AsRef<str>,
+    bucket: &str,
+    key: &str,
     file: impl AsRef<Path>,
     storage_class: S3StorageClass,
 ) -> Result<()>
@@ -141,16 +141,16 @@ where
 {
     info!(
         "put: bucket={}, key={}, file={}",
-        bucket.as_ref(),
-        key.as_ref(),
+        bucket,
+        key,
         file.as_ref().display()
     );
 
     let compressed = false;
     upload_file_helper(
         s3,
-        bucket.as_ref(),
-        key.as_ref(),
+        bucket,
+        key,
         file.as_ref(),
         compressed,
         storage_class,
@@ -161,8 +161,8 @@ where
 #[logfn(err = "ERROR")]
 pub async fn upload_compressed_with_storage_class<T>(
     s3: &T,
-    bucket: impl AsRef<str>,
-    key: impl AsRef<str>,
+    bucket: &str,
+    key: &str,
     file: impl AsRef<Path>,
     storage_class: S3StorageClass,
 ) -> Result<()>
@@ -171,16 +171,16 @@ where
 {
     info!(
         "put: bucket={}, key={}, file={}",
-        bucket.as_ref(),
-        key.as_ref(),
+        bucket,
+        key,
         file.as_ref().display()
     );
 
     let compressed = true;
     upload_file_helper(
         s3,
-        bucket.as_ref(),
-        key.as_ref(),
+        bucket,
+        key,
         file.as_ref(),
         compressed,
         storage_class,
@@ -191,8 +191,8 @@ where
 #[logfn(err = "ERROR")]
 pub async fn upload_compressed<T>(
     s3: &T,
-    bucket: impl AsRef<str>,
-    key: impl AsRef<str>,
+    bucket: &str,
+    key: &str,
     file: impl AsRef<Path>,
 ) -> Result<()>
 where
@@ -200,16 +200,16 @@ where
 {
     info!(
         "put(compressed): bucket={}, key={}, file={}",
-        bucket.as_ref(),
-        key.as_ref(),
+        bucket,
+        key,
         file.as_ref().display()
     );
 
     let compressed = true;
     upload_file_helper(
         s3,
-        bucket.as_ref(),
-        key.as_ref(),
+        bucket,
+        key,
         file.as_ref(),
         compressed,
         Config::global().storage_class(),
@@ -220,8 +220,8 @@ where
 #[logfn(err = "ERROR")]
 pub async fn upload_from_reader<T, R>(
     s3: &T,
-    bucket: impl AsRef<str>,
-    key: impl AsRef<str>,
+    bucket: &str,
+    key: &str,
     reader: R,
     file_size: u64,
     metadata: Option<HashMap<String, String>>,
@@ -245,8 +245,8 @@ where
 #[logfn(err = "ERROR")]
 pub async fn upload_from_reader_with_storage_class<T, R>(
     s3: &T,
-    bucket: impl AsRef<str>,
-    key: impl AsRef<str>,
+    bucket: &str,
+    key: &str,
     reader: R,
     file_size: u64,
     metadata: Option<HashMap<String, String>>,
@@ -256,7 +256,7 @@ where
     T: S3,
     R: AsyncRead + AsyncSeek + Unpin + Send + 'static,
 {
-    let (bucket, key) = (bucket.as_ref(), key.as_ref());
+    let (bucket, key) = (bucket, key);
     info!(
         "put: bucket={}, key={}, file_size={}, storage_class={}",
         bucket, key, file_size, storage_class
@@ -292,7 +292,7 @@ where
         upload_from_reader_with_storage_class(
             s3,
             bucket,
-            key,
+            &key,
             tmp.take_file(),
             size,
             Some(crate::compression::compressed_file_metadata()),
@@ -304,7 +304,7 @@ where
         let f = File::open(path).await?;
         let size = f.metadata().await?.len();
         debug!("upload: file size: {}", size);
-        upload_from_reader_with_storage_class(s3, bucket, key, f, size, None, storage_class).await
+        upload_from_reader_with_storage_class(s3, bucket, &key, f, size, None, storage_class).await
     }
 }
 

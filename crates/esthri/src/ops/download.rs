@@ -32,8 +32,8 @@ use crate::tempfile::TempFile;
 #[logfn(err = "ERROR")]
 pub async fn download<T>(
     s3: &T,
-    bucket: impl AsRef<str>,
-    key: impl AsRef<str>,
+    bucket: &str,
+    key: &str,
     file: impl AsRef<Path>,
 ) -> Result<()>
 where
@@ -41,19 +41,19 @@ where
 {
     info!(
         "get: bucket={}, key={}, file={}",
-        bucket.as_ref(),
-        key.as_ref(),
+        bucket,
+        key,
         file.as_ref().display()
     );
 
-    download_file(s3, bucket.as_ref(), key.as_ref(), file.as_ref(), false).await
+    download_file(s3, bucket, key, file.as_ref(), false).await
 }
 
 #[logfn(err = "ERROR")]
 pub async fn download_with_transparent_decompression<T>(
     s3: &T,
-    bucket: impl AsRef<str>,
-    key: impl AsRef<str>,
+    bucket: &str,
+    key: &str,
     file: impl AsRef<Path>,
 ) -> Result<()>
 where
@@ -61,12 +61,12 @@ where
 {
     info!(
         "get(decompress): bucket={}, key={}, file={}",
-        bucket.as_ref(),
-        key.as_ref(),
+        bucket,
+        key,
         file.as_ref().display()
     );
 
-    download_file(s3, bucket.as_ref(), key.as_ref(), file.as_ref(), true).await
+    download_file(s3, bucket, key, file.as_ref(), true).await
 }
 
 #[logfn(err = "ERROR")]

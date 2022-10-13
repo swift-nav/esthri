@@ -10,6 +10,8 @@
  * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
  */
 
+use std::ops::Deref;
+
 use futures::stream::Stream;
 use futures::{future, Future, StreamExt, TryFutureExt};
 
@@ -34,13 +36,13 @@ const DELETE_BATCH_SIZE: usize = 50;
 /// Will transparently pass failures from [crate::rusoto::S3::delete_object] via [crate::errors::Error].
 ///
 #[logfn(err = "ERROR")]
-pub async fn delete<T>(s3: &T, bucket: impl AsRef<str>, keys: &[impl AsRef<str>]) -> Result<()>
+pub async fn delete<T>(s3: &T, bucket: &str, keys: Vec<String>) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
 {
     info!(
         "delete: bucket={}, keys.len()={:?}",
-        bucket.as_ref(),
+        bucket,
         keys.len()
     );
 
@@ -65,7 +67,7 @@ where
 ///
 pub fn delete_streaming<'a, T>(
     s3: &'a T,
-    bucket: impl AsRef<str> + 'a,
+    bucket: &'a str,
     keys: impl Stream<Item = Result<String>> + Unpin + 'a,
 ) -> impl Stream<Item = impl Future<Output = Result<usize>> + 'a> + 'a
 where
@@ -73,7 +75,7 @@ where
 {
     info!(
         "delete_streaming: bucket={}, batch_size={}",
-        bucket.as_ref(),
+        bucket,
         DELETE_BATCH_SIZE
     );
 
@@ -85,7 +87,7 @@ where
             Ok(keys) => {
                 debug!("delete_streaming: keys={:?}", keys);
                 let len = keys.len();
-                let dor = create_delete_request(&bucket, &keys);
+                let dor = create_delete_request(bucket, keys);
                 let fut = s3.delete_objects(dor);
                 future::Either::Left(fut.map_ok(move |_| len).map_err(|e| e.into()))
             }
@@ -98,13 +100,13 @@ where
 }
 
 fn create_delete_request(
-    bucket: impl AsRef<str>,
-    keys: &[impl AsRef<str>],
+    bucket: &str,
+    keys: Vec<String>,
 ) -> DeleteObjectsRequest {
     let objects = keys
         .iter()
         .map(|key| ObjectIdentifier {
-            key: key.as_ref().into(),
+            key: key.deref().to_string(),
             ..Default::default()
         })
         .collect::<Vec<_>>();
@@ -113,7 +115,7 @@ fn create_delete_request(
         ..Default::default()
     };
     DeleteObjectsRequest {
-        bucket: bucket.as_ref().into(),
+        bucket: bucket.into(),
         delete: del,
         ..Default::default()
     }

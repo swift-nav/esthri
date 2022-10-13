@@ -153,7 +153,7 @@ where
     Ok(())
 }
 
-fn process_globs<'a, P: AsRef<Path> + 'a>(path: P, filters: &[GlobFilter]) -> Option<P> {
+fn process_globs<P: AsRef<Path>>(path: P, filters: &[GlobFilter]) -> Option<P> {
     for pattern in filters {
         match pattern {
             GlobFilter::Include(filter) => {
@@ -304,16 +304,16 @@ where
     })
 }
 
-fn local_to_remote_sync_tasks<ClientT, StreamT>(
+fn local_to_remote_sync_tasks<'a, ClientT, StreamT>(
     s3: ClientT,
-    bucket: String,
-    key: String,
+    bucket: &'a str,
+    key: &'a str,
     directory: PathBuf,
     dirent_stream: StreamT,
     transparent_compression: bool,
-) -> impl Stream<Item = impl Future<Output = Result<()>>>
+) -> impl Stream<Item = impl Future<Output = Result<()>> + 'a>
 where
-    ClientT: S3 + Send + Clone,
+    ClientT: S3 + Send + Clone + 'a,
     StreamT: Stream<Item = MapPathResult>,
 {
     use super::upload::upload_from_reader;
@@ -321,8 +321,8 @@ where
         .map(move |entry| {
             (
                 s3.clone(),
-                bucket.clone(),
-                key.clone(),
+                bucket,
+                key,
                 directory.clone(),
                 entry,
             )
@@ -369,7 +369,7 @@ where
                     let f = File::open(&*filepath).await?;
                     let reader = BufReader::new(f);
                     let size = fs::metadata(&*filepath).await?.len();
-                    upload_from_reader(&s3, bucket, remote_path, reader, size, metadata).await?;
+                    upload_from_reader(&s3, bucket, &remote_path, reader, size, metadata).await?;
                 } else {
                     debug!(
                         "etags matched: {}, remote_etag={}, local_etag={}",
@@ -381,7 +381,7 @@ where
                 let f = File::open(&*filepath).await?;
                 let reader = BufReader::new(f);
                 let size = fs::metadata(&*filepath).await?.len();
-                upload_from_reader(&s3, bucket, remote_path, reader, size, metadata).await?;
+                upload_from_reader(&s3, bucket, &remote_path, reader, size, metadata).await?;
             }
             Ok(())
         })
@@ -436,8 +436,8 @@ where
     let etag_stream = translate_paths(dirent_stream, cmd).buffer_unordered(task_count);
     let sync_tasks = local_to_remote_sync_tasks(
         s3.clone(),
-        bucket.into(),
-        key.into(),
+        bucket,
+        key,
         directory.into(),
         etag_stream,
         compressed,
@@ -678,7 +678,7 @@ where
     };
 
     async_stream::stream! {
-        let mut stream = list_objects_stream(s3, bucket, prefix);
+        let mut stream = list_objects_stream(s3, bucket, &prefix);
         loop {
             let entries = match stream.try_next().await {
                 Ok(Some(entries)) => entries,
@@ -732,24 +732,24 @@ where
     }
 }
 
-fn remote_to_local_sync_tasks<ClientT, StreamT>(
+fn remote_to_local_sync_tasks<'a, ClientT, StreamT>(
     s3: ClientT,
-    bucket: String,
-    key: String,
+    bucket: &'a str,
+    key: &'a str,
     directory: PathBuf,
     input_stream: StreamT,
     transparent_decompress: bool,
-) -> impl Stream<Item = impl Future<Output = Result<()>>>
+) -> impl Stream<Item = impl Future<Output = Result<()>> + 'a>
 where
-    ClientT: S3 + Sync + Send + Clone,
+    ClientT: S3 + Sync + Send + Clone + 'a,
     StreamT: Stream<Item = MapPathResult>,
 {
     input_stream
         .map(move |entry| {
             (
                 s3.clone(),
-                bucket.clone(),
-                key.clone(),
+                bucket,
+                key,
                 directory.clone(),
                 transparent_decompress,
                 entry.unwrap(),
@@ -775,8 +775,8 @@ where
                             );
                             download_with_dir(
                                 &s3,
-                                &bucket,
-                                &key,
+                                bucket,
+                                key,
                                 &metadata.s3_suffix,
                                 &directory,
                                 decompress,
@@ -791,8 +791,8 @@ where
                             debug!("file did not exist locally: {}", source_path.display());
                             download_with_dir(
                                 &s3,
-                                &bucket,
-                                &key,
+                                bucket,
+                                key,
                                 &metadata.s3_suffix,
                                 &directory,
                                 decompress,
@@ -836,8 +836,8 @@ where
     let etag_stream = translate_paths(object_listing, cmd).buffer_unordered(task_count);
     let sync_tasks = remote_to_local_sync_tasks(
         s3.clone(),
-        bucket.into(),
-        key.into(),
+        bucket,
+        key,
         directory.into(),
         etag_stream,
         transparent_decompress,

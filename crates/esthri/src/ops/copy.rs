@@ -32,9 +32,9 @@ where
         S3PathParam::Bucket { bucket, key } => match destination {
             S3PathParam::Local { path } => {
                 if transparent_compression {
-                    download_with_transparent_decompression(s3, bucket, key, path).await
+                    download_with_transparent_decompression(s3, &bucket, &key, path).await
                 } else {
-                    download(s3, bucket, key, path).await
+                    download(s3, &bucket, &key, path).await
                 }
             }
             S3PathParam::Bucket { bucket: _, key: _ } => {
@@ -44,9 +44,9 @@ where
         S3PathParam::Local { path } => match destination {
             S3PathParam::Bucket { bucket, key } => {
                 if transparent_compression {
-                    upload_compressed(s3, bucket, key, path).await
+                    upload_compressed(s3, &bucket, &key, path).await
                 } else {
-                    upload(s3, bucket, key, path).await
+                    upload(s3, &bucket, &key, path).await
                 }
             }
             S3PathParam::Local { path: _ } => Err(Error::LocalToLocalCpNotImplementedError),

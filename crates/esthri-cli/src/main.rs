@@ -44,11 +44,6 @@ async fn log_etag(path: &Path) -> Result<String> {
     Ok(etag)
 }
 
-enum Cli {
-    Esthri(EsthriCli),
-    AwsCompat(AwsCompatCli),
-}
-
 #[derive(Debug, Parser)]
 #[clap(name = "esthri", about = "Simple S3 file transfer utility.")]
 struct EsthriCli {
@@ -503,7 +498,7 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
         }
 
         DeleteObjects { bucket, keys } => {
-            esthri::delete(s3, bucket, &keys[..]).await?;
+            esthri::delete(s3, &bucket, keys.to_vec()).await?;
         }
 
         #[cfg(not(windows))]
@@ -558,17 +553,6 @@ async fn async_main() -> Result<()> {
         call_real_aws();
     }
 
-    let cli = match aws_compat_mode {
-        false => Cli::Esthri(EsthriCli::parse()),
-        true => {
-            let args = AwsCompatCli::try_parse().map_err(|e| {
-                call_real_aws();
-                anyhow::anyhow!(e)
-            })?;
-            Cli::AwsCompat(args)
-        }
-    };
-
     let region = Region::default();
 
     info!("Starting, using region: {:?}...", region);
@@ -582,10 +566,19 @@ async fn async_main() -> Result<()> {
     let credentials_provider = DefaultCredentialsProvider::new().unwrap();
     let s3 = S3Client::new_with(http_client, credentials_provider, Region::default());
 
-    match cli {
-        Cli::Esthri(esthri_cli) => dispatch_esthri_cli(esthri_cli.cmd, &s3).await?,
-        Cli::AwsCompat(aws_cli) => dispatch_aws_cli(aws_cli.cmd, &s3).await?,
-    }
+    match aws_compat_mode {
+        false => {
+            let esthri_cli = EsthriCli::parse();
+            dispatch_esthri_cli(esthri_cli.cmd, &s3).await?;
+        },
+        true => {
+            let aws_cli = AwsCompatCli::try_parse().map_err(|e| {
+                call_real_aws();
+                anyhow::anyhow!(e)
+            })?;
+            dispatch_aws_cli(aws_cli.cmd, &s3).await?
+        }
+    };
 
     Ok(())
 }

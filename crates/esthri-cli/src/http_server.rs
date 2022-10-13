@@ -625,7 +625,7 @@ async fn get_obj_info<'a, T: S3 + Send>(
     bucket: &str,
     path: &str,
 ) -> Result<HeadObjectInfo, warp::Rejection> {
-    match head_object(s3, &bucket, &path).await {
+    match head_object(s3, bucket, path).await {
         Ok(obj_info) => {
             if let Some(obj_info) = obj_info {
                 Ok(obj_info)

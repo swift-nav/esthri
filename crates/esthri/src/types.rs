@@ -27,10 +27,10 @@ impl S3PathParam {
             path: path.as_ref().into(),
         }
     }
-    pub fn new_bucket<S1: AsRef<str>, S2: AsRef<str>>(bucket: S1, key: S2) -> S3PathParam {
+    pub fn new_bucket(bucket: &str, key: &str) -> S3PathParam {
         S3PathParam::Bucket {
-            bucket: bucket.as_ref().into(),
-            key: key.as_ref().into(),
+            bucket: bucket.into(),
+            key: key.into(),
         }
     }
     pub fn is_local(&self) -> bool {
@@ -67,8 +67,8 @@ impl S3ListingItem {
     pub(crate) fn object(o: S3Object) -> S3ListingItem {
         S3ListingItem::S3Object(o)
     }
-    pub(crate) fn common_prefix<S: AsRef<str>>(cp: S) -> S3ListingItem {
-        S3ListingItem::S3CommonPrefix(cp.as_ref().into())
+    pub(crate) fn common_prefix(cp: String) -> S3ListingItem {
+        S3ListingItem::S3CommonPrefix(cp)
     }
     pub(crate) fn prefix(&self) -> String {
         match self {

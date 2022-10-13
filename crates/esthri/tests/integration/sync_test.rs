@@ -68,7 +68,7 @@ fn test_sync_down_without_slash() {
         GlobFilter::Exclude(Pattern::new("*").unwrap()),
     ]);
 
-    let source = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key);
+    let source = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, &s3_key);
     let destination = S3PathParam::new_local(&local_directory);
 
     let res = blocking::sync(
@@ -93,7 +93,7 @@ fn test_sync_up_without_slash() {
     ]);
 
     let source = S3PathParam::new_local(&local_directory);
-    let destination = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key);
+    let destination = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, &s3_key);
 
     let res = blocking::sync(
         s3client.as_ref(),
@@ -117,7 +117,7 @@ fn test_sync_up() {
     ]);
 
     let source = S3PathParam::new_local(&local_directory);
-    let destination = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key);
+    let destination = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, &s3_key);
 
     let res = blocking::sync(
         s3client.as_ref(),
@@ -141,7 +141,7 @@ async fn test_sync_up_async() {
     ]);
 
     let source = S3PathParam::new_local(&local_directory);
-    let destination = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key);
+    let destination = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, &s3_key);
 
     let res = sync(
         s3client.as_ref(),
@@ -467,7 +467,7 @@ async fn test_sync_across() {
         Some(vec![GlobFilter::Include(Pattern::new("*.txt").unwrap())]);
 
     let source = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, source_prefix);
-    let destination = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, dest_prefix);
+    let destination = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, &dest_prefix);
 
     let res = sync(
         s3client.as_ref(),
@@ -544,7 +544,7 @@ fn test_sync_down_compressed() {
 
     let res = blocking::sync(
         s3client.as_ref(),
-        S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key),
+        S3PathParam::new_bucket(esthri_test::TEST_BUCKET, &s3_key),
         destination,
         FILTER_EMPTY,
         true,
