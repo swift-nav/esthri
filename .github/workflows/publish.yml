@@ -27,19 +27,23 @@ jobs:
             profile: release+static
             target: x86_64-unknown-linux-musl
             needs_musl: true
+            tar: tar
 
           - os: ubuntu-latest
             profile: release+static+aarch64
             target: aarch64-unknown-linux-musl
             needs_musl: true
+            tar: tar
 
           - os: macos-11
             profile: release+mac
             target: x86_64-apple-darwin
+            tar: gtar
 
           - os: macos-11
             profile: release+mac+aarch64
             target: aarch64-apple-darwin
+            tar: gtar
 
     steps:
       - name: Checkout source
@@ -79,7 +83,7 @@ jobs:
       - name: Package release
         shell: bash
         run: |
-          tar -C target/${{ matrix.target }}/release -czf esthri-${{ env.VERSION }}-${{ matrix.target }}.tar.gz esthri${{ matrix.suffix }}
+          ${{ matrix.tar }} -C target/${{ matrix.target }}/release -czf esthri-${{ env.VERSION }}-${{ matrix.target }}.tar.gz esthri${{ matrix.suffix }}
 
       - name: Upload Release
         uses: svenstaro/upload-release-action@v1-release
