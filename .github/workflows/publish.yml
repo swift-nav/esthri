@@ -76,6 +76,8 @@ jobs:
           profile: minimal
           default: true
 
+      - uses: Swatinem/rust-cache@v2
+
       - name: Build
         shell: bash
         run: cargo make --profile ${{ matrix.profile }} build
@@ -101,6 +103,7 @@ jobs:
     steps:
       - name: Store git tag vars
         shell: bash
+        # achubbic: add VERSION to gh env vars
         run: echo "VERSION=${GITHUB_REF##*/}" >> $GITHUB_ENV
 
       - name: Hook into package registry

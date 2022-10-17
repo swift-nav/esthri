@@ -2,9 +2,6 @@ name: Build macOS, Ubuntu, Windows
 
 on:
   pull_request:
-    tags:
-      - '[0-9]+.[0-9]+.[0-9]+*'
-      - 'v[0-9]+.[0-9]+.[0-9]+*'
 
   workflow_dispatch:
 
@@ -34,7 +31,7 @@ jobs:
             profile: release+mac+aarch64
             target: aarch64-apple-darwin
 
-            - os: windows-2022
+          - os: windows-2022
             profile: release+windows
             target: x86_64-pc-windows-msvc
             suffix: .exe
@@ -45,10 +42,6 @@ jobs:
 
       - name: Setup cargo make
         uses: davidB/rust-cargo-make@v1
-
-      - name: Store git tag vars
-        shell: bash
-        run: echo "VERSION=${GITHUB_REF##*/}" >> $GITHUB_ENV
 
       - name: Install musl tools
         if: matrix.needs_musl
@@ -70,6 +63,15 @@ jobs:
           profile: minimal
           default: true
 
+      - uses: Swatinem/rust-cache@v2
+
       - name: Build
         shell: bash
         run: cargo make --profile ${{ matrix.profile }} build
+
+      - name: Run Tests
+        shell: bash
+        run: |
+          cargo make lint
+          cargo fmt -- --check
+          cargo make test
