@@ -78,4 +78,7 @@ jobs:
         run: |
           cargo make lint
           cargo fmt -- --check
-          cargo make test
+          git lfs pull
+          cargo make test-min
+        # change test-min to test [achubbic]
+          
