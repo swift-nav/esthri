@@ -72,13 +72,4 @@ jobs:
       - name: Build
         shell: bash
         run: cargo make --profile ${{ matrix.profile }} build
-
-      # - name: Run Tests
-      #   shell: bash
-      #   run: |
-      #     cargo make lint
-      #     cargo fmt -- --check
-      #     git lfs pull
-      #     cargo make test-min
-      #   # change test-min to test [achubbic]
-          
+        
