@@ -72,4 +72,3 @@ jobs:
       - name: Build
         shell: bash
         run: cargo make --profile ${{ matrix.profile }} build
-        
