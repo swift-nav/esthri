@@ -1,11 +1,7 @@
 name: Build macOS, Ubuntu, Windows
 
 on:
-  # TEMPORARY change used to test achubbic
-  push:
-    tags:
-      - '[0-9]+.[0-9]+.[0-9]+*'
-      - 'v[0-9]+.[0-9]+.[0-9]+*'
+  pull_request:
 
   workflow_dispatch:
 
