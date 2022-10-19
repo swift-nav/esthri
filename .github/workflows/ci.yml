@@ -7,7 +7,7 @@ on:
 
 jobs:
   release:
-    name: Release ${{ matrix.target }}
+    name: Target ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
