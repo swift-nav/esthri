@@ -14,25 +14,25 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            profile: release+static
+            profile: dev+static
             target: x86_64-unknown-linux-musl
             needs_musl: true
 
           - os: ubuntu-latest
-            profile: release+static+aarch64
+            profile: dev+static+aarch64
             target: aarch64-unknown-linux-musl
             needs_musl: true
 
           - os: macos-11
-            profile: release+mac
+            profile: dev+mac
             target: x86_64-apple-darwin
 
           - os: macos-11
-            profile: release+mac+aarch64
+            profile: dev+mac+aarch64
             target: aarch64-apple-darwin
 
           - os: windows-2022
-            profile: release+windows
+            profile: dev+windows
             target: x86_64-pc-windows-msvc
             suffix: .exe
 
