@@ -1,0 +1,70 @@
+name: Build macOS, Ubuntu, Windows
+
+on:
+  pull_request:
+
+  workflow_dispatch:
+
+jobs:
+  release:
+    name: Target ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            profile: dev+static
+            target: x86_64-unknown-linux-musl
+            needs_musl: true
+
+          - os: ubuntu-latest
+            profile: dev+static+aarch64
+            target: aarch64-unknown-linux-musl
+            needs_musl: true
+
+          - os: macos-11
+            profile: dev+mac
+            target: x86_64-apple-darwin
+
+          - os: macos-11
+            profile: dev+mac+aarch64
+            target: aarch64-apple-darwin
+
+          - os: windows-2022
+            profile: dev+windows
+            target: x86_64-pc-windows-msvc
+            suffix: .exe
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v2
+
+      - name: Setup cargo make
+        uses: davidB/rust-cargo-make@v1
+
+      - name: Install musl tools
+        if: matrix.needs_musl
+        run: >-
+          sudo apt-get install
+          clang
+          llvm
+          musl-tools
+          gcc-aarch64-linux-gnu
+          g++-aarch64-linux-gnu
+          binutils-aarch64-linux-gnu
+          qemu-user
+
+      - name: Install stable Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+          profile: minimal
+          default: true
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        shell: bash
+        run: cargo make --profile ${{ matrix.profile }} build

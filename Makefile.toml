@@ -30,10 +30,23 @@ BUILD_FLAVOR = "--release"
 TARGET = "--target=aarch64-unknown-linux-musl"
 VERBOSE = "-vv"
 
+[env.'dev+static+aarch64']
+CC_aarch64_unknown_linux_musl="clang"
+AR_aarch64_unknown_linux_musl="llvm-ar"
+CFLAGS_aarch64_unknown_linux_musl="-I/usr/aarch64-linux-gnu/include"
+CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUNNER="qemu-aarch64 -L /usr/aarch64-linux-gnu"
+CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="-C link-self-contained=yes -C linker=rust-lld"
+TARGET = "--target=aarch64-unknown-linux-musl"
+VERBOSE = "-vv"
+
 [env.'release+mac']
 BUILD_FLAVOR = "--release"
 TARGET = "--target=x86_64-apple-darwin"
 RUSTFLAGS="-C codegen-units=1 -C panic=abort -C lto=fat -C opt-level=3"
+VERBOSE = "-vv"
+
+[env.'dev+mac']
+TARGET = "--target=x86_64-apple-darwin"
 VERBOSE = "-vv"
 
 [env.'release+mac+aarch64']
@@ -42,9 +55,17 @@ TARGET = "--target=aarch64-apple-darwin"
 RUSTFLAGS="-C codegen-units=1 -C panic=abort -C lto=fat -C opt-level=3"
 VERBOSE = "-vv"
 
+[env.'dev+mac+aarch64']
+TARGET = "--target=aarch64-apple-darwin"
+VERBOSE = "-vv"
+
 [env.'release+windows']
 BUILD_FLAVOR = "--release"
 RUSTFLAGS="-C codegen-units=1 -C panic=abort -C lto=fat -C opt-level=3"
+TARGET = "--target=x86_64-pc-windows-msvc"
+VERBOSE = "-vv"
+
+[env.'dev+windows']
 TARGET = "--target=x86_64-pc-windows-msvc"
 VERBOSE = "-vv"
 
