@@ -52,7 +52,7 @@ warp = "0.3"
 [dev-dependencies]
 esthri = { path = "../esthri", default-features = false, features=["blocking"] }
 esthri-test = { path = "../esthri-test" }
-assert_cmd = "2.0.4"
+assert_cmd = "2.0.5"
 backtrace = "0.3"
 fs_extra = "1.2"
 md5 = "0.7"
