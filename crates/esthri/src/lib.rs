@@ -47,7 +47,7 @@ pub use ops::{
     copy::copy,
     delete::{delete, delete_streaming},
     download::{download, download_streaming, download_with_transparent_decompression},
-    sync::{sync, GlobFilter},
+    sync::{sync, GlobFilter, SyncOptions, SyncOptionsBuilder},
     upload::{
         upload, upload_compressed, upload_compressed_with_storage_class, upload_from_reader,
         upload_with_storage_class, PendingUpload,
@@ -59,7 +59,7 @@ pub use types::{S3ListingItem, S3Object, S3PathParam};
 
 pub use esthri_internals::new_https_connector;
 
-pub const FILTER_EMPTY: Option<&[GlobFilter]> = None;
+pub const FILTER_EMPTY: Option<Vec<GlobFilter>> = None;
 
 pub async fn compute_etag(path: impl AsRef<Path>) -> Result<String> {
     async fn inner(path: &Path) -> Result<String> {

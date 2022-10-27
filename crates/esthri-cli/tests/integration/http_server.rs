@@ -202,13 +202,12 @@ async fn upload_index_url_test_data() -> anyhow::Result<()> {
     let s3_key = "index_html";
     let s3client = esthri_test::get_s3client();
     let local_directory = esthri_test::test_data(s3_key);
+    let sync_opts = esthri::SyncOptionsBuilder::default().build().unwrap();
     esthri::sync(
         s3client.as_ref(),
         esthri::S3PathParam::new_local(local_directory),
         esthri::S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key),
-        None,
-        false,
-        false,
+        &sync_opts,
     )
     .await?;
     Ok(())

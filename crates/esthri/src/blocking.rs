@@ -12,7 +12,6 @@
 
 use std::path::Path;
 
-use crate::ops::sync::GlobFilter;
 use crate::rusoto::*;
 use crate::HeadObjectInfo;
 use crate::Result;
@@ -115,22 +114,12 @@ pub async fn sync<T>(
     s3: &T,
     source: S3PathParam,
     destination: S3PathParam,
-    filters: Option<&[GlobFilter]>,
-    transparent_compression: bool,
-    delete: bool,
+    sync_opts: &crate::SyncOptions,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
 {
-    crate::sync(
-        s3,
-        source,
-        destination,
-        filters,
-        transparent_compression,
-        delete,
-    )
-    .await
+    crate::sync(s3, source, destination, sync_opts).await
 }
 
 #[tokio::main]

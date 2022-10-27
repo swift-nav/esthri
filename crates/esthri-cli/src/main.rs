@@ -350,15 +350,13 @@ async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
                     let compress =
                         compress || env::var("ESTHRI_AWS_COMPAT_MODE_COMPRESSION").is_ok();
 
-                    esthri::sync(
-                        s3,
-                        source.clone(),
-                        destination.clone(),
-                        Some(&filters),
-                        compress,
+                    let opts = esthri::SyncOptions {
+                        glob_filters: Some(filters),
+                        compressed: compress,
                         delete,
-                    )
-                    .await?;
+                    };
+
+                    esthri::sync(s3, source.clone(), destination.clone(), &opts).await?;
                 }
             };
         }
@@ -483,15 +481,13 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
                 .subcommand_matches("sync")
                 .expect("Expected sync command");
             let filters = globs_to_filter_list(include, exclude, matches);
-            esthri::sync(
-                s3,
-                source.clone(),
-                destination.clone(),
-                filters.as_deref(),
-                transparent_compression,
-                delete,
-            )
-            .await?;
+            let sync_opts = esthri::SyncOptionsBuilder::default()
+                .glob_filters(filters)
+                .compressed(transparent_compression)
+                .delete(delete)
+                .build()
+                .unwrap();
+            esthri::sync(s3, source.clone(), destination.clone(), &sync_opts).await?;
         }
 
         HeadObject { bucket, key } => {

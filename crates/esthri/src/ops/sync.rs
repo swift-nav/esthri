@@ -16,6 +16,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use derive_builder::Builder;
+
 use futures::{future, pin_mut, Future, Stream, StreamExt, TryStreamExt};
 
 use glob::Pattern;
@@ -63,6 +65,13 @@ impl GlobFilter {
     }
 }
 
+#[derive(Debug, Default, Builder)]
+pub struct SyncOptions {
+    pub glob_filters: Option<Vec<GlobFilter>>,
+    pub compressed: bool,
+    pub delete: bool,
+}
+
 /// Syncs between S3 prefixes and local directories
 ///
 /// # Arguments
@@ -80,15 +89,13 @@ pub async fn sync<T>(
     s3: &T,
     source: S3PathParam,
     destination: S3PathParam,
-    glob_filters: Option<&[GlobFilter]>,
-    compressed: bool,
-    delete: bool,
+    sync_options: &SyncOptions,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
 {
-    let filters: Vec<GlobFilter> = match glob_filters {
-        Some(filters) => {
+    let filters: Vec<GlobFilter> = match sync_options.glob_filters {
+        Some(ref filters) => {
             let mut filters = filters.to_vec();
             if !filters.iter().any(|x| matches!(x, GlobFilter::Include(_))) {
                 filters.push(GlobFilter::Include(Pattern::new("*")?));
@@ -107,7 +114,16 @@ where
                 key
             );
 
-            sync_local_to_remote(s3, &bucket, &key, &path, &filters, compressed, delete).await?;
+            sync_local_to_remote(
+                s3,
+                &bucket,
+                &key,
+                &path,
+                &filters,
+                sync_options.compressed,
+                sync_options.delete,
+            )
+            .await?;
         }
         (S3PathParam::Bucket { bucket, key }, S3PathParam::Local { path }) => {
             info!(
@@ -117,7 +133,16 @@ where
                 key
             );
 
-            sync_remote_to_local(s3, &bucket, &key, &path, &filters, compressed, delete).await?;
+            sync_remote_to_local(
+                s3,
+                &bucket,
+                &key,
+                &path,
+                &filters,
+                sync_options.compressed,
+                sync_options.delete,
+            )
+            .await?;
         }
         (
             S3PathParam::Bucket {
@@ -141,7 +166,7 @@ where
                 &destination_bucket,
                 &destination_key,
                 &filters,
-                delete,
+                sync_options.delete,
             )
             .await?;
         }
