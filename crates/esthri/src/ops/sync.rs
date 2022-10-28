@@ -67,8 +67,11 @@ impl GlobFilter {
 
 #[derive(Debug, Default, Builder)]
 pub struct SyncOptions {
+    #[builder(default)]
     pub glob_filters: Option<Vec<GlobFilter>>,
+    #[builder(default)]
     pub compressed: bool,
+    #[builder(default)]
     pub delete: bool,
 }
 
