@@ -350,11 +350,12 @@ async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
                     let compress =
                         compress || env::var("ESTHRI_AWS_COMPAT_MODE_COMPRESSION").is_ok();
 
-                    let opts = esthri::SyncOptions {
-                        glob_filters: Some(filters),
-                        compressed: compress,
-                        delete,
-                    };
+                    let opts = esthri::SyncOptionsBuilder::default()
+                        .glob_filters(Some(filters))
+                        .compressed(compress)
+                        .delete(delete)
+                        .build()
+                        .unwrap();
 
                     esthri::sync(s3, source.clone(), destination.clone(), &opts).await?;
                 }
