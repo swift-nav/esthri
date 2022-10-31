@@ -162,6 +162,58 @@ where
     Ok(())
 }
 
+/// Syncs between S3 prefixes and local directories
+///
+/// # Arguments
+///
+/// * `s3` - S3 client
+/// * `source` - S3 prefix or local directory to sync from
+/// * `destination` - local directory to sync to
+/// * `glob_filter` - An (optional) slice of filters that specify whether files
+///                   should be included or not. These are processed in order,
+///                   with the first matching filter determining whether the
+///                   file will be included or excluded. If not supplied, then
+///                   all files will be synced.
+#[logfn(err = "ERROR")]
+pub async fn sync_down_streaming<'a, T>(
+    s3: &'a T,
+    source: &'a S3PathParam,
+    destination: &'a S3PathParam,
+    filters: &'a [GlobFilter],
+    compressed: bool,
+) -> Result<impl Stream<Item = Result<Option<String>>> + 'a>
+where
+    T: S3 + Sync + Send + Clone,
+{
+    let (bucket, key, path) = match (source, destination) {
+        (S3PathParam::Bucket { bucket, key }, S3PathParam::Local { path }) => {
+            info!(
+                "sync-down, local directory: {}, bucket: {}, key: {}",
+                path.display(),
+                bucket,
+                key
+            );
+            (bucket, key, path)
+        }
+        _ => {
+            warn!("sync streaming is only implemented for s3 to local");
+            return Err(Error::SyncStreamingNotImplemented);
+        }
+    };
+
+    Ok(
+        sync_remote_to_local_streaming(
+            s3,
+            bucket,
+            key,
+            path.to_str().unwrap(),
+            filters,
+            compressed,
+        )
+        .await,
+    )
+}
+
 fn process_globs<'a, P: AsRef<Path> + 'a>(path: P, filters: &[GlobFilter]) -> Option<P> {
     for pattern in filters {
         match pattern {
@@ -748,7 +800,7 @@ fn remote_to_local_sync_tasks<ClientT, StreamT>(
     directory: PathBuf,
     input_stream: StreamT,
     opts: SharedSyncOptParams,
-) -> impl Stream<Item = impl Future<Output = Result<()>>>
+) -> impl Stream<Item = impl Future<Output = Result<Option<String>>>>
 where
     ClientT: S3 + Sync + Send + Clone,
     StreamT: Stream<Item = MapPathResult>,
@@ -773,6 +825,11 @@ where
                     ..
                 } = entry;
                 let metadata = metadata.unwrap();
+                let dest_path = directory
+                    .join(&metadata.s3_suffix)
+                    .to_str()
+                    .unwrap()
+                    .to_owned();
                 match local_etag {
                     Ok(Some(local_etag)) => {
                         if local_etag != metadata.e_tag {
@@ -791,6 +848,7 @@ where
                                 opts,
                             )
                             .await?;
+                            return Ok(Some(dest_path));
                         } else {
                             debug!("etag match: {}", source_path.display());
                         }
@@ -807,14 +865,17 @@ where
                                 opts,
                             )
                             .await?;
+                            return Ok(Some(dest_path));
                         }
                         _ => {
                             warn!("s3 etag error: {}", err);
                         }
                     },
-                    Ok(None) => warn!("no local etag"),
+                    Ok(None) => {
+                        warn!("no local etag");
+                    }
                 }
-                Ok(())
+                Ok(None)
             },
         )
 }
@@ -867,6 +928,50 @@ where
     } else {
         Ok(())
     }
+}
+
+async fn sync_remote_to_local_streaming<'a, T>(
+    s3: &'a T,
+    bucket: &'a str,
+    key: &'a str,
+    directory: &'a str,
+    filters: &'a [GlobFilter],
+    transparent_decompress: bool,
+) -> impl Stream<Item = Result<Option<String>>> + 'a
+where
+    T: S3 + Sync + Send + Clone,
+{
+    let task_count = Config::global().concurrent_sync_tasks();
+    let object_listing = flattened_object_listing(
+        s3,
+        bucket,
+        key,
+        Path::new(directory),
+        filters,
+        transparent_decompress,
+    )
+    .map_ok(|(path, _key, s3_metadata)| (path, s3_metadata));
+    let cmd = if transparent_decompress {
+        SyncCmd::DownCompressed
+    } else {
+        SyncCmd::Down
+    };
+
+    let etag_stream = translate_paths(object_listing, cmd).buffer_unordered(task_count);
+    let sync_tasks = remote_to_local_sync_tasks(
+        s3.clone(),
+        bucket.into(),
+        key.into(),
+        directory.into(),
+        etag_stream,
+        transparent_decompress,
+    );
+
+    Box::pin(
+        sync_tasks
+            .buffer_unordered(task_count)
+            .take_while(|_task| future::ready(true)), // always go through the whole stream
+    )
 }
 
 async fn download_with_dir<T>(

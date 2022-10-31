@@ -133,6 +133,9 @@ pub enum Error {
 
     #[error("unknown storage class")]
     UnknownStorageClass(String),
+
+    #[error("sync streaming only implemented for s3 to local")]
+    SyncStreamingNotImplemented,
 }
 
 impl From<std::convert::Infallible> for Error {

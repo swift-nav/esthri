@@ -1,11 +1,15 @@
-use std::fs;
+use std::{fs, path::Path};
 
 use glob::Pattern;
 use tempdir::TempDir;
 use tempfile::tempdir;
 
-use esthri::{blocking, opts::*, rusoto::S3Client, sync, GlobFilter, S3PathParam, FILTER_EMPTY};
+use esthri::{
+    blocking, opts::*, rusoto::S3Client, sync, sync_down_streaming, GlobFilter, S3PathParam,
+    FILTER_EMPTY,
+};
 use esthri_test::{randomised_lifecycled_prefix, validate_key_hash_pairs, KeyHashPair};
+use tokio_stream::StreamExt;
 
 #[test]
 fn test_sync_down() {
@@ -654,5 +658,29 @@ fn test_sync_down_compressed_mixed() {
         ];
 
         validate_key_hash_pairs(&local_directory, &key_hash_pairs);
+    }
+}
+
+#[tokio::test]
+async fn test_sync_down_async_streaming() {
+    let s3client = esthri_test::get_s3client();
+    let local_directory = esthri_test::test_data_dir();
+    let s3_key = "test_folder/";
+    let filters: Vec<GlobFilter> = vec![
+        GlobFilter::Include(Pattern::new("*.txt").unwrap()),
+        GlobFilter::Exclude(Pattern::new("*").unwrap()),
+    ];
+
+    let source = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key);
+    let destination = S3PathParam::new_local(&local_directory);
+
+    let mut stream = sync_down_streaming(s3client.as_ref(), &source, &destination, &filters, false)
+        .await
+        .unwrap();
+
+    while let Some(res) = stream.next().await {
+        if let Some(local_path) = res.unwrap() {
+            assert!(Path::new(&local_path).exists());
+        }
     }
 }

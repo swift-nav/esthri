@@ -43,9 +43,12 @@ pub use errors::{Error, Result};
 pub use ops::{
     copy::copy,
     delete::{delete, delete_streaming},
-    download::{download, download_streaming},
-    sync::{sync, GlobFilter},
-    upload::{upload, upload_from_reader, PendingUpload},
+    download::{download, download_streaming, download_with_transparent_decompression},
+    sync::{sync, sync_down_streaming, GlobFilter},
+    upload::{
+        upload, upload_compressed, upload_compressed_with_storage_class, upload_from_reader,
+        upload_with_storage_class, PendingUpload,
+    },
 };
 
 pub use rusoto::HeadObjectInfo;
