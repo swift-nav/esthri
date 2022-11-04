@@ -119,7 +119,7 @@ fn test_upload_zero_size() {
     let filepath = esthri_test::test_data(filename);
     let s3_key =
         esthri_test::randomised_lifecycled_prefix(&format!("test_upload_zero_size/{}", filename));
-        let opts = GenericOptParamsBuilder::default().build().unwrap();
+    let opts = GenericOptParamsBuilder::default().build().unwrap();
 
     let res = blocking::upload(
         s3client.as_ref(),
