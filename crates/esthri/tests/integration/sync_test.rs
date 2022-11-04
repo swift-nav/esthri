@@ -62,7 +62,7 @@ async fn test_sync_down_async() {
 fn test_sync_down_without_slash() {
     let s3client = esthri_test::get_s3client();
     let local_directory = esthri_test::test_data_dir();
-    let s3_key = esthri_test::randomised_name("test_folder");
+    let s3_key = esthri_test::randomised_lifecycled_prefix("test_folder");
     let filters: Option<Vec<GlobFilter>> = Some(vec![
         GlobFilter::Include(Pattern::new("*.txt").unwrap()),
         GlobFilter::Exclude(Pattern::new("*").unwrap()),
@@ -86,7 +86,7 @@ fn test_sync_down_without_slash() {
 fn test_sync_up_without_slash() {
     let s3client = esthri_test::get_s3client();
     let local_directory = esthri_test::test_data_dir();
-    let s3_key = esthri_test::randomised_name("test_folder");
+    let s3_key = esthri_test::randomised_lifecycled_prefix("test_folder");
     let filters: Option<Vec<GlobFilter>> = Some(vec![
         GlobFilter::Include(Pattern::new("*.txt").unwrap()),
         GlobFilter::Exclude(Pattern::new("*").unwrap()),
@@ -110,7 +110,7 @@ fn test_sync_up_without_slash() {
 fn test_sync_up() {
     let s3client = esthri_test::get_s3client();
     let local_directory = esthri_test::test_data_dir();
-    let s3_key = esthri_test::randomised_name("test_folder/");
+    let s3_key = esthri_test::randomised_lifecycled_prefix("test_folder/");
     let filters: Option<Vec<GlobFilter>> = Some(vec![
         GlobFilter::Include(Pattern::new("*.txt").unwrap()),
         GlobFilter::Exclude(Pattern::new("*").unwrap()),
@@ -134,7 +134,7 @@ fn test_sync_up() {
 async fn test_sync_up_async() {
     let s3client = esthri_test::get_s3client();
     let local_directory = esthri_test::test_data_dir();
-    let s3_key = esthri_test::randomised_name("test_folder/");
+    let s3_key = esthri_test::randomised_lifecycled_prefix("test_folder/");
     let filters: Option<Vec<GlobFilter>> = Some(vec![
         GlobFilter::Include(Pattern::new("*.txt").unwrap()),
         GlobFilter::Exclude(Pattern::new("*").unwrap()),
@@ -159,7 +159,7 @@ async fn test_sync_up_async() {
 fn test_sync_up_default() {
     let s3client = esthri_test::get_s3client();
     let local_directory = esthri_test::test_data("sync_up");
-    let s3_key = esthri_test::randomised_name("test_sync_up_default/");
+    let s3_key = esthri_test::randomised_lifecycled_prefix("test_sync_up_default/");
 
     let source = S3PathParam::new_local(&local_directory);
     let destination = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, &s3_key);
@@ -196,7 +196,7 @@ fn test_sync_up_default() {
 fn test_sync_up_delete() {
     let s3client = esthri_test::get_s3client();
     let local_directory = esthri_test::copy_test_data("sync_up");
-    let s3_key_prefix = esthri_test::randomised_name("test_sync_up_delete/");
+    let s3_key_prefix = esthri_test::randomised_lifecycled_prefix("test_sync_up_delete/");
 
     let source = S3PathParam::new_local(&local_directory);
     let destination = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, &s3_key_prefix);
@@ -276,7 +276,7 @@ fn test_sync_down_delete() {
     // Get path to some directory and populate it.
     let local_directory = esthri_test::copy_test_data("sync_up");
     // Create a key that correspods to non-existant data in an S3 bucket
-    let s3_key_prefix = esthri_test::randomised_name("test_sync_down_delete/");
+    let s3_key_prefix = esthri_test::randomised_lifecycled_prefix("test_sync_down_delete/");
 
     let src = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, &s3_key_prefix);
     let dst = S3PathParam::new_local(&local_directory);
@@ -313,8 +313,10 @@ fn test_sync_down_delete() {
 fn test_sync_across_delete() {
     let s3client = esthri_test::get_s3client();
     // Indicate two empty S3 keys to perform opperations on.
-    let s3_key_src_prefix = esthri_test::randomised_name("test_sync_across_delete_src/");
-    let s3_key_dst_prefix = esthri_test::randomised_name("test_sync_across_delete_dst/");
+    let s3_key_src_prefix =
+        esthri_test::randomised_lifecycled_prefix("test_sync_across_delete_src/");
+    let s3_key_dst_prefix =
+        esthri_test::randomised_lifecycled_prefix("test_sync_across_delete_dst/");
 
     // Create a dummy file. Deletion of this file will be indicative of test success
     let temp_directory = tempdir().expect("Unabel to create temp directory");
@@ -461,7 +463,7 @@ fn test_sync_down_filter() {
 async fn test_sync_across() {
     let s3client = esthri_test::get_s3client();
     let source_prefix = "test_sync_folder1/";
-    let dest_prefix = esthri_test::randomised_name("test_sync_folder2/");
+    let dest_prefix = esthri_test::randomised_lifecycled_prefix("test_sync_folder2/");
 
     let filters: Option<Vec<GlobFilter>> =
         Some(vec![GlobFilter::Include(Pattern::new("*.txt").unwrap())]);
@@ -503,7 +505,7 @@ fn sync_test_files_up_compressed(s3client: &S3Client, s3_key: &str) -> String {
 #[test]
 fn test_sync_up_compressed() {
     let s3client = esthri_test::get_s3client();
-    let key = esthri_test::randomised_name("test_sync_up_compressed/");
+    let key = esthri_test::randomised_lifecycled_prefix("test_sync_up_compressed/");
     let s3_key = sync_test_files_up_compressed(s3client.as_ref(), &key);
 
     let key_hash_pairs = [
@@ -529,7 +531,7 @@ fn test_sync_up_compressed() {
 #[test]
 fn test_sync_down_compressed() {
     let s3client = esthri_test::get_s3client();
-    let s3_key = esthri_test::randomised_name("test_sync_down_compressed_v7/");
+    let s3_key = esthri_test::randomised_lifecycled_prefix("test_sync_down_compressed_v7/");
 
     sync_test_files_up_compressed(s3client.as_ref(), &s3_key);
 
@@ -567,7 +569,7 @@ fn test_sync_down_compressed() {
 #[test]
 fn test_sync_down_compressed_mixed() {
     let s3client = esthri_test::get_s3client();
-    let s3_key = esthri_test::randomised_name("test_sync_down_compressed_mixed_v7/");
+    let s3_key = esthri_test::randomised_lifecycled_prefix("test_sync_down_compressed_mixed_v7/");
 
     blocking::upload(
         s3client.as_ref(),

@@ -55,6 +55,11 @@ pub fn randomised_name(name: &str) -> String {
     format!("{}-{}", Uuid::new_v4(), name)
 }
 
+// add prefix that s3 lifecycle policy would match to do deletion
+pub fn randomised_lifecycled_prefix(name: &str) -> String {
+    format!("test_runs_to_be_lifecycled/{}-{}", Uuid::new_v4(), name)
+}
+
 pub fn test_data_dir() -> PathBuf {
     let workspace = std::env::var("WORKSPACE").expect("WORKSPACE not set");
     PathBuf::from(workspace).join("crates/esthri-test/data")
