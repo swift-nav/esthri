@@ -13,10 +13,11 @@
 //! Configuration module for the library, allows sizing of internal concurrent task counts,
 //! multipart upload sizes and read buffer sizes, among other things.
 
+use std::path::PathBuf;
+
 use crate::S3StorageClass;
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
-use std::path::PathBuf;
 
 /// The default size of parts in a multipart upload to S3.  8 MiB is the default chunk
 /// size from awscli, changing this size will affect the calculation of ETags.

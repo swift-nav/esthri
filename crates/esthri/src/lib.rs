@@ -26,13 +26,10 @@ mod config;
 mod ops;
 mod retry;
 
-use std::marker::Unpin;
-use std::path::Path;
+use std::{marker::Unpin, path::Path};
 
 pub use crate::config::Config;
-use crate::retry::handle_dispatch_error;
-use crate::rusoto::*;
-use crate::types::S3Listing;
+use crate::{retry::handle_dispatch_error, rusoto::*, types::S3Listing};
 use futures::{stream, TryStream, TryStreamExt};
 use log::{info, warn};
 use log_derive::logfn;
@@ -46,12 +43,9 @@ pub use errors::{Error, Result};
 pub use ops::{
     copy::copy,
     delete::{delete, delete_streaming},
-    download::{download, download_streaming, download_with_transparent_decompression},
+    download::{download, download_streaming},
     sync::{sync, GlobFilter},
-    upload::{
-        upload, upload_compressed, upload_compressed_with_storage_class, upload_from_reader,
-        upload_with_storage_class, PendingUpload,
-    },
+    upload::{upload, upload_from_reader, PendingUpload},
 };
 
 pub use rusoto::HeadObjectInfo;
@@ -62,20 +56,17 @@ pub use esthri_internals::new_https_connector;
 pub const FILTER_EMPTY: Option<&[GlobFilter]> = None;
 
 pub async fn compute_etag(path: impl AsRef<Path>) -> Result<String> {
-    async fn inner(path: &Path) -> Result<String> {
-        let f = match fs::File::open(path).await {
-            Ok(f) => f,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                return Err(Error::ETagNotPresent);
-            }
-            Err(e) => {
-                return Err(e.into());
-            }
-        };
-        let file_size = f.metadata().await?.len();
-        compute_etag_from_reader(f, file_size).await
-    }
-    inner(path.as_ref()).await
+    let f = match fs::File::open(path).await {
+        Ok(f) => f,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Err(Error::ETagNotPresent);
+        }
+        Err(e) => {
+            return Err(e.into());
+        }
+    };
+    let file_size = f.metadata().await?.len();
+    compute_etag_from_reader(f, file_size).await
 }
 
 pub async fn compute_etag_from_reader<T>(reader: T, length: u64) -> Result<String>
@@ -327,4 +318,26 @@ where
     }
 
     Ok(listing)
+}
+
+pub mod opts {
+    use derive_builder::Builder;
+    use glob::Pattern;
+
+    use crate::rusoto::*;
+
+    /// Total of 51 Bytes only using default builder
+    #[derive(Debug, Clone, Builder)]
+    pub struct GenericOptParams {
+        #[builder(default)]
+        pub include: Option<Vec<Pattern>>,
+        #[builder(default)]
+        pub exclude: Option<Vec<Pattern>>,
+        #[builder(default = "Some(S3StorageClass::Standard)")]
+        pub storage_class: Option<S3StorageClass>,
+        #[builder(default)]
+        pub transparent_compression: bool,
+        #[builder(default)]
+        pub delete: bool,
+    }
 }

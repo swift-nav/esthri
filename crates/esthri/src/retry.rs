@@ -10,15 +10,20 @@
  * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-use futures::Future;
-use log::warn;
 use std::time::Duration;
 
-use tokio_retry::strategy::{jitter, ExponentialBackoff};
-use tokio_retry::RetryIf;
+use futures::Future;
+use log::warn;
 
-use crate::rusoto::{RusotoError, RusotoResult};
-use crate::Config;
+use tokio_retry::{
+    strategy::{jitter, ExponentialBackoff},
+    RetryIf,
+};
+
+use crate::{
+    rusoto::{RusotoError, RusotoResult},
+    Config,
+};
 
 pub async fn handle_dispatch_error<'a, F, R, T, E>(func: F) -> RusotoResult<T, E>
 where

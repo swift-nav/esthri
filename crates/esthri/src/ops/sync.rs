@@ -34,6 +34,7 @@ use crate::{
     config::Config,
     errors::{Error, Result},
     handle_dispatch_error, list_objects_stream,
+    opts::*,
     rusoto::*,
     tempfile::TEMP_FILE_PREFIX,
     types::ListingMetadata,
@@ -81,8 +82,7 @@ pub async fn sync<T>(
     source: S3PathParam,
     destination: S3PathParam,
     glob_filters: Option<&[GlobFilter]>,
-    compressed: bool,
-    delete: bool,
+    opts: &GenericOptParams,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
@@ -107,7 +107,16 @@ where
                 key
             );
 
-            sync_local_to_remote(s3, &bucket, &key, &path, &filters, compressed, delete).await?;
+            sync_local_to_remote(
+                s3,
+                &bucket,
+                &key,
+                &path,
+                &filters,
+                opts.transparent_compression,
+                opts.delete,
+            )
+            .await?;
         }
         (S3PathParam::Bucket { bucket, key }, S3PathParam::Local { path }) => {
             info!(
@@ -117,7 +126,7 @@ where
                 key
             );
 
-            sync_remote_to_local(s3, &bucket, &key, &path, &filters, compressed, delete).await?;
+            sync_remote_to_local(s3, &bucket, &key, &path, &filters, opts).await?;
         }
         (
             S3PathParam::Bucket {
@@ -141,7 +150,7 @@ where
                 &destination_bucket,
                 &destination_key,
                 &filters,
-                delete,
+                opts.delete,
             )
             .await?;
         }
@@ -732,16 +741,16 @@ where
     }
 }
 
-fn remote_to_local_sync_tasks<ClientT, StreamT>(
+fn remote_to_local_sync_tasks<'a, ClientT, StreamT>(
     s3: ClientT,
     bucket: String,
     key: String,
     directory: PathBuf,
     input_stream: StreamT,
-    transparent_decompress: bool,
-) -> impl Stream<Item = impl Future<Output = Result<()>>>
+    opts: &'a GenericOptParams,
+) -> impl Stream<Item = impl Future<Output = Result<()>> + 'a>
 where
-    ClientT: S3 + Sync + Send + Clone,
+    ClientT: S3 + Sync + Send + Clone + 'a,
     StreamT: Stream<Item = MapPathResult>,
 {
     input_stream
@@ -751,12 +760,12 @@ where
                 bucket.clone(),
                 key.clone(),
                 directory.clone(),
-                transparent_decompress,
+                opts.clone(),
                 entry.unwrap(),
             )
         })
         .map(
-            |(s3, bucket, key, directory, decompress, entry)| async move {
+            move |(s3, bucket, key, directory, opts, entry)| async move {
                 let MappedPathResult {
                     source_path,
                     local_etag,
@@ -779,7 +788,7 @@ where
                                 &key,
                                 &metadata.s3_suffix,
                                 &directory,
-                                decompress,
+                                &opts,
                             )
                             .await?;
                         } else {
@@ -795,7 +804,7 @@ where
                                 &key,
                                 &metadata.s3_suffix,
                                 &directory,
-                                decompress,
+                                &opts,
                             )
                             .await?;
                         }
@@ -816,18 +825,23 @@ async fn sync_remote_to_local<T>(
     key: &str,
     directory: impl AsRef<Path>,
     filters: &[GlobFilter],
-    transparent_decompress: bool,
-    delete: bool,
+    opts: &GenericOptParams,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
 {
     let directory = directory.as_ref();
     let task_count = Config::global().concurrent_sync_tasks();
-    let object_listing =
-        flattened_object_listing(s3, bucket, key, directory, filters, transparent_decompress)
-            .map_ok(|(path, _key, s3_metadata)| (path, s3_metadata));
-    let cmd = if transparent_decompress {
+    let object_listing = flattened_object_listing(
+        s3,
+        bucket,
+        key,
+        directory,
+        filters,
+        opts.transparent_compression,
+    )
+    .map_ok(|(path, _key, s3_metadata)| (path, s3_metadata));
+    let cmd = if opts.transparent_compression {
         SyncCmd::DownCompressed
     } else {
         SyncCmd::Down
@@ -840,7 +854,7 @@ where
         key.into(),
         directory.into(),
         etag_stream,
-        transparent_decompress,
+        opts,
     );
 
     sync_tasks
@@ -848,7 +862,7 @@ where
         .try_for_each_concurrent(task_count, |_| future::ready(Ok(())))
         .await?;
 
-    if delete {
+    if opts.delete {
         sync_delete_remote(s3, bucket, directory, filters).await
     } else {
         Ok(())
@@ -861,7 +875,7 @@ async fn download_with_dir<T>(
     s3_prefix: &str,
     s3_suffix: &str,
     local_dir: impl AsRef<Path>,
-    transparent_decompress: bool,
+    opts: &GenericOptParams,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
@@ -875,11 +889,7 @@ where
     let key = format!("{}", Path::new(s3_prefix).join(s3_suffix).display());
     let dest_path = format!("{}", dest_path.display());
 
-    if transparent_decompress {
-        crate::download_with_transparent_decompression(s3, bucket, &key, &dest_path).await?;
-    } else {
-        crate::download(s3, bucket, &key, &dest_path).await?;
-    }
+    crate::download(s3, bucket, &key, &dest_path, opts).await?;
 
     Ok(())
 }

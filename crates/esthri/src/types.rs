@@ -10,8 +10,10 @@
 * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
 */
 
-use std::path::{Path, PathBuf};
-use std::result::Result as StdResult;
+use std::{
+    path::{Path, PathBuf},
+    result::Result as StdResult,
+};
 
 use regex::Regex;
 

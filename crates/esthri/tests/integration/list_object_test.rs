@@ -1,12 +1,9 @@
 use futures::TryStreamExt;
 
-use esthri::blocking;
-use esthri::head_object;
-use esthri::list_directory;
-use esthri::list_objects;
-use esthri::list_objects_stream;
-use esthri::upload;
-use esthri::HeadObjectInfo;
+use esthri::{
+    blocking, head_object, list_directory, list_objects, list_objects_stream, opts::*, upload,
+    HeadObjectInfo,
+};
 use esthri_test::DateTime;
 
 #[test]
@@ -17,12 +14,14 @@ fn test_head_object() {
     let s3_key = format!("test_handle_head_object/{}", filename);
 
     let upload_time: DateTime = std::time::SystemTime::now().into();
+    let opts = GenericOptParamsBuilder::default().build().unwrap();
 
     let res = blocking::upload(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
         &s3_key,
         &filepath,
+        &opts,
     );
     assert!(res.is_ok());
 
@@ -46,12 +45,14 @@ async fn test_head_object_async() {
     let filename = "test1mb.bin";
     let filepath = esthri_test::test_data(filename);
     let s3_key = format!("test_handle_head_object/{}", filename);
+    let opts = GenericOptParamsBuilder::default().build().unwrap();
 
     let res = upload(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
         &s3_key,
         &filepath,
+        &opts,
     )
     .await;
     assert!(res.is_ok());
@@ -69,12 +70,14 @@ fn test_list_objects() {
     let not_empty_folder = "test_handle_list_objects/not_empty_folder";
     let not_empty_s3_key = format!("{}/{}", not_empty_folder, filename);
     let empty_folder = "test_handle_list_objects/empty_folder";
+    let opts = GenericOptParamsBuilder::default().build().unwrap();
 
     let res = blocking::upload(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
         &not_empty_s3_key,
         &filepath,
+        &opts,
     );
     assert!(res.is_ok());
 
@@ -103,12 +106,14 @@ async fn test_list_objects_async() {
     let not_empty_folder = "test_handle_list_objects/not_empty_folder";
     let not_empty_s3_key = format!("{}/{}", not_empty_folder, filename);
     let empty_folder = "test_handle_list_objects/empty_folder";
+    let opts = GenericOptParamsBuilder::default().build().unwrap();
 
     let res = upload(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
         &not_empty_s3_key,
         &filepath,
+        &opts,
     )
     .await;
     assert!(res.is_ok());
@@ -152,6 +157,7 @@ async fn test_list_directory() {
     let folder1 = "test_list_directory/folder1/file.txt".to_owned();
     let folder2 = "test_list_directory/folder2/file.txt".to_owned();
     let leaf = "test_list_directory/leaf.txt".to_owned();
+    let opts = GenericOptParamsBuilder::default().build().unwrap();
 
     for s3_key in &[&folder1, &folder2, &leaf] {
         let res = upload(
@@ -159,6 +165,7 @@ async fn test_list_directory() {
             esthri_test::TEST_BUCKET,
             s3_key,
             &filename,
+            &opts,
         )
         .await;
         assert!(res.is_ok());

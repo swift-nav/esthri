@@ -49,13 +49,10 @@ use warp::{
     Filter,
 };
 
-use esthri::download_streaming;
-use esthri::head_object;
-use esthri::list_directory_stream;
-use esthri::list_objects_stream;
-use esthri::rusoto::*;
-use esthri::HeadObjectInfo;
-use esthri::S3ListingItem;
+use esthri::{
+    download_streaming, head_object, list_directory_stream, list_objects_stream, rusoto::*,
+    HeadObjectInfo, S3ListingItem,
+};
 
 const LAST_MODIFIED_TIME_FMT: &str = "%a, %d %b %Y %H:%M:%S GMT";
 const MAX_BUF_SIZE: usize = 1024 * 1024;

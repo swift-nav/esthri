@@ -10,12 +10,13 @@
  * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-use std::path::{Path, PathBuf};
-use std::pin::Pin;
-use std::sync::Arc;
+use std::{
+    path::{Path, PathBuf},
+    pin::Pin,
+    sync::Arc,
+};
 
-use async_compression::tokio::bufread::GzipDecoder as GzipDecoderReader;
-use async_compression::tokio::write::GzipDecoder;
+use async_compression::tokio::{bufread::GzipDecoder as GzipDecoderReader, write::GzipDecoder};
 use bytes::Bytes;
 use futures::{stream, Stream, StreamExt, TryStreamExt};
 use log::info;
@@ -23,11 +24,14 @@ use log_derive::logfn;
 use tokio::io;
 use tokio_util::io::{ReaderStream, StreamReader};
 
-use crate::config::Config;
-use crate::errors::{Error, Result};
-use crate::head_object_request;
-use crate::rusoto::*;
-use crate::tempfile::TempFile;
+use crate::{
+    config::Config,
+    errors::{Error, Result},
+    head_object_request,
+    opts::*,
+    rusoto::*,
+    tempfile::TempFile,
+};
 
 #[logfn(err = "ERROR")]
 pub async fn download<T>(
@@ -35,6 +39,7 @@ pub async fn download<T>(
     bucket: impl AsRef<str>,
     key: impl AsRef<str>,
     file: impl AsRef<Path>,
+    opts: &GenericOptParams,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
@@ -46,27 +51,14 @@ where
         file.as_ref().display()
     );
 
-    download_file(s3, bucket.as_ref(), key.as_ref(), file.as_ref(), false).await
-}
-
-#[logfn(err = "ERROR")]
-pub async fn download_with_transparent_decompression<T>(
-    s3: &T,
-    bucket: impl AsRef<str>,
-    key: impl AsRef<str>,
-    file: impl AsRef<Path>,
-) -> Result<()>
-where
-    T: S3 + Sync + Send + Clone,
-{
-    info!(
-        "get(decompress): bucket={}, key={}, file={}",
+    download_file(
+        s3,
         bucket.as_ref(),
         key.as_ref(),
-        file.as_ref().display()
-    );
-
-    download_file(s3, bucket.as_ref(), key.as_ref(), file.as_ref(), true).await
+        file.as_ref(),
+        opts.transparent_compression,
+    )
+    .await
 }
 
 #[logfn(err = "ERROR")]
