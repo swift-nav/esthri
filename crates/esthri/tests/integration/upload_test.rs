@@ -13,12 +13,8 @@ fn test_upload() {
     let s3client = esthri_test::get_s3client();
     let filename = "test5mb.bin";
     let filepath = esthri_test::test_data(filename);
-<<<<<<< HEAD
     let s3_key = esthri_test::randomised_lifecycled_prefix(&format!("test_upload/{}", filename));
-=======
-    let s3_key = esthri_test::randomised_name(&format!("test_upload/{}", filename));
     let opts = GenericOptParamsBuilder::default().build().unwrap();
->>>>>>> c2a6295 (DEVINFRA-965)
 
     let res = esthri::blocking::upload(
         s3client.as_ref(),
@@ -81,12 +77,8 @@ async fn test_upload_async() {
     let s3client = esthri_test::get_s3client();
     let filename = "test5mb.bin";
     let filepath = esthri_test::test_data(filename);
-<<<<<<< HEAD
     let s3_key = esthri_test::randomised_lifecycled_prefix(&format!("test_upload/{}", filename));
-=======
-    let s3_key = esthri_test::randomised_name(&format!("test_upload/{}", filename));
     let opts = GenericOptParamsBuilder::default().build().unwrap();
->>>>>>> c2a6295 (DEVINFRA-965)
 
     let res = upload(
         s3client.as_ref(),
@@ -125,13 +117,9 @@ fn test_upload_zero_size() {
     let s3client = esthri_test::get_s3client();
     let filename = "test0b.bin";
     let filepath = esthri_test::test_data(filename);
-<<<<<<< HEAD
     let s3_key =
         esthri_test::randomised_lifecycled_prefix(&format!("test_upload_zero_size/{}", filename));
-=======
-    let s3_key = esthri_test::randomised_name(&format!("test_upload_zero_size/{}", filename));
-    let opts = GenericOptParamsBuilder::default().build().unwrap();
->>>>>>> c2a6295 (DEVINFRA-965)
+        let opts = GenericOptParamsBuilder::default().build().unwrap();
 
     let res = blocking::upload(
         s3client.as_ref(),
