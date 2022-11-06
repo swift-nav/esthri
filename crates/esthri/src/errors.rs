@@ -26,6 +26,12 @@ pub enum Error {
     #[error("did not exist locally")]
     ETagNotPresent,
 
+    #[error("invalid s3 etag")]
+    InvalidS3ETag,
+
+    #[error("no local etag")]
+    NoLocalETag,
+
     #[error("s3 sync prefixes must end in a slash")]
     DirlikePrefixRequired,
 

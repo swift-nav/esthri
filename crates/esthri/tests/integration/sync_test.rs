@@ -5,10 +5,10 @@ use tempdir::TempDir;
 use tempfile::tempdir;
 
 use esthri::{
-    blocking, opts::*, rusoto::S3Client, sync, sync_down_streaming, GlobFilter, S3PathParam,
+    blocking, opts::*, rusoto::S3Client, sync, sync_streaming, GlobFilter, S3PathParam,
     FILTER_EMPTY,
 };
-use esthri_test::{randomised_lifecycled_prefix, validate_key_hash_pairs, KeyHashPair};
+use esthri_test::{validate_key_hash_pairs, KeyHashPair};
 use tokio_stream::StreamExt;
 
 #[test]
@@ -293,13 +293,7 @@ fn test_sync_down_delete() {
         .unwrap();
 
     // Perform sync with delete flag set. Because the target S3 key is empty, all contents in local directory should be deleted.
-    let res = blocking::sync(
-        s3client.as_ref(),
-        src.clone(),
-        dst.clone(),
-        FILTER_EMPTY,
-        opts,
-    );
+    let res = blocking::sync(s3client.as_ref(), src, dst, FILTER_EMPTY, opts);
     assert!(res.is_ok());
 
     // Expect no files to exist within local_directory. Metadata such as directories are permissible.
@@ -337,7 +331,7 @@ fn test_sync_across_delete() {
     // Copy the dummy file to one of the test buckets
     let res = blocking::sync(
         s3client.as_ref(),
-        local_source.clone(),
+        local_source,
         destination.clone(),
         FILTER_EMPTY,
         opts,
@@ -673,14 +667,13 @@ async fn test_sync_down_async_streaming() {
 
     let source = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key);
     let destination = S3PathParam::new_local(&local_directory);
+    let opts = SharedSyncOptParamsBuilder::default().build().unwrap();
 
-    let mut stream = sync_down_streaming(s3client.as_ref(), &source, &destination, &filters, false)
+    let mut stream = sync_streaming(s3client.as_ref(), &source, &destination, &filters, opts)
         .await
         .unwrap();
 
     while let Some(res) = stream.next().await {
-        if let Some(local_path) = res.unwrap() {
-            assert!(Path::new(&local_path).exists());
-        }
+        assert!(Path::new(&res.unwrap().dest_path()).exists());
     }
 }
