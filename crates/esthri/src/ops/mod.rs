@@ -13,5 +13,6 @@
 pub(super) mod copy;
 pub(super) mod delete;
 pub(super) mod download;
+pub(super) mod presign;
 pub(super) mod sync;
 pub(super) mod upload;

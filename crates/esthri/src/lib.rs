@@ -47,6 +47,10 @@ pub use ops::{
     copy::copy,
     delete::{delete, delete_streaming},
     download::{download, download_streaming, download_with_transparent_decompression},
+    presign::{
+        presign_delete, presign_get, presign_multipart_upload, presign_put,
+        setup_presigned_multipart_upload, upload_file_presigned_multipart_upload,
+    },
     sync::{sync, GlobFilter},
     upload::{
         upload, upload_compressed, upload_compressed_with_storage_class, upload_from_reader,
