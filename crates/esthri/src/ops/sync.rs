@@ -82,7 +82,7 @@ pub async fn sync<T>(
     source: S3PathParam,
     destination: S3PathParam,
     glob_filters: Option<&[GlobFilter]>,
-    opts: &GenericOptParams,
+    opts: SharedSyncOptParams,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
@@ -741,16 +741,16 @@ where
     }
 }
 
-fn remote_to_local_sync_tasks<'a, ClientT, StreamT>(
+fn remote_to_local_sync_tasks<ClientT, StreamT>(
     s3: ClientT,
     bucket: String,
     key: String,
     directory: PathBuf,
     input_stream: StreamT,
-    opts: &'a GenericOptParams,
-) -> impl Stream<Item = impl Future<Output = Result<()>> + 'a>
+    opts: SharedSyncOptParams,
+) -> impl Stream<Item = impl Future<Output = Result<()>>>
 where
-    ClientT: S3 + Sync + Send + Clone + 'a,
+    ClientT: S3 + Sync + Send + Clone,
     StreamT: Stream<Item = MapPathResult>,
 {
     input_stream
@@ -788,7 +788,7 @@ where
                                 &key,
                                 &metadata.s3_suffix,
                                 &directory,
-                                &opts,
+                                opts,
                             )
                             .await?;
                         } else {
@@ -804,7 +804,7 @@ where
                                 &key,
                                 &metadata.s3_suffix,
                                 &directory,
-                                &opts,
+                                opts,
                             )
                             .await?;
                         }
@@ -825,7 +825,7 @@ async fn sync_remote_to_local<T>(
     key: &str,
     directory: impl AsRef<Path>,
     filters: &[GlobFilter],
-    opts: &GenericOptParams,
+    opts: SharedSyncOptParams,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
@@ -854,7 +854,7 @@ where
         key.into(),
         directory.into(),
         etag_stream,
-        opts,
+        opts.clone(),
     );
 
     sync_tasks
@@ -875,7 +875,7 @@ async fn download_with_dir<T>(
     s3_prefix: &str,
     s3_suffix: &str,
     local_dir: impl AsRef<Path>,
-    opts: &GenericOptParams,
+    opts: SharedSyncOptParams,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
@@ -889,7 +889,7 @@ where
     let key = format!("{}", Path::new(s3_prefix).join(s3_suffix).display());
     let dest_path = format!("{}", dest_path.display());
 
-    crate::download(s3, bucket, &key, &dest_path, opts).await?;
+    crate::download(s3, bucket, &key, &dest_path, EsthriGetOptParams::from(opts)).await?;
 
     Ok(())
 }

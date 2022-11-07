@@ -25,20 +25,24 @@ pub async fn copy<T>(
     s3: &T,
     source: S3PathParam,
     destination: S3PathParam,
-    opts: &GenericOptParams,
+    opts: AwsCopyOptParams,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
 {
     match source {
         S3PathParam::Bucket { bucket, key } => match destination {
-            S3PathParam::Local { path } => download(s3, bucket, key, path, opts).await,
+            S3PathParam::Local { path } => {
+                download(s3, bucket, key, path, EsthriGetOptParams::from(opts)).await
+            }
             S3PathParam::Bucket { bucket: _, key: _ } => {
                 Err(Error::BucketToBucketCpNotImplementedError)
             }
         },
         S3PathParam::Local { path } => match destination {
-            S3PathParam::Bucket { bucket, key } => upload(s3, bucket, key, path, opts).await,
+            S3PathParam::Bucket { bucket, key } => {
+                upload(s3, bucket, key, path, EsthriPutOptParams::from(opts)).await
+            }
             S3PathParam::Local { path: _ } => Err(Error::LocalToLocalCpNotImplementedError),
         },
     }

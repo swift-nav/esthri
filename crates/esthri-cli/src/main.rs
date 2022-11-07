@@ -100,7 +100,7 @@ async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
                     let opts = AwsCopyParams::build_opts(&params);
 
                     if let Err(e) =
-                        esthri::copy(s3, params.source.clone(), params.destination.clone(), &opts)
+                        esthri::copy(s3, params.source.clone(), params.destination.clone(), opts)
                             .await
                     {
                         match e {
@@ -143,7 +143,7 @@ async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
                         params.source.clone(),
                         params.destination.clone(),
                         Some(&filters),
-                        &opts,
+                        opts,
                     )
                     .await?;
                 }
@@ -161,12 +161,12 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
         Put(params) => {
             setup_upload_termination_handler(s3.clone());
             let opts = EsthriPutParams::build_opts(&params);
-            esthri::upload(s3, params.bucket, params.key, params.file, &opts).await?;
+            esthri::upload(s3, params.bucket, params.key, params.file, opts).await?;
         }
 
         Get(params) => {
             let opts = EsthriGetParams::build_opts(&params);
-            esthri::download(s3, params.bucket, params.key, params.file, &opts).await?;
+            esthri::download(s3, params.bucket, params.key, params.file, opts).await?;
         }
 
         Abort(params) => {
@@ -199,7 +199,7 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
                 params.source.clone(),
                 params.destination.clone(),
                 filters.as_deref(),
-                &opts,
+                opts,
             )
             .await?;
         }

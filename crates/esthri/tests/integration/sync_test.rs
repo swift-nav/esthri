@@ -20,14 +20,14 @@ fn test_sync_down() {
 
     let source = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key);
     let destination = S3PathParam::new_local(&local_directory);
-    let opts = GenericOptParamsBuilder::default().build().unwrap();
+    let opts = SharedSyncOptParamsBuilder::default().build().unwrap();
 
     let res = esthri::blocking::sync(
         s3client.as_ref(),
         source,
         destination,
         filters.as_deref(),
-        &opts,
+        opts,
     );
     assert!(res.is_ok(), "s3_sync result: {:?}", res);
 }
@@ -44,14 +44,14 @@ async fn test_sync_down_async() {
 
     let source = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key);
     let destination = S3PathParam::new_local(&local_directory);
-    let opts = GenericOptParamsBuilder::default().build().unwrap();
+    let opts = SharedSyncOptParamsBuilder::default().build().unwrap();
 
     let res = sync(
         s3client.as_ref(),
         source,
         destination,
         filters.as_deref(),
-        &opts,
+        opts,
     )
     .await;
     assert!(res.is_ok(), "s3_sync result: {:?}", res);
@@ -69,14 +69,14 @@ fn test_sync_down_without_slash() {
 
     let source = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key);
     let destination = S3PathParam::new_local(&local_directory);
-    let opts = GenericOptParamsBuilder::default().build().unwrap();
+    let opts = SharedSyncOptParamsBuilder::default().build().unwrap();
 
     let res = blocking::sync(
         s3client.as_ref(),
         source,
         destination,
         filters.as_deref(),
-        &opts,
+        opts,
     );
     assert!(res.is_ok());
 }
@@ -93,14 +93,14 @@ fn test_sync_up_without_slash() {
 
     let source = S3PathParam::new_local(&local_directory);
     let destination = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key);
-    let opts = GenericOptParamsBuilder::default().build().unwrap();
+    let opts = SharedSyncOptParamsBuilder::default().build().unwrap();
 
     let res = blocking::sync(
         s3client.as_ref(),
         source,
         destination,
         filters.as_deref(),
-        &opts,
+        opts,
     );
     assert!(res.is_ok());
 }
@@ -117,14 +117,14 @@ fn test_sync_up() {
 
     let source = S3PathParam::new_local(&local_directory);
     let destination = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key);
-    let opts = GenericOptParamsBuilder::default().build().unwrap();
+    let opts = SharedSyncOptParamsBuilder::default().build().unwrap();
 
     let res = blocking::sync(
         s3client.as_ref(),
         source,
         destination,
         filters.as_deref(),
-        &opts,
+        opts,
     );
     assert!(res.is_ok());
 }
@@ -141,14 +141,14 @@ async fn test_sync_up_async() {
 
     let source = S3PathParam::new_local(&local_directory);
     let destination = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key);
-    let opts = GenericOptParamsBuilder::default().build().unwrap();
+    let opts = SharedSyncOptParamsBuilder::default().build().unwrap();
 
     let res = sync(
         s3client.as_ref(),
         source,
         destination,
         filters.as_deref(),
-        &opts,
+        opts,
     )
     .await;
     assert!(res.is_ok());
@@ -162,7 +162,7 @@ fn test_sync_up_default() {
 
     let source = S3PathParam::new_local(&local_directory);
     let destination = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, &s3_key);
-    let ref opts = GenericOptParamsBuilder::default().build().unwrap();
+    let opts = SharedSyncOptParamsBuilder::default().build().unwrap();
 
     let res = blocking::sync(s3client.as_ref(), source, destination, FILTER_EMPTY, opts);
     assert!(res.is_ok());
@@ -193,7 +193,7 @@ fn test_sync_up_delete() {
 
     let source = S3PathParam::new_local(&local_directory);
     let destination = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, &s3_key_prefix);
-    let opts = GenericOptParamsBuilder::default()
+    let opts = SharedSyncOptParamsBuilder::default()
         .transparent_compression(false)
         .delete(true)
         .build()
@@ -204,7 +204,7 @@ fn test_sync_up_delete() {
         source.clone(),
         destination.clone(),
         FILTER_EMPTY,
-        &opts,
+        opts,
     );
     assert!(res.is_ok());
 
@@ -227,7 +227,7 @@ fn test_sync_up_delete() {
 
     fs::remove_file(&remove_path_target).expect("could not remove file");
     assert!(fs::metadata(remove_path_target).is_err());
-    let ref opts = GenericOptParamsBuilder::default()
+    let opts = SharedSyncOptParamsBuilder::default()
         .transparent_compression(false)
         .delete(true)
         .build()
@@ -283,7 +283,7 @@ fn test_sync_down_delete() {
         .next()
         .is_some());
 
-    let opts = GenericOptParamsBuilder::default()
+    let opts = SharedSyncOptParamsBuilder::default()
         .delete(true)
         .build()
         .unwrap();
@@ -294,7 +294,7 @@ fn test_sync_down_delete() {
         src.clone(),
         dst.clone(),
         FILTER_EMPTY,
-        &opts,
+        opts,
     );
     assert!(res.is_ok());
 
@@ -328,7 +328,7 @@ fn test_sync_across_delete() {
     let destination = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, &s3_key_dst_prefix);
 
     let local_source = S3PathParam::new_local(temp_directory_as_pathbuf.as_path());
-    let opts = GenericOptParamsBuilder::default().build().unwrap();
+    let opts = SharedSyncOptParamsBuilder::default().build().unwrap();
 
     // Copy the dummy file to one of the test buckets
     let res = blocking::sync(
@@ -336,7 +336,7 @@ fn test_sync_across_delete() {
         local_source.clone(),
         destination.clone(),
         FILTER_EMPTY,
-        &opts,
+        opts,
     );
     assert!(res.is_ok());
 
@@ -357,7 +357,7 @@ fn test_sync_across_delete() {
     // Local cleanup
     fs::remove_file(file_pathbuf).expect("Unable to remove file");
 
-    let ref opts = GenericOptParamsBuilder::default()
+    let opts = SharedSyncOptParamsBuilder::default()
         .transparent_compression(false)
         .delete(true)
         .build()
@@ -403,7 +403,7 @@ fn test_sync_down_default() {
 
     let source = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key);
     let destination = S3PathParam::new_local(&local_directory);
-    let ref opts = GenericOptParamsBuilder::default().build().unwrap();
+    let opts = SharedSyncOptParamsBuilder::default().build().unwrap();
 
     let res = blocking::sync(s3client.as_ref(), source, destination, FILTER_EMPTY, opts);
     assert!(res.is_ok());
@@ -430,14 +430,14 @@ fn test_sync_down_filter() {
 
     let source = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key);
     let destination = S3PathParam::new_local(&local_dir);
-    let opts = GenericOptParamsBuilder::default().build().unwrap();
+    let opts = SharedSyncOptParamsBuilder::default().build().unwrap();
 
     let res = blocking::sync(
         s3client.as_ref(),
         source,
         destination,
         filters.as_deref(),
-        &opts,
+        opts,
     );
     assert!(res.is_ok());
 
@@ -460,14 +460,14 @@ async fn test_sync_across() {
 
     let source = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, source_prefix);
     let destination = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, dest_prefix);
-    let opts = GenericOptParamsBuilder::default().build().unwrap();
+    let opts = SharedSyncOptParamsBuilder::default().build().unwrap();
 
     let res = sync(
         s3client.as_ref(),
         source,
         destination,
         filters.as_deref(),
-        &opts,
+        opts,
     )
     .await;
     assert!(res.is_ok(), "s3_sync result: {:?}", res);
@@ -487,7 +487,7 @@ fn sync_test_files_up_compressed(s3client: &S3Client, s3_key: &str) -> String {
     fs_extra::dir::copy(data_dir_fp, temp_data_dir, &opts).unwrap();
     let source = S3PathParam::new_local(temp_data_dir);
     let destination = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key);
-    let ref opts = GenericOptParamsBuilder::default()
+    let opts = SharedSyncOptParamsBuilder::default()
         .transparent_compression(true)
         .delete(false)
         .build()
@@ -538,7 +538,7 @@ fn test_sync_down_compressed() {
         assert!(fs::remove_dir_all(&local_directory).is_ok());
     }
     let destination = S3PathParam::new_local(&local_directory);
-    let opts = GenericOptParamsBuilder::default()
+    let opts = SharedSyncOptParamsBuilder::default()
         .transparent_compression(true)
         .delete(false)
         .build()
@@ -549,7 +549,7 @@ fn test_sync_down_compressed() {
         S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key),
         destination,
         FILTER_EMPTY,
-        &opts,
+        opts,
     );
     assert!(res.is_ok());
 
@@ -569,8 +569,8 @@ fn test_sync_down_compressed() {
 fn test_sync_down_compressed_mixed() {
     let s3client = esthri_test::get_s3client();
     let s3_key = esthri_test::randomised_lifecycled_prefix("test_sync_down_compressed_mixed_v7/");
-    let opts = GenericOptParamsBuilder::default().build().unwrap();
-    let opts_delete = GenericOptParamsBuilder::default()
+    let opts = SharedSyncOptParamsBuilder::default().build().unwrap();
+    let opts_compress = SharedSyncOptParamsBuilder::default()
         .transparent_compression(true)
         .build()
         .unwrap();
@@ -580,7 +580,7 @@ fn test_sync_down_compressed_mixed() {
         esthri_test::TEST_BUCKET,
         &s3_key,
         esthri_test::test_data("index.html"),
-        &opts,
+        EsthriPutOptParams::from(opts),
     )
     .unwrap();
     blocking::upload(
@@ -588,7 +588,7 @@ fn test_sync_down_compressed_mixed() {
         esthri_test::TEST_BUCKET,
         &s3_key,
         esthri_test::test_data("test_file.txt"),
-        &opts_delete,
+        EsthriPutOptParams::from(opts_compress),
     )
     .unwrap();
 
@@ -604,14 +604,14 @@ fn test_sync_down_compressed_mixed() {
             assert!(fs::remove_dir_all(&local_directory).is_ok());
         }
         let destination = S3PathParam::new_local(&local_directory);
-        let opts = GenericOptParamsBuilder::default().build().unwrap();
+        let opts = SharedSyncOptParamsBuilder::default().build().unwrap();
 
         let res = blocking::sync(
             s3client.as_ref(),
             S3PathParam::new_bucket(esthri_test::TEST_BUCKET, &s3_key),
             destination,
             FILTER_EMPTY,
-            &opts,
+            opts,
         );
         assert!(res.is_ok());
 
@@ -633,7 +633,7 @@ fn test_sync_down_compressed_mixed() {
             assert!(fs::remove_dir_all(&local_directory).is_ok());
         }
         let destination = S3PathParam::new_local(&local_directory);
-        let opts = GenericOptParamsBuilder::default()
+        let opts = SharedSyncOptParamsBuilder::default()
             .transparent_compression(true)
             .delete(false)
             .build()
@@ -644,7 +644,7 @@ fn test_sync_down_compressed_mixed() {
             S3PathParam::new_bucket(esthri_test::TEST_BUCKET, &s3_key),
             destination,
             FILTER_EMPTY,
-            &opts,
+            opts,
         );
         assert!(res.is_ok());
 

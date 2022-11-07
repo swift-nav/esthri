@@ -36,8 +36,8 @@ pub struct AwsCopyParams {
 }
 
 impl AwsCopyParams {
-    pub fn build_opts(&self) -> GenericOptParams {
-        let opts = GenericOptParamsBuilder::default()
+    pub fn build_opts(&self) -> AwsCopyOptParams {
+        let opts = AwsCopyOptParamsBuilder::default()
             .transparent_compression(self.transparent_compression)
             .build()
             .unwrap();
@@ -66,8 +66,8 @@ pub struct AwsSyncParams {
 }
 
 impl AwsSyncParams {
-    pub fn build_opts(&self) -> GenericOptParams {
-        let opts = GenericOptParamsBuilder::default()
+    pub fn build_opts(&self) -> SharedSyncOptParams {
+        let opts = SharedSyncOptParamsBuilder::default()
             .include(self.include.clone())
             .exclude(self.exclude.clone())
             .transparent_compression(self.transparent_compression)
@@ -97,8 +97,8 @@ pub struct EsthriPutParams {
 }
 
 impl EsthriPutParams {
-    pub fn build_opts(&self) -> GenericOptParams {
-        let opts = GenericOptParamsBuilder::default()
+    pub fn build_opts(&self) -> EsthriPutOptParams {
+        let opts = EsthriPutOptParamsBuilder::default()
             .storage_class(self.storage_class)
             .transparent_compression(self.compress)
             .build()
@@ -123,8 +123,8 @@ pub struct EsthriGetParams {
 }
 
 impl EsthriGetParams {
-    pub fn build_opts(&self) -> GenericOptParams {
-        let opts = GenericOptParamsBuilder::default()
+    pub fn build_opts(&self) -> EsthriGetOptParams {
+        let opts = EsthriGetOptParamsBuilder::default()
             .transparent_compression(self.transparent_compression)
             .build()
             .unwrap();
@@ -171,8 +171,8 @@ pub struct EsthriSyncParams {
 }
 
 impl EsthriSyncParams {
-    pub fn build_opts(&self) -> GenericOptParams {
-        let opts = GenericOptParamsBuilder::default()
+    pub fn build_opts(&self) -> SharedSyncOptParams {
+        let opts = SharedSyncOptParamsBuilder::default()
             .include(self.include.clone())
             .exclude(self.exclude.clone())
             .transparent_compression(self.transparent_compression)

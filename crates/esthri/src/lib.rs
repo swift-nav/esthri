@@ -325,16 +325,68 @@ pub mod opts {
     use glob::Pattern;
 
     use crate::rusoto::*;
+    #[derive(Debug, Copy, Clone, Builder)]
+    pub struct AwsCopyOptParams {
+        #[builder(default = "Some(S3StorageClass::Standard)")]
+        pub storage_class: Option<S3StorageClass>,
+        #[builder(default)]
+        pub transparent_compression: bool,
+    }
 
-    /// Total of 51 Bytes only using default builder
+    #[derive(Debug, Copy, Clone, Builder)]
+    pub struct EsthriPutOptParams {
+        #[builder(default = "Some(S3StorageClass::Standard)")]
+        pub storage_class: Option<S3StorageClass>,
+        #[builder(default)]
+        pub transparent_compression: bool,
+    }
+
+    impl From<SharedSyncOptParams> for EsthriPutOptParams {
+        fn from(opt: SharedSyncOptParams) -> Self {
+            Self {
+                storage_class: Some(S3StorageClass::Standard),
+                transparent_compression: opt.transparent_compression,
+            }
+        }
+    }
+
+    impl From<AwsCopyOptParams> for EsthriPutOptParams {
+        fn from(opt: AwsCopyOptParams) -> Self {
+            Self {
+                storage_class: opt.storage_class,
+                transparent_compression: opt.transparent_compression,
+            }
+        }
+    }
+
+    #[derive(Debug, Copy, Clone, Builder)]
+    pub struct EsthriGetOptParams {
+        #[builder(default)]
+        pub transparent_compression: bool,
+    }
+
+    impl From<AwsCopyOptParams> for EsthriGetOptParams {
+        fn from(opt: AwsCopyOptParams) -> Self {
+            Self {
+                transparent_compression: opt.transparent_compression,
+            }
+        }
+    }
+
+    impl From<SharedSyncOptParams> for EsthriGetOptParams {
+        fn from(opt: SharedSyncOptParams) -> Self {
+            Self {
+                transparent_compression: opt.transparent_compression,
+            }
+        }
+    }
+
     #[derive(Debug, Clone, Builder)]
-    pub struct GenericOptParams {
+    pub struct SharedSyncOptParams {
         #[builder(default)]
         pub include: Option<Vec<Pattern>>,
         #[builder(default)]
         pub exclude: Option<Vec<Pattern>>,
-        #[builder(default = "Some(S3StorageClass::Standard)")]
-        pub storage_class: Option<S3StorageClass>,
         #[builder(default)]
         pub transparent_compression: bool,
         #[builder(default)]

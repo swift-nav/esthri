@@ -14,14 +14,14 @@ fn test_upload() {
     let filename = "test5mb.bin";
     let filepath = esthri_test::test_data(filename);
     let s3_key = esthri_test::randomised_lifecycled_prefix(&format!("test_upload/{}", filename));
-    let opts = GenericOptParamsBuilder::default().build().unwrap();
+    let opts = EsthriPutOptParamsBuilder::default().build().unwrap();
 
     let res = esthri::blocking::upload(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
         &s3_key,
         &filepath,
-        &opts,
+        opts,
     );
     assert!(res.is_ok());
 
@@ -42,7 +42,7 @@ fn test_upload_compressed() {
     let filename = "27-185232-msg.csv";
     let filepath = esthri_test::test_data(filename);
     let s3_key = esthri_test::randomised_lifecycled_prefix(&format!("test_upload/{}", filename));
-    let opts = GenericOptParamsBuilder::default()
+    let opts = EsthriPutOptParamsBuilder::default()
         .transparent_compression(true)
         .build()
         .unwrap();
@@ -52,7 +52,7 @@ fn test_upload_compressed() {
         esthri_test::TEST_BUCKET,
         &s3_key,
         &filepath,
-        &opts,
+        opts,
     );
     assert!(res.is_ok());
 
@@ -78,14 +78,14 @@ async fn test_upload_async() {
     let filename = "test5mb.bin";
     let filepath = esthri_test::test_data(filename);
     let s3_key = esthri_test::randomised_lifecycled_prefix(&format!("test_upload/{}", filename));
-    let opts = GenericOptParamsBuilder::default().build().unwrap();
+    let opts = EsthriPutOptParamsBuilder::default().build().unwrap();
 
     let res = upload(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
         &s3_key,
         &filepath,
-        &opts,
+        opts,
     )
     .await;
     assert!(res.is_ok());
@@ -119,14 +119,14 @@ fn test_upload_zero_size() {
     let filepath = esthri_test::test_data(filename);
     let s3_key =
         esthri_test::randomised_lifecycled_prefix(&format!("test_upload_zero_size/{}", filename));
-    let opts = GenericOptParamsBuilder::default().build().unwrap();
+    let opts = EsthriPutOptParamsBuilder::default().build().unwrap();
 
     let res = blocking::upload(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
         &s3_key,
         &filepath,
-        &opts,
+        opts,
     );
     assert!(res.is_ok());
 }
@@ -148,16 +148,17 @@ fn test_upload_storage_class_all() {
             && !x.eq(&S3StorageClass::GlacierInstantRetrieval)
             && !x.eq(&S3StorageClass::Outposts)
     }) {
-        let opts = GenericOptParamsBuilder::default()
+        let opts = EsthriPutOptParamsBuilder::default()
             .storage_class(Some(class))
             .build()
             .unwrap();
+
         let res = esthri::blocking::upload(
             s3client.as_ref(),
             esthri_test::TEST_BUCKET,
             &s3_key,
             &filepath,
-            &opts,
+            opts,
         );
         assert!(res.is_ok());
 

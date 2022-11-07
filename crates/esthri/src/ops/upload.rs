@@ -107,7 +107,7 @@ pub async fn upload<T>(
     bucket: impl AsRef<str>,
     key: impl AsRef<str>,
     file: impl AsRef<Path>,
-    opts: &GenericOptParams,
+    opts: EsthriPutOptParams,
 ) -> Result<()>
 where
     T: S3,

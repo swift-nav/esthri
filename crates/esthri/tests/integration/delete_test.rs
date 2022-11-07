@@ -48,11 +48,11 @@ async fn upload_test_data() -> (Arc<S3Client>, String, String, String) {
     let filepath = esthri_test::test_data(filepath);
     let s3_key = "delete_me.txt";
     let bucket = esthri_test::TEST_BUCKET;
-    let opts = GenericOptParamsBuilder::default().build().unwrap();
-    let res = esthri::upload(s3client, &bucket, &s3_key, &filepath, &opts).await;
+    let opts = EsthriPutOptParamsBuilder::default().build().unwrap();
+    let res = esthri::upload(s3client, &bucket, &s3_key, &filepath, opts).await;
     assert!(res.is_ok());
     let s3_key2 = "delete_me2.txt";
-    let res = esthri::upload(s3client, &bucket, &s3_key, &filepath, &opts).await;
+    let res = esthri::upload(s3client, &bucket, &s3_key, &filepath, opts).await;
     assert!(res.is_ok());
     (s3client_owned, s3_key.into(), bucket.into(), s3_key2.into())
 }

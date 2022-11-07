@@ -39,7 +39,7 @@ pub async fn download<T>(
     bucket: impl AsRef<str>,
     key: impl AsRef<str>,
     file: impl AsRef<Path>,
-    opts: &GenericOptParams,
+    opts: EsthriGetOptParams,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,

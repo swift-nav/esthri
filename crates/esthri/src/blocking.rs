@@ -32,7 +32,7 @@ pub async fn upload<T>(
     bucket: impl AsRef<str>,
     key: impl AsRef<str>,
     file: impl AsRef<Path>,
-    opts: &GenericOptParams,
+    opts: EsthriPutOptParams,
 ) -> Result<()>
 where
     T: S3 + Send + Clone,
@@ -46,7 +46,7 @@ pub async fn download<T>(
     bucket: impl AsRef<str>,
     key: impl AsRef<str>,
     file: impl AsRef<Path>,
-    opts: &GenericOptParams,
+    opts: EsthriGetOptParams,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
@@ -60,7 +60,7 @@ pub async fn sync<T>(
     source: S3PathParam,
     destination: S3PathParam,
     filters: Option<&[GlobFilter]>,
-    opts: &GenericOptParams,
+    opts: SharedSyncOptParams,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,

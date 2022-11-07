@@ -18,14 +18,14 @@ async fn test_fetch_object() {
     let bucket = esthri_test::TEST_BUCKET;
 
     let s3_key = "test_file.txt".to_owned();
-    let opts = GenericOptParamsBuilder::default().build().unwrap();
+    let opts = EsthriPutOptParamsBuilder::default().build().unwrap();
 
     let res = upload(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
         &s3_key,
         &filename,
-        &opts,
+        opts,
     )
     .await;
     assert!(res.is_ok());
@@ -55,14 +55,14 @@ async fn test_allowed_prefixes() {
     // Nominal happy path, a prefix is allowed, so access to a file is allowed.
 
     let an_allowed_key = "allowed_prefix/test_file.txt".to_owned();
-    let opts = GenericOptParamsBuilder::default().build().unwrap();
+    let opts = EsthriPutOptParamsBuilder::default().build().unwrap();
 
     let res = upload(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
         &an_allowed_key,
         &filename,
-        &opts,
+        opts,
     )
     .await;
 
@@ -71,14 +71,14 @@ async fn test_allowed_prefixes() {
     // Nominal bad path, a prefix is *NOT* allowed, so access to a file is *NOT* allowed.
 
     let a_not_allowed_key = "not_allowed_prefix/test_file.txt".to_owned();
-    let opts = GenericOptParamsBuilder::default().build().unwrap();
+    let opts = EsthriPutOptParamsBuilder::default().build().unwrap();
 
     let res = upload(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
         &a_not_allowed_key,
         &filename,
-        &opts,
+        opts,
     )
     .await;
 
@@ -147,7 +147,7 @@ async fn upload_compressed_html_file() {
     let filename = esthri_test::test_data("index.html");
     let s3client = esthri_test::get_s3client();
     let s3_key = "index_compressed.html".to_owned();
-    let opts = GenericOptParamsBuilder::default()
+    let opts = EsthriPutOptParamsBuilder::default()
         .transparent_compression(true)
         .storage_class(Some(Config::global().storage_class()))
         .build()
@@ -157,7 +157,7 @@ async fn upload_compressed_html_file() {
         esthri_test::TEST_BUCKET,
         &s3_key,
         &filename,
-        &opts,
+        opts,
     )
     .await;
     assert!(res.is_ok());
@@ -196,7 +196,7 @@ fn upload_test_data() -> anyhow::Result<()> {
     let local_directory = esthri_test::test_data("sync_up");
     let s3_key = "test_fetch_archive";
     let filenames = ["1-one.data", "2-two.bin", "3-three.junk"];
-    let opts = GenericOptParamsBuilder::default().build().unwrap();
+    let opts = EsthriPutOptParamsBuilder::default().build().unwrap();
     for filename in &filenames {
         let filepath = std::path::Path::new(&local_directory).join(filename);
         let s3_key = format!("{}/{}", s3_key, filename);
@@ -205,7 +205,7 @@ fn upload_test_data() -> anyhow::Result<()> {
             esthri_test::TEST_BUCKET,
             &s3_key,
             filepath.to_str().unwrap(),
-            &opts,
+            opts,
         )?;
     }
     Ok(())
@@ -215,13 +215,13 @@ async fn upload_index_url_test_data() -> anyhow::Result<()> {
     let s3_key = "index_html";
     let s3client = esthri_test::get_s3client();
     let local_directory = esthri_test::test_data(s3_key);
-    let opts = GenericOptParamsBuilder::default().build().unwrap();
+    let opts = SharedSyncOptParamsBuilder::default().build().unwrap();
     esthri::sync(
         s3client.as_ref(),
         esthri::S3PathParam::new_local(local_directory),
         esthri::S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key),
         None,
-        &opts,
+        opts,
     )
     .await?;
     Ok(())
@@ -386,8 +386,8 @@ fn test_fetch_archive_with_compressed_files() {
     let filename = esthri_test::test_data("index.html");
     let s3client = esthri_test::get_s3client();
     let s3_key = format!("{}/{}", prefix, "index_compressed.html");
-    let opts = GenericOptParamsBuilder::default().build().unwrap();
-    let opts_compressed = GenericOptParamsBuilder::default()
+    let opts = EsthriPutOptParamsBuilder::default().build().unwrap();
+    let opts_compressed = EsthriPutOptParamsBuilder::default()
         .transparent_compression(true)
         .storage_class(Some(Config::global().storage_class()))
         .build()
@@ -397,7 +397,7 @@ fn test_fetch_archive_with_compressed_files() {
         esthri_test::TEST_BUCKET,
         &s3_key,
         &filename,
-        &opts_compressed,
+        opts_compressed,
     );
     assert!(res.is_ok());
 
@@ -409,7 +409,7 @@ fn test_fetch_archive_with_compressed_files() {
         esthri_test::TEST_BUCKET,
         &s3_key,
         &filename,
-        &opts,
+        opts,
     );
     assert!(res.is_ok());
 
