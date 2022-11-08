@@ -32,17 +32,13 @@ where
 {
     match source {
         S3PathParam::Bucket { bucket, key } => match destination {
-            S3PathParam::Local { path } => {
-                download(s3, bucket, key, path, EsthriGetOptParams::from(opts)).await
-            }
+            S3PathParam::Local { path } => download(s3, bucket, key, path, opts.into()).await,
             S3PathParam::Bucket { bucket: _, key: _ } => {
                 Err(Error::BucketToBucketCpNotImplementedError)
             }
         },
         S3PathParam::Local { path } => match destination {
-            S3PathParam::Bucket { bucket, key } => {
-                upload(s3, bucket, key, path, EsthriPutOptParams::from(opts)).await
-            }
+            S3PathParam::Bucket { bucket, key } => upload(s3, bucket, key, path, opts.into()).await,
             S3PathParam::Local { path: _ } => Err(Error::LocalToLocalCpNotImplementedError),
         },
     }

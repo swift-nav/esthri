@@ -889,7 +889,7 @@ where
     let key = format!("{}", Path::new(s3_prefix).join(s3_suffix).display());
     let dest_path = format!("{}", dest_path.display());
 
-    crate::download(s3, bucket, &key, &dest_path, EsthriGetOptParams::from(opts)).await?;
+    crate::download(s3, bucket, &key, &dest_path, opts.into()).await?;
 
     Ok(())
 }

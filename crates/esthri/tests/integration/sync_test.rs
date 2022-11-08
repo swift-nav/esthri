@@ -580,7 +580,7 @@ fn test_sync_down_compressed_mixed() {
         esthri_test::TEST_BUCKET,
         &s3_key,
         esthri_test::test_data("index.html"),
-        EsthriPutOptParams::from(opts),
+        opts.into(),
     )
     .unwrap();
     blocking::upload(
@@ -588,7 +588,7 @@ fn test_sync_down_compressed_mixed() {
         esthri_test::TEST_BUCKET,
         &s3_key,
         esthri_test::test_data("test_file.txt"),
-        EsthriPutOptParams::from(opts_compress),
+        opts_compress.into(),
     )
     .unwrap();
 
