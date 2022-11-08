@@ -10,14 +10,12 @@
  * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-use serde::Deserialize;
-use std::collections::HashMap;
-use std::fmt;
-use std::str::FromStr;
+use std::{collections::HashMap, fmt, str::FromStr};
 
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use futures::Stream;
+use serde::Deserialize;
 use strum_macros::EnumIter;
 
 use crate::{retry::handle_dispatch_error, Error, Result};

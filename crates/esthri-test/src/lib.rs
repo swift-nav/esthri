@@ -1,22 +1,21 @@
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
-use hyper::Client;
-use md5::{Digest, Md5};
-use once_cell::sync::Lazy;
-use std::fs;
-use std::path::Path;
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::Mutex;
-use tempdir::TempDir;
-
-use uuid::Uuid;
-
-use fs_extra::dir;
-use fs_extra::dir::CopyOptions;
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    sync::Arc,
+    sync::Mutex,
+};
 
 use esthri_internals::new_https_connector;
 use esthri_internals::rusoto::*;
+use fs_extra::dir;
+use fs_extra::dir::CopyOptions;
+use hyper::Client;
+use md5::{Digest, Md5};
+use once_cell::sync::Lazy;
+use tempdir::TempDir;
+use uuid::Uuid;
 
 pub struct TestGlobal {
     s3client: Option<Arc<S3Client>>,
@@ -53,6 +52,11 @@ pub fn copy_test_data(name: &str) -> PathBuf {
 
 pub fn randomised_name(name: &str) -> String {
     format!("{}-{}", Uuid::new_v4(), name)
+}
+
+// add prefix that s3 lifecycle policy would match to do deletion
+pub fn randomised_lifecycled_prefix(name: &str) -> String {
+    format!("test_runs_to_be_lifecycled/{}-{}", Uuid::new_v4(), name)
 }
 
 pub fn test_data_dir() -> PathBuf {

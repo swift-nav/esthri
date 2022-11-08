@@ -12,11 +12,7 @@
 
 use std::path::Path;
 
-use crate::ops::sync::GlobFilter;
-use crate::rusoto::*;
-use crate::HeadObjectInfo;
-use crate::Result;
-use crate::S3PathParam;
+use crate::{ops::sync::GlobFilter, opts::*, rusoto::*, HeadObjectInfo, Result, S3PathParam};
 
 #[tokio::main]
 pub async fn head_object<T>(
@@ -36,52 +32,12 @@ pub async fn upload<T>(
     bucket: impl AsRef<str>,
     key: impl AsRef<str>,
     file: impl AsRef<Path>,
+    opts: EsthriPutOptParams,
 ) -> Result<()>
 where
     T: S3 + Send + Clone,
 {
-    crate::upload(s3, bucket, key, file).await
-}
-
-#[tokio::main]
-pub async fn upload_compressed<T>(
-    s3: &T,
-    bucket: impl AsRef<str>,
-    key: impl AsRef<str>,
-    file: impl AsRef<Path>,
-) -> Result<()>
-where
-    T: S3 + Send + Clone,
-{
-    crate::upload_compressed(s3, bucket, key, file).await
-}
-
-#[tokio::main]
-pub async fn upload_compressed_with_storage_class<T>(
-    s3: &T,
-    bucket: impl AsRef<str>,
-    key: impl AsRef<str>,
-    file: impl AsRef<Path>,
-    storage_class: S3StorageClass,
-) -> Result<()>
-where
-    T: S3 + Send + Clone,
-{
-    crate::upload_compressed_with_storage_class(s3, bucket, key, file, storage_class).await
-}
-
-#[tokio::main]
-pub async fn upload_with_storage_class<T>(
-    s3: &T,
-    bucket: impl AsRef<str>,
-    key: impl AsRef<str>,
-    file: impl AsRef<Path>,
-    storage_class: S3StorageClass,
-) -> Result<()>
-where
-    T: S3 + Send + Clone,
-{
-    crate::upload_with_storage_class(s3, bucket, key, file, storage_class).await
+    crate::upload(s3, bucket, key, file, opts).await
 }
 
 #[tokio::main]
@@ -90,24 +46,12 @@ pub async fn download<T>(
     bucket: impl AsRef<str>,
     key: impl AsRef<str>,
     file: impl AsRef<Path>,
+    opts: EsthriGetOptParams,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
 {
-    crate::download(s3, bucket, key, file).await
-}
-
-#[tokio::main]
-pub async fn download_with_transparent_decompression<T>(
-    s3: &T,
-    bucket: impl AsRef<str>,
-    key: impl AsRef<str>,
-    file: impl AsRef<Path>,
-) -> Result<()>
-where
-    T: S3 + Sync + Send + Clone,
-{
-    crate::download_with_transparent_decompression(s3, bucket, key, file).await
+    crate::download(s3, bucket, key, file, opts).await
 }
 
 #[tokio::main]
@@ -116,21 +60,12 @@ pub async fn sync<T>(
     source: S3PathParam,
     destination: S3PathParam,
     filters: Option<&[GlobFilter]>,
-    transparent_compression: bool,
-    delete: bool,
+    opts: SharedSyncOptParams,
 ) -> Result<()>
 where
     T: S3 + Sync + Send + Clone,
 {
-    crate::sync(
-        s3,
-        source,
-        destination,
-        filters,
-        transparent_compression,
-        delete,
-    )
-    .await
+    crate::sync(s3, source, destination, filters, opts).await
 }
 
 #[tokio::main]

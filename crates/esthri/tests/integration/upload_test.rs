@@ -1,25 +1,27 @@
 use std::io::Cursor;
 
-use esthri::blocking;
-use esthri::rusoto::S3StorageClass;
-use esthri::upload;
-use esthri::upload_from_reader;
-use esthri::HeadObjectInfo;
-
 use strum::IntoEnumIterator;
+
+use esthri::{
+    blocking, opts::*, rusoto::S3StorageClass, upload, upload_from_reader, HeadObjectInfo,
+};
+
+use esthri_test::randomised_lifecycled_prefix;
 
 #[test]
 fn test_upload() {
     let s3client = esthri_test::get_s3client();
     let filename = "test5mb.bin";
     let filepath = esthri_test::test_data(filename);
-    let s3_key = esthri_test::randomised_name(&format!("test_upload/{}", filename));
+    let s3_key = esthri_test::randomised_lifecycled_prefix(&format!("test_upload/{}", filename));
+    let opts = EsthriPutOptParamsBuilder::default().build().unwrap();
 
     let res = esthri::blocking::upload(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
         &s3_key,
         &filepath,
+        opts,
     );
     assert!(res.is_ok());
 
@@ -39,13 +41,18 @@ fn test_upload_compressed() {
     let s3client = esthri_test::get_s3client();
     let filename = "27-185232-msg.csv";
     let filepath = esthri_test::test_data(filename);
-    let s3_key = esthri_test::randomised_name(&format!("test_upload/{}", filename));
+    let s3_key = esthri_test::randomised_lifecycled_prefix(&format!("test_upload/{}", filename));
+    let opts = EsthriPutOptParamsBuilder::default()
+        .transparent_compression(true)
+        .build()
+        .unwrap();
 
-    let res = esthri::blocking::upload_compressed(
+    let res = esthri::blocking::upload(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
         &s3_key,
         &filepath,
+        opts,
     );
     assert!(res.is_ok());
 
@@ -70,13 +77,15 @@ async fn test_upload_async() {
     let s3client = esthri_test::get_s3client();
     let filename = "test5mb.bin";
     let filepath = esthri_test::test_data(filename);
-    let s3_key = esthri_test::randomised_name(&format!("test_upload/{}", filename));
+    let s3_key = esthri_test::randomised_lifecycled_prefix(&format!("test_upload/{}", filename));
+    let opts = EsthriPutOptParamsBuilder::default().build().unwrap();
 
     let res = upload(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
         &s3_key,
         &filepath,
+        opts,
     )
     .await;
     assert!(res.is_ok());
@@ -86,7 +95,8 @@ async fn test_upload_async() {
 async fn test_upload_reader() {
     let s3client = esthri_test::get_s3client();
     let filename = "test_reader_upload.bin";
-    let filepath = esthri_test::randomised_name(&format!("test_upload_reader/{}", filename));
+    let filepath =
+        esthri_test::randomised_lifecycled_prefix(&format!("test_upload_reader/{}", filename));
     let contents = "file contents";
     let reader = Cursor::new(contents);
 
@@ -107,13 +117,16 @@ fn test_upload_zero_size() {
     let s3client = esthri_test::get_s3client();
     let filename = "test0b.bin";
     let filepath = esthri_test::test_data(filename);
-    let s3_key = esthri_test::randomised_name(&format!("test_upload_zero_size/{}", filename));
+    let s3_key =
+        esthri_test::randomised_lifecycled_prefix(&format!("test_upload_zero_size/{}", filename));
+    let opts = EsthriPutOptParamsBuilder::default().build().unwrap();
 
     let res = blocking::upload(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
         &s3_key,
         &filepath,
+        opts,
     );
     assert!(res.is_ok());
 }
@@ -123,7 +136,7 @@ fn test_upload_storage_class_all() {
     let s3client = esthri_test::get_s3client();
     let filename = "test5mb.bin";
     let filepath = esthri_test::test_data(filename);
-    let s3_key = esthri_test::randomised_name(&format!("test_upload/{}", filename));
+    let s3_key = esthri_test::randomised_lifecycled_prefix(&format!("test_upload/{}", filename));
 
     // 1. Glacier Class might take hours to populate metadata, skipping tests...
     // Reference: https://aws.amazon.com/s3/faqs/
@@ -135,12 +148,17 @@ fn test_upload_storage_class_all() {
             && !x.eq(&S3StorageClass::GlacierInstantRetrieval)
             && !x.eq(&S3StorageClass::Outposts)
     }) {
-        let res = esthri::blocking::upload_with_storage_class(
+        let opts = EsthriPutOptParamsBuilder::default()
+            .storage_class(Some(class))
+            .build()
+            .unwrap();
+
+        let res = esthri::blocking::upload(
             s3client.as_ref(),
             esthri_test::TEST_BUCKET,
             &s3_key,
             &filepath,
-            class,
+            opts,
         );
         assert!(res.is_ok());
 

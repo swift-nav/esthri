@@ -1,6 +1,6 @@
 use tempdir::TempDir;
 
-use esthri::{blocking, download};
+use esthri::{blocking, download, opts::*};
 use esthri_test::{validate_key_hash_pairs, KeyHashPair};
 
 #[test]
@@ -9,12 +9,14 @@ fn test_download() {
     let filename = "test_file.txt";
     let filepath = esthri_test::test_data(filename);
     let s3_key = format!("test_folder/{}", filename);
+    let opts = EsthriGetOptParamsBuilder::default().build().unwrap();
 
     let res = blocking::download(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
         &s3_key,
         &filepath,
+        opts,
     );
     assert!(res.is_ok());
 }
@@ -28,12 +30,14 @@ fn test_download_to_nonexistent_path() {
         .path()
         .join("some/extra/directories/that/dont/exist/");
     let s3_key = format!("test_folder/{}", filename);
+    let opts = EsthriGetOptParamsBuilder::default().build().unwrap();
 
     let res = blocking::download(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
         &s3_key,
         &filepath,
+        opts,
     );
     assert!(res.is_ok());
     assert!(filepath.join(filename).exists());
@@ -46,12 +50,14 @@ fn test_download_to_current_directory() {
     let _tmp_dir = esthri_test::EphemeralTempDir::pushd();
     let filepath = ".";
     let s3_key = format!("test_folder/{}", filename);
+    let opts = EsthriGetOptParamsBuilder::default().build().unwrap();
 
     let res = blocking::download(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
         &s3_key,
         &filepath,
+        opts,
     );
     assert!(res.is_ok());
     assert!(_tmp_dir.temp_dir.path().join(filename).exists());
@@ -63,12 +69,14 @@ async fn test_download_async() {
     let filename = "test_file.txt";
     let filepath = esthri_test::test_data(filename);
     let s3_key = format!("test_folder/{}", filename);
+    let opts = EsthriGetOptParamsBuilder::default().build().unwrap();
 
     let res = download(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
         &s3_key,
         &filepath,
+        opts,
     )
     .await;
     assert!(res.is_ok());
@@ -78,6 +86,7 @@ async fn test_download_async() {
 async fn test_download_zero_size() {
     let s3client = esthri_test::get_s3client();
     let _tmp_dir = esthri_test::EphemeralTempDir::pushd();
+    let opts = EsthriGetOptParamsBuilder::default().build().unwrap();
 
     // Test object `test_download/test0b.bin` must be prepopulated in the S3 bucket
     let res = download(
@@ -85,6 +94,7 @@ async fn test_download_zero_size() {
         esthri_test::TEST_BUCKET,
         "test_download/test0b.bin",
         "test0b.download",
+        opts,
     )
     .await;
     assert!(res.is_ok());
@@ -104,12 +114,17 @@ fn test_download_decompressed() {
     // Test object `test_download/27-185232-msg.csv.gz` must be prepopulated in the S3 bucket
     let filename = "27-185232-msg.csv";
     let s3_key = format!("test_download/{}.gz", filename);
+    let opts = EsthriGetOptParamsBuilder::default()
+        .transparent_compression(true)
+        .build()
+        .unwrap();
 
-    let res = blocking::download_with_transparent_decompression(
+    let res = blocking::download(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
         &s3_key,
         &filename,
+        opts,
     );
     assert!(res.is_ok());
 
@@ -125,12 +140,17 @@ fn test_download_decompressed_to_directory() {
     // Test object `test_download/27-185232-msg.csv.gz` must be prepopulated in the S3 bucket
     let filename = "27-185232-msg.csv.gz";
     let s3_key = format!("test_download/{}", filename);
+    let opts = EsthriGetOptParamsBuilder::default()
+        .transparent_compression(true)
+        .build()
+        .unwrap();
 
-    let res = blocking::download_with_transparent_decompression(
+    let res = blocking::download(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
         &s3_key,
         ".",
+        opts,
     );
     assert!(res.is_ok());
 
@@ -146,12 +166,17 @@ fn test_download_transparent_with_non_compressed() {
     let local_dir_path = local_dir.path().as_os_str().to_str().unwrap();
     let filename = "test_file.txt";
     let s3_key = format!("test_folder/{}", filename);
+    let opts = EsthriGetOptParamsBuilder::default()
+        .transparent_compression(true)
+        .build()
+        .unwrap();
 
-    let res = blocking::download_with_transparent_decompression(
+    let res = blocking::download(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
         &s3_key,
         local_dir_path,
+        opts,
     );
     assert!(res.is_ok());
 
