@@ -10,8 +10,9 @@
  * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-use std::convert::TryInto;
-use std::{borrow::Cow, collections::HashMap, io::SeekFrom, path::Path, sync::Arc};
+use std::{
+    borrow::Cow, collections::HashMap, convert::TryInto, io::SeekFrom, path::Path, sync::Arc,
+};
 
 use bytes::{Bytes, BytesMut};
 use futures::{future, stream, Future, Stream, StreamExt, TryStreamExt};
@@ -28,6 +29,7 @@ use crate::{
     config::Config,
     errors::{Error, Result},
     handle_dispatch_error,
+    opts::*,
     rusoto::*,
 };
 
@@ -105,6 +107,7 @@ pub async fn upload<T>(
     bucket: impl AsRef<str>,
     key: impl AsRef<str>,
     file: impl AsRef<Path>,
+    opts: EsthriPutOptParams,
 ) -> Result<()>
 where
     T: S3,
@@ -116,103 +119,14 @@ where
         file.as_ref().display()
     );
 
-    let compressed = false;
     upload_file_helper(
         s3,
         bucket.as_ref(),
         key.as_ref(),
         file.as_ref(),
-        compressed,
-        Config::global().storage_class(),
-    )
-    .await
-}
-
-#[logfn(err = "ERROR")]
-pub async fn upload_with_storage_class<T>(
-    s3: &T,
-    bucket: impl AsRef<str>,
-    key: impl AsRef<str>,
-    file: impl AsRef<Path>,
-    storage_class: S3StorageClass,
-) -> Result<()>
-where
-    T: S3,
-{
-    info!(
-        "put: bucket={}, key={}, file={}",
-        bucket.as_ref(),
-        key.as_ref(),
-        file.as_ref().display()
-    );
-
-    let compressed = false;
-    upload_file_helper(
-        s3,
-        bucket.as_ref(),
-        key.as_ref(),
-        file.as_ref(),
-        compressed,
-        storage_class,
-    )
-    .await
-}
-
-#[logfn(err = "ERROR")]
-pub async fn upload_compressed_with_storage_class<T>(
-    s3: &T,
-    bucket: impl AsRef<str>,
-    key: impl AsRef<str>,
-    file: impl AsRef<Path>,
-    storage_class: S3StorageClass,
-) -> Result<()>
-where
-    T: S3,
-{
-    info!(
-        "put: bucket={}, key={}, file={}",
-        bucket.as_ref(),
-        key.as_ref(),
-        file.as_ref().display()
-    );
-
-    let compressed = true;
-    upload_file_helper(
-        s3,
-        bucket.as_ref(),
-        key.as_ref(),
-        file.as_ref(),
-        compressed,
-        storage_class,
-    )
-    .await
-}
-
-#[logfn(err = "ERROR")]
-pub async fn upload_compressed<T>(
-    s3: &T,
-    bucket: impl AsRef<str>,
-    key: impl AsRef<str>,
-    file: impl AsRef<Path>,
-) -> Result<()>
-where
-    T: S3,
-{
-    info!(
-        "put(compressed): bucket={}, key={}, file={}",
-        bucket.as_ref(),
-        key.as_ref(),
-        file.as_ref().display()
-    );
-
-    let compressed = true;
-    upload_file_helper(
-        s3,
-        bucket.as_ref(),
-        key.as_ref(),
-        file.as_ref(),
-        compressed,
-        Config::global().storage_class(),
+        opts.transparent_compression,
+        opts.storage_class
+            .unwrap_or_else(|| Config::global().storage_class()),
     )
     .await
 }

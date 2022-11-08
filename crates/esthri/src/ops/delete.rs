@@ -10,14 +10,15 @@
  * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-use futures::stream::Stream;
-use futures::{future, Future, StreamExt, TryFutureExt};
+use futures::{future, stream::Stream, Future, StreamExt, TryFutureExt};
 
 use log::{debug, info};
 use log_derive::logfn;
 
-use crate::errors::Result;
-use crate::rusoto::{Delete, DeleteObjectsRequest, ObjectIdentifier, S3};
+use crate::{
+    errors::Result,
+    rusoto::{Delete, DeleteObjectsRequest, ObjectIdentifier, S3},
+};
 
 const DELETE_BATCH_SIZE: usize = 50;
 
