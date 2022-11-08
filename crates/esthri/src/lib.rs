@@ -45,8 +45,9 @@ pub use ops::{
     delete::{delete, delete_streaming},
     download::{download, download_streaming},
     presign::{
-        presign_delete, presign_get, presign_multipart_upload, presign_put,
-        setup_presigned_multipart_upload, upload_file_presigned_multipart_upload,
+        complete_presigned_multipart_upload, delete_file_presigned, download_file_presigned,
+        presign_delete, presign_get, presign_put, setup_presigned_multipart_upload,
+        upload_file_presigned, upload_file_presigned_multipart_upload,
     },
     sync::{sync, GlobFilter},
     upload::{upload, upload_from_reader, PendingUpload},

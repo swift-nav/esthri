@@ -10,21 +10,33 @@
  * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-use std::{collections::HashMap, path::PathBuf, time::Duration};
-
-use esthri_internals::rusoto::{
-    util::{PreSignedRequest, PreSignedRequestOption},
-    AwsCredentials, DeleteObjectRequest, GetObjectRequest, PutObjectRequest, Region, S3Client,
-    UploadPartRequest,
+use std::{
+    os::unix::prelude::MetadataExt,
+    path::{Path, PathBuf},
+    time::Duration,
 };
-use reqwest::Client;
+
+use esthri_internals::{
+    hyper::HeaderMap,
+    rusoto::{
+        util::{PreSignedRequest, PreSignedRequestOption},
+        AwsCredentials, CompletedPart, DeleteObjectRequest, GetObjectRequest, PutObjectRequest,
+        Region, S3Client, UploadPartRequest,
+    },
+};
+use reqwest::{Body, Client};
+use serde::{Deserialize, Serialize};
 use tokio::{
     fs::File,
-    io::{AsyncBufReadExt, AsyncReadExt, BufReader},
+    io::{AsyncReadExt, AsyncWriteExt, BufReader},
 };
+use tokio_util::codec::{BytesCodec, FramedRead};
 
-use crate::rusoto::{create_multipart_upload, S3StorageClass};
 use crate::Result;
+use crate::{
+    opts::EsthriPutOptParams,
+    rusoto::{complete_multipart_upload, create_multipart_upload},
+};
 
 pub const DEAFULT_EXPIRATION: Duration = Duration::from_secs(60 * 60);
 
@@ -39,11 +51,24 @@ pub fn presign_get(
         expires_in: expiration.unwrap_or(DEAFULT_EXPIRATION),
     };
     GetObjectRequest {
-        bucket: bucket.as_ref().to_string(),
-        key: key.as_ref().to_string(),
+        bucket: bucket.as_ref().to_owned(),
+        key: key.as_ref().to_owned(),
         ..Default::default()
     }
     .get_presigned_url(region, credentials, &options)
+}
+
+pub async fn download_file_presigned(
+    client: &Client,
+    presigned_url: &str,
+    filepath: &Path,
+) -> Result<()> {
+    let mut file = File::create(filepath).await?;
+    let mut resp = client.get(presigned_url).send().await?.error_for_status()?;
+    while let Some(chunk) = resp.chunk().await? {
+        file.write_all(&chunk).await?;
+    }
+    Ok(())
 }
 
 pub fn presign_put(
@@ -52,16 +77,45 @@ pub fn presign_put(
     bucket: impl AsRef<str>,
     key: impl AsRef<str>,
     expiration: Option<Duration>,
+    opts: EsthriPutOptParams,
 ) -> String {
     let options = PreSignedRequestOption {
         expires_in: expiration.unwrap_or(DEAFULT_EXPIRATION),
     };
     PutObjectRequest {
-        bucket: bucket.as_ref().to_string(),
-        key: key.as_ref().to_string(),
+        bucket: bucket.as_ref().to_owned(),
+        key: key.as_ref().to_owned(),
+        storage_class: opts.storage_class.map(|s| s.to_string()),
+        acl: Some("bucket-owner-full-control".into()),
         ..Default::default()
     }
     .get_presigned_url(region, credentials, &options)
+}
+
+pub async fn upload_file_presigned(
+    client: &Client,
+    presigned_url: &str,
+    filepath: &PathBuf,
+    opts: EsthriPutOptParams,
+) -> Result<()> {
+    let file = File::open(filepath).await?;
+    let file_size = file.metadata().await?.size();
+    let stream = FramedRead::new(file, BytesCodec::new());
+    let body = Body::wrap_stream(stream);
+    let mut headers = HeaderMap::new();
+    headers.insert("Content-Length", file_size.into());
+    headers.insert("x-amz-acl", "bucket-owner-full-control".parse().unwrap());
+    if let Some(class) = opts.storage_class {
+        headers.insert("x-amz-storage-class", class.to_string().parse().unwrap());
+    }
+    client
+        .put(presigned_url)
+        .headers(headers)
+        .body(body)
+        .send()
+        .await?
+        .error_for_status()?;
+    Ok(())
 }
 
 pub fn presign_delete(
@@ -75,11 +129,27 @@ pub fn presign_delete(
         expires_in: expiration.unwrap_or(DEAFULT_EXPIRATION),
     };
     DeleteObjectRequest {
-        bucket: bucket.as_ref().to_string(),
-        key: key.as_ref().to_string(),
+        bucket: bucket.as_ref().to_owned(),
+        key: key.as_ref().to_owned(),
         ..Default::default()
     }
     .get_presigned_url(region, credentials, &options)
+}
+
+pub async fn delete_file_presigned(client: &Client, presigned_url: impl AsRef<str>) -> Result<()> {
+    client
+        .delete(presigned_url.as_ref())
+        .send()
+        .await?
+        .error_for_status()?;
+    Ok(())
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PresignedMultipartUpload {
+    pub upload_id: String,
+    #[serde(with = "tuple_vec_map")]
+    pub parts: Vec<(usize, String)>,
 }
 
 /// Set up a presigned multipart upload.
@@ -88,10 +158,10 @@ pub fn presign_delete(
 /// 1. Client tells server it wants to upload a file of a given size.
 /// 2. Server creates a multipart upload.
 /// 3: Server generates a presigned URL for each part and returns urls to client.
-/// 4. Client uploads each part to the presigned URL.
+/// 4. Client uploads each part to the corresponding presigned URL.
 /// 5. Client tells server it has uploaded all parts.
 /// 6. Server completes the multipart upload.
-/// 7. Server needs to fail the multipart upload after a timeout.
+/// Note the server should fail the multipart upload after a timeout.
 pub async fn setup_presigned_multipart_upload(
     client: &S3Client,
     credentials: &AwsCredentials,
@@ -101,18 +171,20 @@ pub async fn setup_presigned_multipart_upload(
     part_size: usize,
     file_size: usize,
     expiration: Option<Duration>,
-    metadata: Option<HashMap<String, String>>,
-    storage_class: S3StorageClass,
-) -> Result<(Option<String>, Map<usize, String>)> {
-    let upload = create_multipart_upload(
+    opts: EsthriPutOptParams,
+) -> Result<PresignedMultipartUpload> {
+    assert!(part_size >= 5242880);
+    let upload_id = create_multipart_upload(
         client,
         bucket.as_ref(),
         key.as_ref(),
-        metadata,
-        storage_class,
+        None,
+        opts.storage_class.unwrap(),
     )
-    .await?;
-    let urls = (0..n_parts(file_size, part_size))
+    .await?
+    .upload_id
+    .unwrap();
+    let parts = (1..n_parts(file_size, part_size) + 1)
         .map(|part| {
             (
                 part,
@@ -122,29 +194,32 @@ pub async fn setup_presigned_multipart_upload(
                     bucket.as_ref(),
                     key.as_ref(),
                     part as i64 + 1,
+                    upload_id.clone(),
                     expiration,
                 ),
             )
         })
         .collect();
-    Ok((upload.upload_id, urls))
+    Ok(PresignedMultipartUpload { upload_id, parts })
 }
 
-pub fn presign_multipart_upload(
+fn presign_multipart_upload(
     credentials: &AwsCredentials,
     region: &Region,
     bucket: impl AsRef<str>,
     key: impl AsRef<str>,
     part: i64,
+    upload_id: String,
     expiration: Option<Duration>,
 ) -> String {
     let options = PreSignedRequestOption {
         expires_in: expiration.unwrap_or(DEAFULT_EXPIRATION),
     };
     UploadPartRequest {
-        bucket: bucket.as_ref().to_string(),
-        key: key.as_ref().to_string(),
+        bucket: bucket.as_ref().to_owned(),
+        key: key.as_ref().to_owned(),
         part_number: part,
+        upload_id,
         ..Default::default()
     }
     .get_presigned_url(region, credentials, &options)
@@ -152,34 +227,67 @@ pub fn presign_multipart_upload(
 
 pub async fn upload_file_presigned_multipart_upload(
     client: &Client,
-    urls: HashMap<usize, String>,
+    presigned_multipart_upload: PresignedMultipartUpload,
     file: &PathBuf,
     part_size: usize,
-) -> Result<()> {
+) -> Result<PresignedMultipartUpload> {
     let file = File::open(file).await?;
-    assert!(urls.len() == n_parts(file.metadata().await?.len() as usize, part_size));
+    assert!(
+        presigned_multipart_upload.parts.len()
+            == n_parts(file.metadata().await?.len() as usize, part_size)
+    );
     let mut reader = BufReader::with_capacity(part_size, file);
 
-    for url in urls {
-        let mut buf = vec![0u8; part_size];
-        let bytes_read = reader.read_exact(&mut buf).await?;
-        client
+    let mut upload = PresignedMultipartUpload {
+        upload_id: presigned_multipart_upload.upload_id,
+        parts: Vec::new(),
+    };
+
+    for (n, url) in presigned_multipart_upload.parts.iter() {
+        let mut buf = vec![0; part_size];
+        let n_read = reader.read_exact(&mut buf).await?;
+        buf.shrink_to(n_read);
+        let e_tag = client
             .put(url)
-            .header("Content-Length", bytes_read.to_string())
+            .header("Content-Length", n_read.to_string())
             .body(buf)
             .send()
-            .await?;
+            .await?
+            .error_for_status()?
+            .headers()
+            .get("ETag")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_owned();
+        upload.parts.push((*n, e_tag));
     }
-    Ok(())
+
+    Ok(upload)
 }
 
 pub async fn complete_presigned_multipart_upload(
     s3: &S3Client,
     bucket: impl AsRef<str>,
     key: impl AsRef<str>,
-    upload_id: impl AsRef<str>,
-) {
-    complete_multipart_upload(s3, bucket, key, &upload_id, &completed_parts).await?
+    presigned_multipart_upload: PresignedMultipartUpload,
+) -> Result<()> {
+    let parts: Vec<_> = presigned_multipart_upload
+        .parts
+        .into_iter()
+        .map(|(part, etag)| CompletedPart {
+            e_tag: Some(etag),
+            part_number: Some(part as i64 + 1),
+        })
+        .collect();
+    complete_multipart_upload(
+        s3,
+        bucket.as_ref(),
+        key.as_ref(),
+        presigned_multipart_upload.upload_id.as_ref(),
+        &parts,
+    )
+    .await
 }
 
 fn n_parts(file_size: usize, chunk_size: usize) -> usize {
