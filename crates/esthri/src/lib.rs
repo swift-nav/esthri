@@ -24,6 +24,7 @@ pub(crate) mod types;
 
 mod config;
 mod ops;
+mod presign;
 mod retry;
 
 use std::{marker::Unpin, path::Path};
@@ -44,13 +45,18 @@ pub use ops::{
     copy::copy,
     delete::{delete, delete_streaming},
     download::{download, download_streaming},
-    presign::{
-        complete_presigned_multipart_upload, delete_file_presigned, download_file_presigned,
-        presign_delete, presign_get, presign_put, setup_presigned_multipart_upload,
-        upload_file_presigned, upload_file_presigned_multipart_upload,
-    },
     sync::{sync, GlobFilter},
     upload::{upload, upload_from_reader, PendingUpload},
+};
+pub use presign::{
+    delete::{delete_file_presigned, presign_delete},
+    download::{download_file_presigned, presign_get},
+    multipart_upload::{
+        abort_presigned_multipart_upload, complete_presigned_multipart_upload,
+        setup_presigned_multipart_upload, upload_file_presigned_multipart_upload,
+        PresignedMultipartUpload,
+    },
+    upload::{presign_put, upload_file_presigned},
 };
 
 pub use rusoto::HeadObjectInfo;

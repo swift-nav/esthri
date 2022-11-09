@@ -1,6 +1,6 @@
 use esthri::{
     complete_presigned_multipart_upload, delete_file_presigned, download_file_presigned,
-    opts::EsthriPutOptParamsBuilder,
+    opts::{EsthriGetOptParamsBuilder, EsthriPutOptParamsBuilder},
     presign_delete, presign_get, presign_put,
     rusoto::{AwsCredentials, DefaultCredentialsProvider, ProvideAwsCredentials, Region},
     setup_presigned_multipart_upload, upload_file_presigned,
@@ -22,9 +22,14 @@ async fn test_presign_get() {
 
     let tmpdir = TempDir::new("esthri_tmp").expect("creating temporary directory");
     let download_file_path = tmpdir.path().join(filename);
-    download_file_presigned(&Client::new(), &presigned_url, &download_file_path)
-        .await
-        .unwrap();
+    download_file_presigned(
+        &Client::new(),
+        &presigned_url,
+        &download_file_path,
+        &EsthriGetOptParamsBuilder::default().build().unwrap(),
+    )
+    .await
+    .unwrap();
     let file_contents = std::fs::read_to_string(download_file_path).unwrap();
     assert_eq!(file_contents, "this file has contents\n");
 }
@@ -114,8 +119,7 @@ async fn test_presign_multipart_upload() {
         &region,
         &bucket,
         &s3_key,
-        part_size,
-        size,
+        1,
         None,
         EsthriPutOptParamsBuilder::default().build().unwrap(),
     )
