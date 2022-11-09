@@ -10,6 +10,14 @@
  * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
  */
 
+//! Functions for presigning S3 requests.
+//! These can be used to allow an S3 object owner to share an object with others
+//! who do not have access for a short period of time.
+//!
+//! The submodules here have functions both for generating the URLs as well as
+//! helpers for using the URLs and are split by S3 method (GET, PUT, DELETE) as
+//! well as multipart PUT.
+
 use std::{path::Path, time::Duration};
 
 use tokio::fs::File;
