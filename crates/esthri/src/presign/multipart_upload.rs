@@ -54,6 +54,7 @@ pub struct PresignedMultipartUpload {
 }
 
 /// Begin a multipart upload and presign the urls for each part.
+#[allow(clippy::too_many_arguments)]
 pub async fn setup_presigned_multipart_upload(
     client: &S3Client,
     credentials: &AwsCredentials,

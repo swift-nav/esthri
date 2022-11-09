@@ -10,7 +10,7 @@
  * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-use std::{os::unix::prelude::MetadataExt, path::PathBuf, time::Duration};
+use std::{os::unix::prelude::MetadataExt, path::Path, time::Duration};
 
 use esthri_internals::{
     hyper::HeaderMap,
@@ -59,7 +59,7 @@ pub fn presign_put(
 pub async fn upload_file_presigned(
     client: &Client,
     presigned_url: &str,
-    filepath: &PathBuf,
+    filepath: &Path,
     opts: EsthriPutOptParams,
 ) -> Result<()> {
     let file = file_maybe_compressed(filepath, &opts).await?;
