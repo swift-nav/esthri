@@ -10,7 +10,7 @@
  * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-use std::{os::unix::prelude::MetadataExt, path::Path, time::Duration};
+use std::{path::Path, time::Duration};
 
 use esthri_internals::{
     hyper::HeaderMap,
@@ -63,7 +63,7 @@ pub async fn upload_file_presigned(
     opts: EsthriPutOptParams,
 ) -> Result<()> {
     let file = file_maybe_compressed(filepath, &opts).await?;
-    let file_size = file.metadata().await?.size();
+    let file_size = file.metadata().await?.len();
     let stream = FramedRead::new(file, BytesCodec::new());
     let body = Body::wrap_stream(stream);
     let mut headers = HeaderMap::new();
