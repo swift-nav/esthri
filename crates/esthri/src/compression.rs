@@ -47,7 +47,11 @@ pub fn compressed_file_metadata() -> HashMap<String, String> {
     let mut m = HashMap::new();
     m.insert(
         ESTHRI_METADATA_COMPRESS_KEY.to_string(),
-        env!("CARGO_PKG_VERSION").to_string(),
+        compressed_meta_value(),
     );
     m
+}
+
+pub fn compressed_meta_value() -> String {
+    env!("CARGO_PKG_VERSION").to_owned()
 }

@@ -13,4 +13,5 @@
 pub use rusoto_core::{ByteStream, HttpClient, Region, RusotoError, RusotoResult};
 pub use rusoto_credential::DefaultCredentialsProvider;
 
+pub use rusoto_credential::*;
 pub use rusoto_s3::*;

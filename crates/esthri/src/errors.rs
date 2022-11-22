@@ -133,6 +133,9 @@ pub enum Error {
 
     #[error("unknown storage class")]
     UnknownStorageClass(String),
+
+    #[error(transparent)]
+    HTTPError(#[from] reqwest::Error),
 }
 
 impl From<std::convert::Infallible> for Error {

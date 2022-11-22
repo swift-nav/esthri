@@ -6,8 +6,6 @@ use esthri::{
     blocking, opts::*, rusoto::S3StorageClass, upload, upload_from_reader, HeadObjectInfo,
 };
 
-use esthri_test::randomised_lifecycled_prefix;
-
 #[test]
 fn test_upload() {
     let s3client = esthri_test::get_s3client();

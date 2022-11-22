@@ -5,7 +5,7 @@ use tempdir::TempDir;
 use tempfile::tempdir;
 
 use esthri::{blocking, opts::*, rusoto::S3Client, sync, GlobFilter, S3PathParam, FILTER_EMPTY};
-use esthri_test::{randomised_lifecycled_prefix, validate_key_hash_pairs, KeyHashPair};
+use esthri_test::{validate_key_hash_pairs, KeyHashPair};
 
 #[test]
 fn test_sync_down() {
