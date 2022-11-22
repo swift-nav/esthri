@@ -15,8 +15,8 @@ rust-version = "1.56.1"
 default = ["blocking", "rustls"]
 aggressive_lint = []
 blocking = ["tokio/rt"]
-nativetls = ["esthri-internals/nativetls"]
-rustls = ["esthri-internals/rustls"]
+nativetls = ["esthri-internals/nativetls", "reqwest/native-tls"]
+rustls = ["esthri-internals/rustls", "reqwest/rustls-tls"]
 
 [dependencies]
 async-compression = { version = "0.3", features = ["gzip", "tokio"] }
@@ -44,7 +44,7 @@ tokio-util = { version = "0.7", features = ["io"] }
 walkdir = "2"
 strum = "0.24.1"
 strum_macros = "0.24.3"
-reqwest = { version="0.11.12", features=["stream", "json"] }
+reqwest = { version="0.11.12", features=["stream", "json"], default-features = false }
 serde-tuple-vec-map = "1.0.1"
 
 [dependencies.esthri-internals]
