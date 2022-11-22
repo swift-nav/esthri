@@ -228,3 +228,13 @@ pub struct EsthriServeParams {
     #[clap(long)]
     pub allowed_prefixes: Vec<String>,
 }
+
+#[derive(Args, Debug, Clone)]
+pub struct EsthriPresignParams {
+    /// The bucket to target (example: my-bucket)
+    #[clap(long)]
+    pub bucket: String,
+    /// The key to target (example: a/key/name.bin)
+    #[clap(long)]
+    pub key: String,
+}

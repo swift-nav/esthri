@@ -89,6 +89,8 @@ enum EsthriCommand {
     ///
     /// This also supports serving dynamic archives of bucket contents
     Serve(EsthriServeParams),
+    /// Presign URL
+    Presign(EsthriPresignParams),
 }
 
 async fn dispatch_aws_cli(cmd: AwsCommand, s3: &S3Client) -> Result<()> {
@@ -226,6 +228,18 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
                 &params.allowed_prefixes[..],
             )
             .await?;
+        }
+
+        Presign(params) => {
+            let creds = &DefaultCredentialsProvider::new()
+                .unwrap()
+                .credentials()
+                .await
+                .unwrap();
+            println!(
+                "{}",
+                esthri::presign_get(creds, &Region::ApEast1, params.bucket, params.key, None,)
+            );
         }
     }
 
