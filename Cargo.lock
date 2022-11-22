@@ -667,6 +667,7 @@ dependencies = [
  "once_cell",
  "sanitize-filename",
  "serde",
+ "strum",
  "tempdir",
  "tokio",
  "tokio-util",

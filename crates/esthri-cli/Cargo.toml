@@ -49,6 +49,7 @@ clap = { version = "3.2.22", features = ["derive", "env"] }
 tokio = { version = "1.6", features = ["rt-multi-thread", "signal", "sync"] }
 tokio-util = { version = "0.7.4", features = ["compat", "codec"] }
 warp = "0.3"
+strum = "0.24.1"
 
 [dev-dependencies]
 esthri = { path = "../esthri", default-features = false, features=["blocking"] }

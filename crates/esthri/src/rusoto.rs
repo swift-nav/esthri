@@ -16,7 +16,10 @@ use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use futures::Stream;
 use serde::Deserialize;
+use strum_macros::Display;
 use strum_macros::EnumIter;
+use strum_macros::EnumString;
+use strum_macros::IntoStaticStr;
 
 use crate::{retry::handle_dispatch_error, Error, Result};
 
@@ -61,7 +64,8 @@ impl HeadObjectInfo {
             hoo.storage_class
                 .unwrap_or_else(|| "STANDARD".into()) // AWS doesn't set header for STANDARD
                 .as_str(),
-        )?;
+        )
+        .map_err(|e| Error::UnknownStorageClass(e.to_string()))?;
         let parts = hoo.parts_count.unwrap_or(1) as u64;
         Ok(Some(HeadObjectInfo {
             e_tag,
@@ -101,30 +105,33 @@ where
     }
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Deserialize, EnumIter)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Deserialize, EnumIter, EnumString, Display)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum S3StorageClass {
+    #[strum(serialize = "STANDARD")]
     Standard,
     #[serde(rename = "STANDARD_IA")]
+    #[strum(serialize = "STANDARD_IA")]
     StandardIA,
+    #[strum(serialize = "INTELLIGENT_TIERING")]
     IntelligentTiering,
     #[serde(rename = "ONEZONE_IA")]
+    #[strum(serialize = "ONEZONE_IA")]
     OneZoneIA,
     #[serde(rename = "GLACIER_IR")]
+    #[strum(serialize = "GLACIER_IR")]
     GlacierInstantRetrieval,
     #[serde(rename = "GLACIER")]
+    #[strum(serialize = "GLACIER")]
     GlacierFlexibleRetrieval,
     #[serde(rename = "DEEP_ARCHIVE")]
+    #[strum(serialize = "DEEP_ARCHIVE")]
     GlacierDeepArchive,
     #[serde(rename = "REDUCED_REDUNDANCY")]
+    #[strum(serialize = "REDUCED_REDUNDANCY")]
     RRS,
+    #[strum(serialize = "OUTPOSTS")]
     Outposts,
-}
-
-impl fmt::Display for S3StorageClass {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.to_str())
-    }
 }
 
 impl S3StorageClass {
@@ -139,25 +146,6 @@ impl S3StorageClass {
             S3StorageClass::GlacierDeepArchive => "DEEP_ARCHIVE",
             S3StorageClass::RRS => "REDUCED_REDUNDANCY",
             S3StorageClass::Outposts => "OUTPOSTS",
-        }
-    }
-}
-
-impl FromStr for S3StorageClass {
-    type Err = Error;
-
-    fn from_str(s: &str) -> Result<Self> {
-        match s {
-            "STANDARD" => Ok(S3StorageClass::Standard),
-            "STANDARD_IA" => Ok(S3StorageClass::StandardIA),
-            "INTELLIGENT_TIERING" => Ok(S3StorageClass::IntelligentTiering),
-            "ONEZONE_IA" => Ok(S3StorageClass::OneZoneIA),
-            "GLACIER_INSTANT_RETRIEVAL" => Ok(S3StorageClass::GlacierInstantRetrieval),
-            "GLACIER_FLEXIBLE_RETRIEVAL" => Ok(S3StorageClass::GlacierFlexibleRetrieval),
-            "GLACIER_DEEP_ARCHIVE" => Ok(S3StorageClass::GlacierDeepArchive),
-            "REDUCED_REDUNDANCY" => Ok(S3StorageClass::RRS),
-            "OUTPOSTS" => Ok(S3StorageClass::Outposts),
-            _ => Err(Error::UnknownStorageClass(s.to_string())),
         }
     }
 }
