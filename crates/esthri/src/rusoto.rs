@@ -10,7 +10,7 @@
  * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-use std::{collections::HashMap, fmt, str::FromStr};
+use std::{collections::HashMap, str::FromStr};
 
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
@@ -19,7 +19,6 @@ use serde::Deserialize;
 use strum_macros::Display;
 use strum_macros::EnumIter;
 use strum_macros::EnumString;
-use strum_macros::IntoStaticStr;
 
 use crate::{retry::handle_dispatch_error, Error, Result};
 
