@@ -3,6 +3,7 @@
 mod delete_test;
 mod download_test;
 mod list_object_test;
+mod send_sync;
 mod sync_test;
 mod upload_test;
 
