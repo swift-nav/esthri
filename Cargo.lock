@@ -652,7 +652,7 @@ dependencies = [
 
 [[package]]
 name = "esthri-cli"
-version = "8.7.0"
+version = "9.0.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
