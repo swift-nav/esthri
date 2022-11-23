@@ -1,11 +1,15 @@
-use std::fs;
+use std::{fs, path::Path};
 
 use glob::Pattern;
 use tempdir::TempDir;
 use tempfile::tempdir;
 
-use esthri::{blocking, opts::*, rusoto::S3Client, sync, GlobFilter, S3PathParam, FILTER_EMPTY};
+use esthri::{
+    blocking, opts::*, rusoto::S3Client, sync, sync_streaming, GlobFilter, S3PathParam,
+    FILTER_EMPTY,
+};
 use esthri_test::{validate_key_hash_pairs, KeyHashPair};
+use tokio_stream::StreamExt;
 
 #[test]
 fn test_sync_down() {
@@ -289,13 +293,7 @@ fn test_sync_down_delete() {
         .unwrap();
 
     // Perform sync with delete flag set. Because the target S3 key is empty, all contents in local directory should be deleted.
-    let res = blocking::sync(
-        s3client.as_ref(),
-        src.clone(),
-        dst.clone(),
-        FILTER_EMPTY,
-        opts,
-    );
+    let res = blocking::sync(s3client.as_ref(), src, dst, FILTER_EMPTY, opts);
     assert!(res.is_ok());
 
     // Expect no files to exist within local_directory. Metadata such as directories are permissible.
@@ -333,7 +331,7 @@ fn test_sync_across_delete() {
     // Copy the dummy file to one of the test buckets
     let res = blocking::sync(
         s3client.as_ref(),
-        local_source.clone(),
+        local_source,
         destination.clone(),
         FILTER_EMPTY,
         opts,
@@ -654,5 +652,28 @@ fn test_sync_down_compressed_mixed() {
         ];
 
         validate_key_hash_pairs(&local_directory, &key_hash_pairs);
+    }
+}
+
+#[tokio::test]
+async fn test_sync_down_async_streaming() {
+    let s3client = esthri_test::get_s3client();
+    let local_directory = esthri_test::test_data_dir();
+    let s3_key = "test_folder/";
+    let filters: Vec<GlobFilter> = vec![
+        GlobFilter::Include(Pattern::new("*.txt").unwrap()),
+        GlobFilter::Exclude(Pattern::new("*").unwrap()),
+    ];
+
+    let source = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key);
+    let destination = S3PathParam::new_local(&local_directory);
+    let opts = SharedSyncOptParamsBuilder::default().build().unwrap();
+
+    let mut stream = sync_streaming(s3client.as_ref(), &source, &destination, &filters, opts)
+        .await
+        .unwrap();
+
+    while let Some(res) = stream.next().await {
+        assert!(Path::new(&res.unwrap().dest_path()).exists());
     }
 }

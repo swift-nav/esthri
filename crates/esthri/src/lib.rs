@@ -45,7 +45,7 @@ pub use ops::{
     copy::copy,
     delete::{delete, delete_streaming},
     download::{download, download_streaming},
-    sync::{sync, GlobFilter},
+    sync::{streaming::sync as sync_streaming, sync, GlobFilter},
     upload::{upload, upload_from_reader, PendingUpload},
 };
 pub use presign::{

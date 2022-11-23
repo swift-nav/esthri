@@ -64,6 +64,43 @@ impl GlobFilter {
     }
 }
 
+/// Synced type
+#[derive(Debug, Clone)]
+pub enum Synced {
+    /// newly created file after sync
+    Created,
+    /// already existed file
+    Existed,
+}
+
+pub struct SyncedFile {
+    synced: Synced,
+    src_path: String,
+    dest_path: String,
+}
+
+impl SyncedFile {
+    fn new(synced: Synced, src_path: String, dest_path: String) -> Self {
+        Self {
+            synced,
+            src_path,
+            dest_path,
+        }
+    }
+
+    pub fn synced(&self) -> &Synced {
+        &self.synced
+    }
+
+    pub fn src_path(&self) -> &str {
+        &self.src_path
+    }
+
+    pub fn dest_path(&self) -> &str {
+        &self.dest_path
+    }
+}
+
 /// Syncs between S3 prefixes and local directories
 ///
 /// # Arguments
@@ -748,7 +785,7 @@ fn remote_to_local_sync_tasks<ClientT, StreamT>(
     directory: PathBuf,
     input_stream: StreamT,
     opts: SharedSyncOptParams,
-) -> impl Stream<Item = impl Future<Output = Result<()>>>
+) -> impl Stream<Item = impl Future<Output = Result<SyncedFile>>>
 where
     ClientT: S3 + Sync + Send + Clone,
     StreamT: Stream<Item = MapPathResult>,
@@ -773,6 +810,12 @@ where
                     ..
                 } = entry;
                 let metadata = metadata.unwrap();
+                let dest_path = directory
+                    .join(&metadata.s3_suffix)
+                    .to_str()
+                    .unwrap()
+                    .to_owned();
+                let src_path = directory.to_str().unwrap().to_owned();
                 match local_etag {
                     Ok(Some(local_etag)) => {
                         if local_etag != metadata.e_tag {
@@ -791,8 +834,10 @@ where
                                 opts,
                             )
                             .await?;
+                            Ok(SyncedFile::new(Synced::Created, src_path, dest_path))
                         } else {
                             debug!("etag match: {}", source_path.display());
+                            Ok(SyncedFile::new(Synced::Existed, src_path, dest_path))
                         }
                     }
                     Err(err) => match err {
@@ -807,14 +852,18 @@ where
                                 opts,
                             )
                             .await?;
+                            Ok(SyncedFile::new(Synced::Created, src_path, dest_path))
                         }
                         _ => {
                             warn!("s3 etag error: {}", err);
+                            Err(Error::InvalidS3ETag)
                         }
                     },
-                    Ok(None) => warn!("no local etag"),
+                    Ok(None) => {
+                        warn!("no local etag");
+                        Err(Error::NoLocalETag)
+                    }
                 }
-                Ok(())
             },
         )
 }
@@ -892,6 +941,92 @@ where
     crate::download(s3, bucket, &key, &dest_path, opts.into()).await?;
 
     Ok(())
+}
+
+pub mod streaming {
+    use super::*;
+
+    /// Stream Sync from S3 prefixes to local directories (for now)
+    ///
+    /// # Arguments
+    ///
+    /// * `s3` - S3 client
+    /// * `source` - S3 prefix
+    /// * `destination` - local directory to sync to
+    /// * `glob_filter` - An (optional) slice of filters that specify whether files
+    ///                   should be included or not. These are processed in order,
+    ///                   with the first matching filter determining whether the
+    ///                   file will be included or excluded. If not supplied, then
+    ///                   all files will be synced.
+    #[logfn(err = "ERROR")]
+    pub async fn sync<'a, T>(
+        s3: &'a T,
+        source: &'a S3PathParam,
+        destination: &'a S3PathParam,
+        filters: &'a [GlobFilter],
+        opts: SharedSyncOptParams,
+    ) -> Result<impl Stream<Item = Result<SyncedFile>> + 'a>
+    where
+        T: S3 + Sync + Send + Clone,
+    {
+        let (bucket, key, path) = match (source, destination) {
+            (S3PathParam::Bucket { bucket, key }, S3PathParam::Local { path }) => {
+                info!(
+                    "sync-down, local directory: {}, bucket: {}, key: {}",
+                    path.display(),
+                    bucket,
+                    key
+                );
+                (bucket, key, path)
+            }
+            _ => {
+                warn!("sync streaming is only implemented for s3 to local");
+                return Err(Error::SyncStreamingNotImplemented);
+            }
+        };
+
+        Ok(sync_remote_to_local(s3, bucket, key, path.to_str().unwrap(), filters, opts).await)
+    }
+
+    async fn sync_remote_to_local<'a, T>(
+        s3: &'a T,
+        bucket: &'a str,
+        key: &'a str,
+        directory: &'a str,
+        filters: &'a [GlobFilter],
+        opts: SharedSyncOptParams,
+    ) -> impl Stream<Item = Result<SyncedFile>> + 'a
+    where
+        T: S3 + Sync + Send + Clone,
+    {
+        let task_count = Config::global().concurrent_sync_tasks();
+        let object_listing = flattened_object_listing(
+            s3,
+            bucket,
+            key,
+            Path::new(directory),
+            filters,
+            opts.transparent_compression,
+        )
+        .map_ok(|(path, _key, s3_metadata)| (path, s3_metadata));
+        let cmd = if opts.transparent_compression {
+            SyncCmd::DownCompressed
+        } else {
+            SyncCmd::Down
+        };
+
+        let etag_stream = translate_paths(object_listing, cmd).buffer_unordered(task_count);
+        let sync_tasks = remote_to_local_sync_tasks(
+            s3.clone(),
+            bucket.into(),
+            key.into(),
+            directory.into(),
+            etag_stream,
+            opts,
+        );
+
+        Box::pin(sync_tasks.buffer_unordered(task_count))
+    }
 }
 
 #[cfg(test)]

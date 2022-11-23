@@ -26,6 +26,12 @@ pub enum Error {
     #[error("did not exist locally")]
     ETagNotPresent,
 
+    #[error("invalid s3 etag")]
+    InvalidS3ETag,
+
+    #[error("no local etag")]
+    NoLocalETag,
+
     #[error("s3 sync prefixes must end in a slash")]
     DirlikePrefixRequired,
 
@@ -133,6 +139,9 @@ pub enum Error {
 
     #[error("unknown storage class")]
     UnknownStorageClass(String),
+
+    #[error("sync streaming only implemented for s3 to local")]
+    SyncStreamingNotImplemented,
 
     #[error(transparent)]
     HTTPError(#[from] reqwest::Error),
