@@ -27,7 +27,7 @@ name = "esthri_server"
 path = "src/http_server.rs"
 
 [dependencies]
-esthri = { version = "8.4.0", path = "../esthri", default-features = false }
+esthri = { version = "9.0.0", path = "../esthri", default-features = false }
 anyhow = { version = "1", features = ["backtrace"] }
 async-compression = { version = "0.3", features = ["gzip", "tokio"] }
 async_zip = "0.0.7"
