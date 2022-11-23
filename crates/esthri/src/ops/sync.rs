@@ -1025,11 +1025,7 @@ pub mod streaming {
             opts,
         );
 
-        Box::pin(
-            sync_tasks
-                .buffer_unordered(task_count)
-                .take_while(|_task| future::ready(true)), // always go through the whole stream
-        )
+        Box::pin(sync_tasks.buffer_unordered(task_count))
     }
 }
 
