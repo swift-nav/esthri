@@ -142,7 +142,7 @@ pub enum Error {
 
     #[error("sync streaming only implemented for s3 to local")]
     SyncStreamingNotImplemented,
-    
+
     #[error(transparent)]
     HTTPError(#[from] reqwest::Error),
 }
