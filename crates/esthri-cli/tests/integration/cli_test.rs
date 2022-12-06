@@ -279,3 +279,20 @@ fn test_sync_transparent_compression() {
 
     validate_key_hash_pairs(local_path, &key_hash_pairs);
 }
+
+#[test]
+#[should_panic(expected = "unset or unsupported credential provider environment variable, program aborting")]
+fn unset_credential() {
+    let s3_path = "s3://esthri-test/test-syncup-compress/";
+
+    let mut cmd = Command::cargo_bin("esthri").unwrap();
+    let assert = cmd
+        .env("ESTHRI_CREDENTIAL_PROVIDER", "")
+        .arg("s3")
+        .arg("sync")
+        .arg("--transparent-compression")
+        .arg(esthri_test::test_data("sync_up/"))
+        .arg(s3_path)
+        .assert();
+    assert.success();
+}

@@ -17,12 +17,9 @@ mod http_server;
 mod cli_opts;
 mod cli_utils;
 
-use std::time::Duration;
-
 use anyhow::Result;
 use clap::{CommandFactory, Parser, Subcommand};
 use glob::Pattern;
-use hyper::Client;
 use log::*;
 use tokio::runtime::Builder;
 
@@ -265,14 +262,7 @@ async fn async_main() -> Result<()> {
 
     info!("Starting, using region: {:?}...", region);
 
-    let mut hyper_builder = Client::builder();
-    hyper_builder.pool_idle_timeout(Duration::from_secs(20));
-
-    let https_connector = esthri::new_https_connector();
-    let http_client = HttpClient::from_builder(hyper_builder, https_connector);
-
-    let credentials_provider = DefaultCredentialsProvider::new().unwrap();
-    let s3 = S3Client::new_with(http_client, credentials_provider, Region::default());
+    let s3 = setup_s3client_with_cred_provider();
 
     if aws_compat_mode {
         let args = AwsCompatCli::try_parse().map_err(|e| {

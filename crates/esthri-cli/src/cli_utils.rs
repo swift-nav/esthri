@@ -3,12 +3,14 @@ use std::{
     ffi::OsStr,
     path::Path,
     process::{Command, Stdio},
+    time::Duration,
 };
 
 use anyhow::Result;
 use clap::ArgMatches;
-use esthri::{rusoto::S3Client, GlobFilter};
+use esthri::{rusoto::*, GlobFilter};
 use glob::Pattern;
+use hyper::Client;
 use log::*;
 use log_derive::logfn;
 
@@ -135,4 +137,41 @@ pub fn setup_upload_termination_handler(s3: S3Client) {
         info!("\ncancelled");
         std::process::exit(0);
     });
+}
+
+pub fn setup_s3client_with_cred_provider() -> S3Client {
+    let mut hyper_builder = Client::builder();
+    hyper_builder.pool_idle_timeout(Duration::from_secs(20));
+
+    let https_connector = esthri::new_https_connector();
+    let http_client = HttpClient::from_builder(hyper_builder, https_connector);
+
+    match std::env::var("ESTHRI_CREDENTIAL_PROVIDER") {
+        Ok(val) => match val.as_str() {
+            "env" => {
+                let credentials_provider = EnvironmentProvider::default();
+                S3Client::new_with(http_client, credentials_provider, Region::default())
+            },
+            "profile" => {
+                let credentials_provider = ProfileProvider::new().unwrap();
+                S3Client::new_with(http_client, credentials_provider, Region::default())
+            },
+            "container" => {
+                let credentials_provider = ContainerProvider::new();
+                S3Client::new_with(http_client, credentials_provider, Region::default())
+            },
+            "instance_metadata" => {
+                let credentials_provider = InstanceMetadataProvider::new();
+                S3Client::new_with(http_client, credentials_provider, Region::default())
+            },
+            _ => {
+                println!("unset or unsupported credential provider environment variable, program aborting");
+                std::process::exit(1)
+            },
+        },
+        Err(_) => {
+            let credentials_provider = DefaultCredentialsProvider::new().unwrap();
+            S3Client::new_with(http_client, credentials_provider, Region::default())
+        },
+    }
 }
