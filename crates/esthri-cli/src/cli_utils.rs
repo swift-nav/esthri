@@ -151,27 +151,27 @@ pub fn setup_s3client_with_cred_provider() -> S3Client {
             "env" => {
                 let credentials_provider = EnvironmentProvider::default();
                 S3Client::new_with(http_client, credentials_provider, Region::default())
-            },
+            }
             "profile" => {
                 let credentials_provider = ProfileProvider::new().unwrap();
                 S3Client::new_with(http_client, credentials_provider, Region::default())
-            },
+            }
             "container" => {
                 let credentials_provider = ContainerProvider::new();
                 S3Client::new_with(http_client, credentials_provider, Region::default())
-            },
+            }
             "instance_metadata" => {
                 let credentials_provider = InstanceMetadataProvider::new();
                 S3Client::new_with(http_client, credentials_provider, Region::default())
-            },
+            }
             _ => {
                 println!("unset or unsupported credential provider environment variable, program aborting");
                 std::process::exit(1)
-            },
+            }
         },
         Err(_) => {
             let credentials_provider = DefaultCredentialsProvider::new().unwrap();
             S3Client::new_with(http_client, credentials_provider, Region::default())
-        },
+        }
     }
 }
