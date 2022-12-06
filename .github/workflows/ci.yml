@@ -47,6 +47,7 @@ jobs:
       - name: Install musl tools
         if: matrix.needs_musl
         run: >-
+          sudo apt-get update
           sudo apt-get install
           clang
           llvm
