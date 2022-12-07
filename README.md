@@ -67,6 +67,24 @@ esthri version number in the metadata of files it has compressed. For this
 reason, the decompression will only work for files that esthri has compressed
 itself.
 
+## AWS credential provider selection
+
+It is highly recommended to set a specific credential provider which gives you
+better security and granular level of control. e.g:
+
+```
+CREDENTIAL_PROVIDER=profile esthri s3 sync s3://esthri-test/myfiles/ mynewdirectory/
+```
+
+`ESTHRI_CREDENTIAL_PROVIDER=env` ---> fetched from environment variables
+`ESTHRI_CREDENTIAL_PROVIDER=profile` ---> fetched from default credential file
+`ESTHRI_CREDENTIAL_PROVIDER=container` ---> fetched from task's IAM role in ECS
+`ESTHRI_CREDENTIAL_PROVIDER=instance_metadata` ---> fetched from instance metadata service
+`ESTHRI_CREDENTIAL_PROVIDER=` ---> explicitly using default credential provider if empty
+
+If not set the program will fall back to default credential provider in which the
+above providers are iterated through in the above order until the first working value is found
+
 ## Releasing
 
 [cargo-release](https://github.com/crate-ci/cargo-release) is used to automate
