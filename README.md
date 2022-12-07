@@ -80,6 +80,7 @@ CREDENTIAL_PROVIDER=profile esthri s3 sync s3://esthri-test/myfiles/ mynewdirect
 `ESTHRI_CREDENTIAL_PROVIDER=profile` ---> fetched from default credential file
 `ESTHRI_CREDENTIAL_PROVIDER=container` ---> fetched from task's IAM role in ECS
 `ESTHRI_CREDENTIAL_PROVIDER=instance_metadata` ---> fetched from instance metadata service
+`ESTHRI_CREDENTIAL_PROVIDER=esthri` ---> explicitly using default credential provider
 
 If not set the program will fall back to default credential provider in which the
 above providers are iterated through in the above order until the first working value is found

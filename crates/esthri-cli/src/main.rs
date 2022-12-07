@@ -262,7 +262,7 @@ async fn async_main() -> Result<()> {
 
     info!("Starting, using region: {:?}...", region);
 
-    let s3 = setup_s3client_with_cred_provider();
+    let s3 = setup_s3client_with_cred_provider()?;
 
     if aws_compat_mode {
         let args = AwsCompatCli::try_parse().map_err(|e| {
