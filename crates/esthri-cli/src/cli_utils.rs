@@ -180,7 +180,7 @@ pub fn setup_s3client_with_cred_provider() -> Result<S3Client> {
                     Region::default(),
                 ))
             }
-            "esthri" => {
+            "" => {
                 let credentials_provider = DefaultCredentialsProvider::new().unwrap();
                 Ok(S3Client::new_with(
                     http_client,
@@ -189,7 +189,7 @@ pub fn setup_s3client_with_cred_provider() -> Result<S3Client> {
                 ))
             }
             _ => {
-                bail!("unset or unsupported credential provider environment variable, program aborting");
+                bail!("unsupported credential provider environment variable, program aborting");
             }
         },
         Err(_) => {

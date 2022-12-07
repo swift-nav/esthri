@@ -281,15 +281,13 @@ fn test_sync_transparent_compression() {
 }
 
 #[test]
-#[should_panic(
-    expected = "unset or unsupported credential provider environment variable, program aborting"
-)]
+#[should_panic(expected = "unsupported credential provider environment variable, program aborting")]
 fn unset_credential() {
     let s3_path = "s3://esthri-test/test-syncup-compress/";
 
     let mut cmd = Command::cargo_bin("esthri").unwrap();
     let assert = cmd
-        .env("ESTHRI_CREDENTIAL_PROVIDER", "")
+        .env("ESTHRI_CREDENTIAL_PROVIDER", "unknown")
         .arg("s3")
         .arg("sync")
         .arg("--transparent-compression")
