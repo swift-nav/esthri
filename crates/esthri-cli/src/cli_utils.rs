@@ -181,7 +181,8 @@ pub fn setup_s3client_with_cred_provider() -> Result<S3Client> {
                 ))
             }
             "k8s" => {
-                let credentials_provider = AutoRefreshingProvider::new(WebIdentityProvider::from_k8s_env()).unwrap();
+                let credentials_provider =
+                    AutoRefreshingProvider::new(WebIdentityProvider::from_k8s_env()).unwrap();
                 Ok(S3Client::new_with(
                     http_client,
                     credentials_provider,
