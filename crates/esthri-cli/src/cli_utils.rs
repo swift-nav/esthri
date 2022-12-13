@@ -180,6 +180,14 @@ pub fn setup_s3client_with_cred_provider() -> Result<S3Client> {
                     Region::default(),
                 ))
             }
+            "k8s" => {
+                let credentials_provider = AutoRefreshingProvider::new(WebIdentityProvider::from_k8s_env()).unwrap();
+                Ok(S3Client::new_with(
+                    http_client,
+                    credentials_provider,
+                    Region::default(),
+                ))
+            }
             "" => {
                 let credentials_provider = DefaultCredentialsProvider::new().unwrap();
                 Ok(S3Client::new_with(
