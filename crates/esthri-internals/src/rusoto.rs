@@ -15,3 +15,4 @@ pub use rusoto_credential::DefaultCredentialsProvider;
 
 pub use rusoto_credential::*;
 pub use rusoto_s3::*;
+pub use rusoto_sts::*;

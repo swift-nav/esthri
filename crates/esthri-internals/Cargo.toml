@@ -23,6 +23,7 @@ rusoto_core = { version = ">= 0.46, < 1", default-features = false }
 rusoto_credential = { version = ">= 0.46, < 1", default-features = false }
 rusoto_s3 = { version = ">= 0.46, < 1", default-features = false }
 rusoto_signature = { version = ">= 0.46, < 1", default-features = false }
+rusoto_sts = { version = ">= 0.46, < 1", default-features = false }
 
 [dependencies.hyper-tls]
 version = "0.5"
