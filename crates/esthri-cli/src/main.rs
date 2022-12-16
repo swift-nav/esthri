@@ -14,6 +14,9 @@
 #[cfg(not(windows))]
 mod http_server;
 
+#[cfg(not(windows))]
+mod http_axum;
+
 mod cli_opts;
 mod cli_utils;
 
@@ -217,14 +220,14 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
 
         #[cfg(not(windows))]
         Serve(params) => {
-            http_server::run(
+            http_axum::run(
                 s3.clone(),
-                &params.bucket,
-                &params.address,
+                params.bucket,
+                params.address,
                 params.index_html,
                 &params.allowed_prefixes[..],
             )
-            .await?;
+            .await;
         }
 
         Presign(params) => {
