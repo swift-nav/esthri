@@ -14,8 +14,8 @@ fn test_download() {
     let res = blocking::download(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
-        &s3_key,
-        &filepath,
+        s3_key,
+        filepath,
         opts,
     );
     assert!(res.is_ok());
@@ -35,7 +35,7 @@ fn test_download_to_nonexistent_path() {
     let res = blocking::download(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
-        &s3_key,
+        s3_key,
         &filepath,
         opts,
     );
@@ -55,8 +55,8 @@ fn test_download_to_current_directory() {
     let res = blocking::download(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
-        &s3_key,
-        &filepath,
+        s3_key,
+        filepath,
         opts,
     );
     assert!(res.is_ok());
@@ -122,8 +122,8 @@ fn test_download_decompressed() {
     let res = blocking::download(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
-        &s3_key,
-        &filename,
+        s3_key,
+        filename,
         opts,
     );
     assert!(res.is_ok());
@@ -148,7 +148,7 @@ fn test_download_decompressed_to_directory() {
     let res = blocking::download(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
-        &s3_key,
+        s3_key,
         ".",
         opts,
     );
@@ -174,7 +174,7 @@ fn test_download_transparent_with_non_compressed() {
     let res = blocking::download(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
-        &s3_key,
+        s3_key,
         local_dir_path,
         opts,
     );
