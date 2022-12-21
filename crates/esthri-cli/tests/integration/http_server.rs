@@ -203,7 +203,7 @@ fn upload_test_data() -> anyhow::Result<()> {
         blocking::upload(
             s3client.as_ref(),
             esthri_test::TEST_BUCKET,
-            &s3_key,
+            s3_key,
             filepath.to_str().unwrap(),
             opts,
         )?;
@@ -236,7 +236,7 @@ fn extract_zip_archive(mut archive: zip::ZipArchive<Cursor<&bytes::Bytes>>) -> a
         };
         if let Some(p) = outpath.parent() {
             if !p.exists() {
-                fs::create_dir_all(&p)?;
+                fs::create_dir_all(p)?;
             }
         }
         let mut outfile = fs::File::create(&outpath)?;
@@ -264,7 +264,7 @@ fn validate_fetch_archive(
     for key_hash_pair in key_hash_pairs {
         let filename = Path::new(key_hash_pair.0);
         let filepath = Path::new(local_dir).join(filename);
-        let file_last_mod = std::fs::metadata(&filepath)
+        let file_last_mod = std::fs::metadata(filepath)
             .expect("stat'ing test file path")
             .modified()
             .expect("last modified timestamp");
@@ -395,8 +395,8 @@ fn test_fetch_archive_with_compressed_files() {
     let res = blocking::upload(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
-        &s3_key,
-        &filename,
+        s3_key,
+        filename,
         opts_compressed,
     );
     assert!(res.is_ok());
@@ -407,8 +407,8 @@ fn test_fetch_archive_with_compressed_files() {
     let res = blocking::upload(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
-        &s3_key,
-        &filename,
+        s3_key,
+        filename,
         opts,
     );
     assert!(res.is_ok());

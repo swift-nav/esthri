@@ -9,7 +9,7 @@ use esthri_internals::rusoto::S3Client;
 async fn test_delete() {
     let (s3client, s3_key, bucket, s3_key2) = upload_test_data().await;
     let s3client = s3client.as_ref();
-    let result = esthri::delete(s3client, &bucket, &vec![&s3_key, &s3_key2]).await;
+    let result = esthri::delete(s3client, &bucket, &[&s3_key, &s3_key2]).await;
     assert!(result.is_ok());
     let result = esthri::head_object(s3client, &bucket, &s3_key).await;
     assert!(result.unwrap().is_none());
@@ -31,9 +31,9 @@ async fn test_delete_streaming() {
 fn test_delete_blocking() {
     let (s3client, s3_key, bucket, s3_key2) = blocking::upload_test_data();
     let s3client = s3client.as_ref();
-    let result = esthri::blocking::delete(s3client, &bucket, &vec![&s3_key]);
+    let result = esthri::blocking::delete(s3client, &bucket, &[&s3_key]);
     assert!(result.is_ok());
-    let result = esthri::blocking::delete(s3client, &bucket, &vec![&s3_key2]);
+    let result = esthri::blocking::delete(s3client, &bucket, &[&s3_key2]);
     assert!(result.is_ok());
     let result = esthri::blocking::head_object(s3client, &bucket, &s3_key);
     assert!(result.unwrap().is_none());

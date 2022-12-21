@@ -18,7 +18,7 @@ async fn test_presign_get() {
 
     let creds = creds().await;
 
-    let presigned_url = presign_get(&creds, &region, &bucket, &s3_key, None);
+    let presigned_url = presign_get(&creds, &region, bucket, &s3_key, None);
 
     let tmpdir = TempDir::new("esthri_tmp").expect("creating temporary directory");
     let download_file_path = tmpdir.path().join(filename);
@@ -48,7 +48,7 @@ async fn test_presign_put() {
 
     let opts = EsthriPutOptParamsBuilder::default().build().unwrap();
 
-    let presigned_url = presign_put(&creds, &region, &bucket, &s3_key, None, opts.clone());
+    let presigned_url = presign_put(&creds, &region, bucket, &s3_key, None, opts);
     upload_file_presigned(&Client::new(), &presigned_url, &filepath, opts)
         .await
         .unwrap();
@@ -79,7 +79,7 @@ async fn test_presign_delete() {
     )
     .await
     .unwrap();
-    assert!(esthri::head_object(s3, bucket.to_owned(), s3_key.clone())
+    assert!(esthri::head_object(s3, bucket.to_owned(), s3_key)
         .await
         .unwrap()
         .is_some());
@@ -87,7 +87,7 @@ async fn test_presign_delete() {
     let region = Region::default();
     let creds = creds().await;
 
-    let presigned_url = presign_delete(&creds, &region, &bucket, &s3_key, None);
+    let presigned_url = presign_delete(&creds, &region, bucket, s3_key, None);
     delete_file_presigned(&Client::new(), &presigned_url)
         .await
         .unwrap();

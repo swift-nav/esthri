@@ -11,7 +11,7 @@ mod upload_test;
 async fn test_get_bucket_location() {
     let s3client = esthri_test::get_s3client();
     let bucket = esthri_test::TEST_BUCKET;
-    let location = esthri::rusoto::get_bucket_location(s3client.as_ref(), &bucket)
+    let location = esthri::rusoto::get_bucket_location(s3client.as_ref(), bucket)
         .await
         .expect("get_bucket_location failed");
     assert_eq!(location, "us-west-2");
