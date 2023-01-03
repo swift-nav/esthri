@@ -23,7 +23,7 @@ fn test_sync_down() {
     ]);
 
     let source = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key);
-    let destination = S3PathParam::new_local(&local_directory);
+    let destination = S3PathParam::new_local(local_directory);
     let opts = SharedSyncOptParamsBuilder::default().build().unwrap();
 
     let res = esthri::blocking::sync(
@@ -72,7 +72,7 @@ fn test_sync_down_without_slash() {
     ]);
 
     let source = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key);
-    let destination = S3PathParam::new_local(&local_directory);
+    let destination = S3PathParam::new_local(local_directory);
     let opts = SharedSyncOptParamsBuilder::default().build().unwrap();
 
     let res = blocking::sync(
@@ -95,7 +95,7 @@ fn test_sync_up_without_slash() {
         GlobFilter::Exclude(Pattern::new("*").unwrap()),
     ]);
 
-    let source = S3PathParam::new_local(&local_directory);
+    let source = S3PathParam::new_local(local_directory);
     let destination = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key);
     let opts = SharedSyncOptParamsBuilder::default().build().unwrap();
 
@@ -119,7 +119,7 @@ fn test_sync_up() {
         GlobFilter::Exclude(Pattern::new("*").unwrap()),
     ]);
 
-    let source = S3PathParam::new_local(&local_directory);
+    let source = S3PathParam::new_local(local_directory);
     let destination = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key);
     let opts = SharedSyncOptParamsBuilder::default().build().unwrap();
 
@@ -164,7 +164,7 @@ fn test_sync_up_default() {
     let local_directory = esthri_test::test_data("sync_up");
     let s3_key = esthri_test::randomised_lifecycled_prefix("test_sync_up_default/");
 
-    let source = S3PathParam::new_local(&local_directory);
+    let source = S3PathParam::new_local(local_directory);
     let destination = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, &s3_key);
     let opts = SharedSyncOptParamsBuilder::default().build().unwrap();
 
@@ -277,7 +277,7 @@ fn test_sync_down_delete() {
     // Create a key that correspods to non-existant data in an S3 bucket
     let s3_key_prefix = esthri_test::randomised_lifecycled_prefix("test_sync_down_delete/");
 
-    let src = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, &s3_key_prefix);
+    let src = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key_prefix);
     let dst = S3PathParam::new_local(&local_directory);
 
     // Expect contents to have been copied to local directory
@@ -322,7 +322,7 @@ fn test_sync_across_delete() {
     let temp_directory_as_pathbuf = temp_directory.as_ref().to_path_buf();
 
     // Create 2 empty buckets
-    let source = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, &s3_key_src_prefix);
+    let source = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key_src_prefix);
     let destination = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, &s3_key_dst_prefix);
 
     let local_source = S3PathParam::new_local(temp_directory_as_pathbuf.as_path());
@@ -386,11 +386,11 @@ fn test_sync_across_delete() {
 fn test_sync_down_default() {
     let s3client = esthri_test::get_s3client();
     let local_directory = "tests/data/sync_down/d";
-    let sync_dir_meta = fs::metadata(&local_directory);
+    let sync_dir_meta = fs::metadata(local_directory);
 
     if let Ok(sync_dir_meta) = sync_dir_meta {
         assert!(sync_dir_meta.is_dir());
-        assert!(fs::remove_dir_all(&local_directory).is_ok());
+        assert!(fs::remove_dir_all(local_directory).is_ok());
     }
 
     // Test was data populated with the following command:
@@ -400,7 +400,7 @@ fn test_sync_down_default() {
     let s3_key = "test_sync_down_default/";
 
     let source = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key);
-    let destination = S3PathParam::new_local(&local_directory);
+    let destination = S3PathParam::new_local(local_directory);
     let opts = SharedSyncOptParamsBuilder::default().build().unwrap();
 
     let res = blocking::sync(s3client.as_ref(), source, destination, FILTER_EMPTY, opts);
@@ -413,7 +413,7 @@ fn test_sync_down_default() {
         KeyHashPair("nested/2MiB.bin", "64a2635e42ef61c69d62feebdbf118d4"),
     ];
 
-    validate_key_hash_pairs(&local_directory, &key_hash_pairs);
+    validate_key_hash_pairs(local_directory, &key_hash_pairs);
 }
 
 #[test]
