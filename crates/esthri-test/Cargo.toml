@@ -16,7 +16,7 @@ rustls = ["esthri-internals/rustls"]
 [dependencies]
 esthri-internals = { path = "../esthri-internals", default-features = false }
 chrono = "0.4"
-env_logger = "0.9"
+env_logger = "0.10"
 flate2 = "1.0.25"
 hyper = "0.14"
 md-5 = "0.10.5"
