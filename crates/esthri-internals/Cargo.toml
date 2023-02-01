@@ -9,7 +9,7 @@ repository = "https://github.com/swift-nav/esthri/"
 homepage = "https://github.com/swift-nav/esthri/"
 readme = "../../README.md"
 keywords = ["aws", "s3"]
-rust-version = "1.56.1"
+rust-version = "1.60.0"
 
 [features]
 default = []
