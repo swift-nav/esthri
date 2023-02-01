@@ -236,7 +236,7 @@ fn extract_zip_archive(mut archive: zip::ZipArchive<Cursor<&bytes::Bytes>>) -> a
         };
         if let Some(p) = outpath.parent() {
             if !p.exists() {
-                fs::create_dir_all(&p)?;
+                fs::create_dir_all(p)?;
             }
         }
         let mut outfile = fs::File::create(&outpath)?;
@@ -395,8 +395,8 @@ fn test_fetch_archive_with_compressed_files() {
     let res = blocking::upload(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
-        &s3_key,
-        &filename,
+        s3_key,
+        filename,
         opts_compressed,
     );
     assert!(res.is_ok());
@@ -407,8 +407,8 @@ fn test_fetch_archive_with_compressed_files() {
     let res = blocking::upload(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
-        &s3_key,
-        &filename,
+        s3_key,
+        filename,
         opts,
     );
     assert!(res.is_ok());

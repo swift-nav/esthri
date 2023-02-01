@@ -18,7 +18,7 @@ fn test_upload() {
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
         &s3_key,
-        &filepath,
+        filepath,
         opts,
     );
     assert!(res.is_ok());
@@ -49,7 +49,7 @@ fn test_upload_compressed() {
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
         &s3_key,
-        &filepath,
+        filepath,
         opts,
     );
     assert!(res.is_ok());
@@ -122,8 +122,8 @@ fn test_upload_zero_size() {
     let res = blocking::upload(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
-        &s3_key,
-        &filepath,
+        s3_key,
+        filepath,
         opts,
     );
     assert!(res.is_ok());

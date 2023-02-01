@@ -20,7 +20,7 @@ fn test_head_object() {
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
         &s3_key,
-        &filepath,
+        filepath,
         opts,
     );
     assert!(res.is_ok());
@@ -75,8 +75,8 @@ fn test_list_objects() {
     let res = blocking::upload(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
-        &not_empty_s3_key,
-        &filepath,
+        not_empty_s3_key,
+        filepath,
         opts,
     );
     assert!(res.is_ok());
@@ -84,7 +84,7 @@ fn test_list_objects() {
     let res = blocking::list_objects(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
-        &not_empty_folder,
+        not_empty_folder,
     );
     let bucket_contents = res.unwrap();
     assert_eq!(1, bucket_contents.len());
@@ -93,7 +93,7 @@ fn test_list_objects() {
         bucket_contents[0]
     );
 
-    let res = blocking::list_objects(s3client.as_ref(), esthri_test::TEST_BUCKET, &empty_folder);
+    let res = blocking::list_objects(s3client.as_ref(), esthri_test::TEST_BUCKET, empty_folder);
     let bucket_contents = res.unwrap();
     assert!(bucket_contents.is_empty())
 }
