@@ -1,6 +1,6 @@
 [package]
 name = "esthri-test"
-version = "9.0.0"
+version = "9.1.0"
 authors = ["Swift Navigation <dev@swift-nav.com>"]
 edition = "2018"
 license = "MIT"
@@ -17,7 +17,7 @@ rustls = ["esthri-internals/rustls"]
 esthri-internals = { path = "../esthri-internals", default-features = false }
 chrono = "0.4"
 env_logger = "0.9"
-flate2 = "1.0.24"
+flate2 = "1.0.25"
 hyper = "0.14"
 md-5 = "0.10.5"
 once_cell = "1.7"

@@ -3,12 +3,14 @@ use std::{
     ffi::OsStr,
     path::Path,
     process::{Command, Stdio},
+    time::Duration,
 };
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use clap::ArgMatches;
-use esthri::{rusoto::S3Client, GlobFilter};
+use esthri::{rusoto::*, GlobFilter};
 use glob::Pattern;
+use hyper::Client;
 use log::*;
 use log_derive::logfn;
 
@@ -135,4 +137,77 @@ pub fn setup_upload_termination_handler(s3: S3Client) {
         info!("\ncancelled");
         std::process::exit(0);
     });
+}
+
+pub fn setup_s3client_with_cred_provider() -> Result<S3Client> {
+    let mut hyper_builder = Client::builder();
+    hyper_builder.pool_idle_timeout(Duration::from_secs(20));
+
+    let https_connector = esthri::new_https_connector();
+    let http_client = HttpClient::from_builder(hyper_builder, https_connector);
+
+    match std::env::var("ESTHRI_CREDENTIAL_PROVIDER") {
+        Ok(val) => match val.as_str() {
+            "env" => {
+                let credentials_provider = EnvironmentProvider::default();
+                Ok(S3Client::new_with(
+                    http_client,
+                    credentials_provider,
+                    Region::default(),
+                ))
+            }
+            "profile" => {
+                let credentials_provider = ProfileProvider::new().unwrap();
+                Ok(S3Client::new_with(
+                    http_client,
+                    credentials_provider,
+                    Region::default(),
+                ))
+            }
+            "container" => {
+                let credentials_provider = ContainerProvider::new();
+                Ok(S3Client::new_with(
+                    http_client,
+                    credentials_provider,
+                    Region::default(),
+                ))
+            }
+            "instance_metadata" => {
+                let credentials_provider = InstanceMetadataProvider::new();
+                Ok(S3Client::new_with(
+                    http_client,
+                    credentials_provider,
+                    Region::default(),
+                ))
+            }
+            "k8s" => {
+                let credentials_provider =
+                    AutoRefreshingProvider::new(WebIdentityProvider::from_k8s_env()).unwrap();
+                Ok(S3Client::new_with(
+                    http_client,
+                    credentials_provider,
+                    Region::default(),
+                ))
+            }
+            "" => {
+                let credentials_provider = DefaultCredentialsProvider::new().unwrap();
+                Ok(S3Client::new_with(
+                    http_client,
+                    credentials_provider,
+                    Region::default(),
+                ))
+            }
+            _ => {
+                bail!("unsupported credential provider environment variable, program aborting");
+            }
+        },
+        Err(_) => {
+            let credentials_provider = DefaultCredentialsProvider::new().unwrap();
+            Ok(S3Client::new_with(
+                http_client,
+                credentials_provider,
+                Region::default(),
+            ))
+        }
+    }
 }

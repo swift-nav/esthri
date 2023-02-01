@@ -203,7 +203,7 @@ fn upload_test_data() -> anyhow::Result<()> {
         blocking::upload(
             s3client.as_ref(),
             esthri_test::TEST_BUCKET,
-            &s3_key,
+            s3_key,
             filepath.to_str().unwrap(),
             opts,
         )?;
@@ -264,7 +264,7 @@ fn validate_fetch_archive(
     for key_hash_pair in key_hash_pairs {
         let filename = Path::new(key_hash_pair.0);
         let filepath = Path::new(local_dir).join(filename);
-        let file_last_mod = std::fs::metadata(&filepath)
+        let file_last_mod = std::fs::metadata(filepath)
             .expect("stat'ing test file path")
             .modified()
             .expect("last modified timestamp");

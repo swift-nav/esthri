@@ -133,7 +133,7 @@ fn test_upload_zero_size() {
 fn test_upload_storage_class_all() {
     let s3client = esthri_test::get_s3client();
     let filename = "test5mb.bin";
-    let filepath = esthri_test::test_data(filename);
+    let filepath = &esthri_test::test_data(filename);
     let s3_key = esthri_test::randomised_lifecycled_prefix(&format!("test_upload/{}", filename));
 
     // 1. Glacier Class might take hours to populate metadata, skipping tests...
@@ -155,7 +155,7 @@ fn test_upload_storage_class_all() {
             s3client.as_ref(),
             esthri_test::TEST_BUCKET,
             &s3_key,
-            &filepath,
+            filepath,
             opts,
         );
         assert!(res.is_ok());

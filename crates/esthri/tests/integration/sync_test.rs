@@ -164,7 +164,7 @@ fn test_sync_up_default() {
     let local_directory = esthri_test::test_data("sync_up");
     let s3_key = esthri_test::randomised_lifecycled_prefix("test_sync_up_default/");
 
-    let source = S3PathParam::new_local(&local_directory);
+    let source = S3PathParam::new_local(local_directory);
     let destination = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, &s3_key);
     let opts = SharedSyncOptParamsBuilder::default().build().unwrap();
 
@@ -322,7 +322,7 @@ fn test_sync_across_delete() {
     let temp_directory_as_pathbuf = temp_directory.as_ref().to_path_buf();
 
     // Create 2 empty buckets
-    let source = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, &s3_key_src_prefix);
+    let source = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, s3_key_src_prefix);
     let destination = S3PathParam::new_bucket(esthri_test::TEST_BUCKET, &s3_key_dst_prefix);
 
     let local_source = S3PathParam::new_local(temp_directory_as_pathbuf.as_path());
