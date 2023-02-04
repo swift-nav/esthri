@@ -1,5 +1,5 @@
 release = true
-publish = false
+publish = true
 push = true
 consolidate-commits = false
 pre-release-commit-message = "release: {{crate_name}}: version {{version}}"
@@ -7,3 +7,4 @@ tag-message = "Esthri version {{tag_name}}"
 tag-prefix = ""
 tag-name = "{{version}}"
 tag = true
+enable-features = ["rustls", "blocking"]

@@ -16,6 +16,7 @@ default = ["rustls"]
 nativetls = ["esthri/nativetls"]
 rustls = ["esthri/rustls"]
 aggressive_lint = []
+blocking = []
 
 [[bin]]
 name = "esthri"

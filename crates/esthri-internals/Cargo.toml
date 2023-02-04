@@ -16,6 +16,7 @@ default = []
 nativetls = ["rusoto_core/native-tls", "rusoto_s3/native-tls", "hyper-tls"]
 rustls = ["rusoto_core/rustls", "rusoto_s3/rustls", "hyper-rustls"]
 aggressive_lint = []
+blocking = []
 
 [dependencies]
 hyper = "0.14"

@@ -1,5 +1,6 @@
 [package]
 name = "esthri-test"
+description = "Tests for esthri"
 version = "9.1.0"
 authors = ["Swift Navigation <dev@swift-nav.com>"]
 edition = "2018"
@@ -12,9 +13,10 @@ readme = "../../README.md"
 default = []
 nativetls = ["esthri-internals/nativetls"]
 rustls = ["esthri-internals/rustls"]
+blocking = []
 
 [dependencies]
-esthri-internals = { path = "../esthri-internals", default-features = false }
+esthri-internals = { path = "../esthri-internals", version = "9.1.0", default-features = false }
 chrono = "0.4"
 env_logger = "0.10"
 flate2 = "1.0.25"
