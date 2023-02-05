@@ -48,7 +48,7 @@ reqwest = { version="0.11.14", features=["stream", "json"], default-features = f
 serde-tuple-vec-map = "1.0.1"
 
 [dependencies.esthri-internals]
-version = "10.0.0"
+version = "10.0.1"
 path = "../esthri-internals"
 
 [dev-dependencies]
