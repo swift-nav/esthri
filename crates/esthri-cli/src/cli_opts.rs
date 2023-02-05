@@ -224,8 +224,9 @@ pub struct EsthriServeParams {
     /// Whether to serve "index.html" in place of "/" for directories
     #[clap(long)]
     pub index_html: bool,
-    /// A list of prefixes that are allowed for access, all other prefixes are rejected
-    #[clap(long)]
+    /// A prefix that is allowed for access, all other prefixes are rejected
+    /// (specify this option more than once to allow multiple prefixes).
+    #[clap(long = "allowed-prefix", name = "PREFIX", alias = "allowed-prefixes")]
     pub allowed_prefixes: Vec<String>,
 }
 
