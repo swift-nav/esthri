@@ -1,6 +1,6 @@
 # Esthri (S3)
 
-[![Build Status](https://jenkins.ci.swift-nav.com/buildStatus/icon?job=swift-nav%2Festhri%2Fmaster)](https://jenkins.ci.swift-nav.com/job/swift-nav/job/esthri/job/master/)
+[![Build Status](https://jenkins-webhooks.ci.swift-nav.com/buildStatus/icon?job=swift-nav%2Festhri%2Fmaster)](https://jenkins.ci.swift-nav.com/job/swift-nav/job/esthri/job/master/)
 
 Extremely simple (memory stable) S3 client that supports get, put, head, list,
 and sync.
