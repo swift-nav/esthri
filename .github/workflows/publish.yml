@@ -99,7 +99,7 @@ jobs:
   post_release:
     name: Post release
     needs: [ release ]
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-latest
     steps:
       - name: Store git tag vars
         shell: bash
