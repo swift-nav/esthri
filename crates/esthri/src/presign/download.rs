@@ -69,6 +69,7 @@ pub async fn download_file_presigned(
     } else {
         while let Some(bytes) = resp.chunk().await? {
             file.write_all(&bytes).await?;
+            file.flush().await?;
         }
     }
     Ok(())

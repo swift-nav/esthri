@@ -118,7 +118,6 @@ where
         key.as_ref(),
         file.as_ref().display()
     );
-
     upload_file_helper(
         s3,
         bucket.as_ref(),
