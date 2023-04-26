@@ -39,7 +39,7 @@ tempfile = "3"
 thiserror = "1"
 tokio = { version = "1.23.0", features = ["fs", "io-util", "sync", "parking_lot"] }
 tokio-retry = "0.3"
-tokio-stream = "0.1.12"
+tokio-stream = "0.1.14"
 tokio-util = { version = "0.7.8", features = ["io"] }
 walkdir = "2"
 strum = "0.24.1"
