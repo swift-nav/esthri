@@ -19,7 +19,7 @@ nativetls = ["esthri-internals/nativetls", "reqwest/native-tls"]
 rustls = ["esthri-internals/rustls", "reqwest/rustls-tls"]
 
 [dependencies]
-async-compression = { version = "0.3", features = ["gzip", "tokio"] }
+async-compression = { version = "0.4", features = ["gzip", "tokio"] }
 async-stream = "0.3"
 bytes = "1"
 chrono = "0.4"
