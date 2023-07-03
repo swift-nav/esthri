@@ -1,7 +1,7 @@
 [package]
 name = "esthri-cli"
 description = "Extremely simple (memory stable) S3 client that supports get, put, head, list, and sync."
-version = "10.0.1"
+version = "10.0.3"
 authors = ["Swift Navigation <dev@swift-nav.com>"]
 edition = "2018"
 license = "MIT"
@@ -28,9 +28,9 @@ name = "esthri_server"
 path = "src/http_server.rs"
 
 [dependencies]
-esthri = { version = "10.0.1", path = "../esthri", default-features = false }
+esthri = { version = "10.0.3", path = "../esthri", default-features = false }
 anyhow = { version = "1", features = ["backtrace"] }
-async-compression = { version = "0.3", features = ["gzip", "tokio"] }
+async-compression = { version = "0.4", features = ["gzip", "tokio"] }
 async_zip = "0.0.7"
 async-stream = "0.3"
 bytes = "1.0"
@@ -48,7 +48,7 @@ sanitize-filename = "0.4"
 serde = "1"
 clap = { version = "4.0.26", features = ["derive", "env"] }
 tokio = { version = "1.23.0", features = ["rt-multi-thread", "signal", "sync"] }
-tokio-util = { version = "0.7.4", features = ["compat", "codec"] }
+tokio-util = { version = "0.7.8", features = ["compat", "codec"] }
 warp = "0.3"
 
 [dev-dependencies]
@@ -56,7 +56,7 @@ esthri = { path = "../esthri", default-features = false, features=["blocking"] }
 esthri-test = { path = "../esthri-test" }
 assert_cmd = "2.0.5"
 backtrace = "0.3"
-fs_extra = "1.2"
+fs_extra = "1.3"
 md5 = "0.7"
 tempdir = "0.3"
 zip = "0.6.2"
