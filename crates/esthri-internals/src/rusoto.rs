@@ -14,5 +14,9 @@ pub use rusoto_core::{ByteStream, HttpClient, Region, RusotoError, RusotoResult}
 pub use rusoto_credential::DefaultCredentialsProvider;
 
 pub use rusoto_credential::*;
+// this now breaks due to an clippy lint ambiguous_glob_reexports. Which honestly
+// should be fixed because there is rusoto_s3::Tag, and a rusoto_sts::Tag which
+// collide. I don't want to do a breaking change in lint fix though.
+#[allow(ambiguous_glob_reexports)]
 pub use rusoto_s3::*;
 pub use rusoto_sts::*;

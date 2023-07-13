@@ -761,7 +761,7 @@ where
                 let path_result = Path::new(&entry.key).strip_prefix(key);
                 if let Ok(s3_suffix) = path_result {
                     if process_globs(&s3_suffix, filters).is_some() {
-                        let local_path = directory.join(&s3_suffix);
+                        let local_path = directory.join(s3_suffix);
                         let s3_suffix = s3_suffix.to_string_lossy().into();
                         yield Ok((
                             local_path,
