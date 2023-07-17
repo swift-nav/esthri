@@ -736,7 +736,7 @@ name = "esthri-internals"
 version = "10.0.3"
 dependencies = [
  "hyper",
- "hyper-rustls 0.24.0",
+ "hyper-rustls 0.24.1",
  "hyper-tls",
  "rusoto_core",
  "rusoto_credential",
@@ -1143,10 +1143,11 @@ dependencies = [
 
 [[package]]
 name = "hyper-rustls"
-version = "0.24.0"
+version = "0.24.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0646026eb1b3eea4cd9ba47912ea5ce9cc07713d105b1a14698f4e6433d348b7"
+checksum = "8d78e1e73ec14cf7375674f74d7dde185c8206fd9dea6fb6295e8a98098aaa97"
 dependencies = [
+ "futures-util",
  "http",
  "hyper",
  "log",
@@ -1904,7 +1905,7 @@ dependencies = [
  "http",
  "http-body",
  "hyper",
- "hyper-rustls 0.24.0",
+ "hyper-rustls 0.24.1",
  "hyper-tls",
  "ipnet",
  "js-sys",
