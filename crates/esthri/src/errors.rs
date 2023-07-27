@@ -21,6 +21,9 @@ use crate::rusoto::*;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+unsafe impl Send for Error {}
+unsafe impl Sync for Error {}
+
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("did not exist locally")]
