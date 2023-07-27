@@ -141,7 +141,7 @@ pub async fn upload_from_reader<T, R>(
 ) -> Result<()>
 where
     T: S3,
-    R: AsyncRead + AsyncSeek + Unpin + Send + 'static,
+    R: AsyncRead + AsyncSeek + Unpin + Send + Sync + 'static,
 {
     upload_from_reader_with_storage_class(
         s3,
@@ -167,7 +167,7 @@ pub async fn upload_from_reader_with_storage_class<T, R>(
 ) -> Result<()>
 where
     T: S3,
-    R: AsyncRead + AsyncSeek + Unpin + Send + 'static,
+    R: AsyncRead + AsyncSeek + Unpin + Send + Sync + 'static,
 {
     let (bucket, key) = (bucket.as_ref(), key.as_ref());
     info!(
@@ -297,7 +297,7 @@ async fn multipart_upload<T, R>(
 ) -> Result<()>
 where
     T: S3,
-    R: AsyncRead + AsyncSeek + Unpin + Send + 'static,
+    R: AsyncRead + AsyncSeek + Unpin + Sync + Send + 'static,
 {
     let upload_id = create_multipart_upload(s3, bucket, key, metadata, storage_class)
         .await?
@@ -391,7 +391,7 @@ async fn upload_request_stream<'a, T, R>(
 ) -> impl Stream<Item = impl Future<Output = Result<CompletedPart>> + 'a> + 'a
 where
     T: S3,
-    R: AsyncRead + AsyncSeek + Unpin + Send + 'static,
+    R: AsyncRead + AsyncSeek + Unpin + Sync + Send + 'static,
 {
     let reqs = upload_part_requests(bucket, key, upload_id, file_size, part_size);
     let shared_reader = Arc::new(Mutex::new(reader));
