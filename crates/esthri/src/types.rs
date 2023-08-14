@@ -10,12 +10,15 @@
 * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
 */
 
+use std::fmt::{Display, Formatter};
+use std::str::FromStr;
 use std::{
     path::{Path, PathBuf},
     result::Result as StdResult,
 };
 
 use regex::Regex;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 #[derive(Debug, Clone)]
 pub enum S3PathParam {
@@ -43,19 +46,47 @@ impl S3PathParam {
     }
 }
 
-impl std::str::FromStr for S3PathParam {
+impl FromStr for S3PathParam {
     type Err = String;
 
     fn from_str(s: &str) -> StdResult<Self, Self::Err> {
         let s3_format = Regex::new(r"^s3://(?P<bucket>[^/]+)/(?P<key>.*)$").unwrap();
 
         if let Some(captures) = s3_format.captures(s) {
-            let bucket = captures.name("bucket").unwrap().as_str();
-            let key = captures.name("key").unwrap().as_str();
+            let bucket = captures
+                .name("bucket")
+                .ok_or("s3 bucket not found".to_string())?
+                .as_str();
+            let key = captures
+                .name("key")
+                .ok_or("s3 key not found".to_string())?
+                .as_str();
             Ok(S3PathParam::new_bucket(bucket, key))
         } else {
             Ok(S3PathParam::new_local(s))
         }
+    }
+}
+
+impl Display for S3PathParam {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            S3PathParam::Local { path } => write!(f, "{}", path.display()),
+            S3PathParam::Bucket { bucket, key } => write!(f, "s3://{bucket}/{key}"),
+        }
+    }
+}
+
+impl Serialize for S3PathParam {
+    fn serialize<S: Serializer>(&self, serializer: S) -> StdResult<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
+}
+
+impl<'de> Deserialize<'de> for S3PathParam {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> StdResult<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        S3PathParam::from_str(&s).map_err(serde::de::Error::custom)
     }
 }
 
