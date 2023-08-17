@@ -83,8 +83,13 @@ pub enum Error {
     #[error(transparent)]
     CopyObjectFailed(#[from] RusotoError<CopyObjectError>),
 
-    #[error(transparent)]
-    ListObjectsFailed(#[from] RusotoError<ListObjectsV2Error>),
+    #[error("list objects failed on prefix {prefix}: {source}")]
+    // ListObjectsFailed(#[from] RusotoError<ListObjectsV2Error>),
+    ListObjectsFailed {
+        prefix: String,
+        #[source]
+        source: RusotoError<ListObjectsV2Error>,
+    },
 
     #[error(transparent)]
     AbortMultipartUploadFailed(#[from] RusotoError<AbortMultipartUploadError>),

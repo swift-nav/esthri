@@ -291,7 +291,11 @@ where
 
         s3.list_objects_v2(lov2r).await
     })
-    .await?;
+    .await
+    .map_err(|e| Error::ListObjectsFailed {
+        prefix: key.to_string(),
+        source: e,
+    })?;
 
     let mut listing = S3Listing {
         continuation: lov2o.next_continuation_token,
