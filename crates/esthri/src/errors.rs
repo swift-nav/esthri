@@ -84,7 +84,6 @@ pub enum Error {
     CopyObjectFailed(#[from] RusotoError<CopyObjectError>),
 
     #[error("list objects failed on prefix {prefix}: {source}")]
-    // ListObjectsFailed(#[from] RusotoError<ListObjectsV2Error>),
     ListObjectsFailed {
         prefix: String,
         #[source]
