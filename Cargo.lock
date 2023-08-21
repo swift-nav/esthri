@@ -746,7 +746,7 @@ dependencies = [
 
 [[package]]
 name = "esthri-internals"
-version = "10.0.5"
+version = "10.0.6"
 dependencies = [
  "hyper",
  "hyper-rustls 0.24.1",
