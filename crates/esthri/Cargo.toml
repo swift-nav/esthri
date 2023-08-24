@@ -44,7 +44,7 @@ tokio-util = { version = "0.7.8", features = ["io"] }
 walkdir = "2"
 strum = "0.25.0"
 strum_macros = "0.24.3"
-reqwest = { version="0.11.18", features=["stream", "json"], default-features = false }
+reqwest = { version="0.11.20", features=["stream", "json"], default-features = false }
 serde-tuple-vec-map = "1.0.1"
 
 [dependencies.esthri-internals]
