@@ -13,11 +13,17 @@
 pub use std::error::Error as StdError;
 use std::path::StripPrefixError;
 
+use aws_sdk_s3::operation::{
+    abort_multipart_upload::AbortMultipartUploadError,
+    complete_multipart_upload::CompleteMultipartUploadError, copy_object::CopyObjectError,
+    create_multipart_upload::CreateMultipartUploadError, delete_object::DeleteObjectError,
+    get_bucket_location::GetBucketLocationError, get_object::GetObjectError,
+    head_object::HeadObjectError, list_objects_v2::ListObjectsV2Error, put_object::PutObjectError,
+    upload_part::UploadPartError,
+};
 use chrono::ParseError;
 use glob::PatternError;
 use tokio::task::JoinError;
-
-use crate::rusoto::*;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -48,16 +54,16 @@ pub enum Error {
     ReadZero,
 
     #[error("upload_part failed")]
-    UploadPartFailed(#[from] RusotoError<UploadPartError>),
+    UploadPartFailed(#[from] UploadPartError),
 
     #[error("complete_multipart_upload failed")]
-    CompletedMultipartUploadFailed(#[from] RusotoError<CompleteMultipartUploadError>),
+    CompletedMultipartUploadFailed(#[from] CompleteMultipartUploadError),
 
     #[error("put_object failed")]
-    PutObjectFailed(#[from] RusotoError<PutObjectError>),
+    PutObjectFailed(#[from] PutObjectError),
 
     #[error("create_multipart_upload failed")]
-    CreateMultipartUploadFailed(#[from] RusotoError<CreateMultipartUploadError>),
+    CreateMultipartUploadFailed(#[from] CreateMultipartUploadError),
 
     #[error("did not expect body field of GetObjectOutput to be none")]
     GetObjectOutputBodyNone,
@@ -72,7 +78,7 @@ pub enum Error {
     ParentDirNone,
 
     #[error(transparent)]
-    HeadObjectFailure(#[from] RusotoError<HeadObjectError>),
+    HeadObjectFailure(#[from] HeadObjectError),
 
     #[error(transparent)]
     HeadObjectFailedParseError(#[from] ParseError),
@@ -81,26 +87,26 @@ pub enum Error {
     WalkDirFailed(#[from] walkdir::Error),
 
     #[error(transparent)]
-    CopyObjectFailed(#[from] RusotoError<CopyObjectError>),
+    CopyObjectFailed(#[from] CopyObjectError),
 
     #[error("list objects failed on prefix {prefix}: {source}")]
     ListObjectsFailed {
         prefix: String,
         #[source]
-        source: RusotoError<ListObjectsV2Error>,
+        source: ListObjectsV2Error,
     },
 
     #[error(transparent)]
-    AbortMultipartUploadFailed(#[from] RusotoError<AbortMultipartUploadError>),
+    AbortMultipartUploadFailed(#[from] AbortMultipartUploadError),
 
     #[error(transparent)]
     StripPrefixFailed(#[from] StripPrefixError),
 
     #[error(transparent)]
-    GetObjectFailed(#[from] RusotoError<GetObjectError>),
+    GetObjectFailed(#[from] GetObjectError),
 
     #[error(transparent)]
-    DeleteObjectsFailed(#[from] RusotoError<DeleteObjectsError>),
+    DeleteObjectsFailed(#[from] DeleteObjectError),
 
     #[error("invalid key, did not exist remotely: {0}")]
     GetObjectInvalidKey(String),
@@ -112,7 +118,7 @@ pub enum Error {
     GetObjectSizeChanged,
 
     #[error(transparent)]
-    GetBucketLocationFailed(#[from] RusotoError<GetBucketLocationError>),
+    GetBucketLocationFailed(#[from] GetBucketLocationError),
 
     #[error(transparent)]
     IoError(#[from] std::io::Error),

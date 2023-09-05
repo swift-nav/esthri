@@ -13,10 +13,10 @@
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 #![recursion_limit = "256"]
 
+pub mod aws_sdk;
 #[cfg(feature = "blocking")]
 pub mod blocking;
 pub mod errors;
-pub mod rusoto;
 
 pub(crate) mod compression;
 pub(crate) mod tempfile;
@@ -30,7 +30,7 @@ mod retry;
 use std::{marker::Unpin, path::Path};
 
 pub use crate::config::Config;
-use crate::{retry::handle_dispatch_error, rusoto::*, types::S3Listing};
+use crate::{aws_sdk::*, retry::handle_dispatch_error, types::S3Listing};
 use futures::{stream, TryStream, TryStreamExt};
 use log::{info, warn};
 use log_derive::logfn;
@@ -59,7 +59,8 @@ pub use presign::{
     upload::{presign_put, upload_file_presigned},
 };
 
-pub use rusoto::HeadObjectInfo;
+use aws_sdk_s3::operation::head_object::HeadObjectOutput;
+use aws_sdk_s3::Client;
 pub use types::{S3ListingItem, S3Object, S3PathParam};
 
 pub use esthri_internals::new_https_connector;
@@ -122,52 +123,42 @@ where
 }
 
 #[logfn(err = "ERROR")]
-pub async fn head_object<T>(
-    s3: &T,
+pub async fn head_object(
+    s3: &Client,
     bucket: impl AsRef<str>,
     key: impl AsRef<str>,
-) -> Result<Option<HeadObjectInfo>>
-where
-    T: S3 + Send,
-{
+) -> Result<Option<HeadObjectOutput>> {
     let (bucket, key) = (bucket.as_ref(), key.as_ref());
     info!("head-object: bucket={}, key={}", bucket, key);
     head_object_request(s3, bucket, key, None).await
 }
 
 #[logfn(err = "ERROR")]
-pub async fn list_objects<T>(
-    s3: &T,
+pub async fn list_objects(
+    s3: &Client,
     bucket: impl AsRef<str>,
     key: impl AsRef<str>,
-) -> Result<Vec<String>>
-where
-    T: S3 + Send,
-{
+) -> Result<Vec<String>> {
     let none: Option<&str> = None;
     list_objects_with_delim(s3, bucket, key, none).await
 }
 
 #[logfn(err = "ERROR")]
-pub async fn list_directory<T>(
-    s3: &T,
+pub async fn list_directory(
+    s3: &Client,
     bucket: impl AsRef<str>,
     dir_path: impl AsRef<str>,
-) -> Result<Vec<String>>
-where
-    T: S3 + Send,
-{
+) -> Result<Vec<String>> {
     list_objects_with_delim(s3, bucket, dir_path, Some("/")).await
 }
 
-async fn list_objects_with_delim<T, S0, S1, S2>(
-    s3: &T,
+async fn list_objects_with_delim<S0, S1, S2>(
+    s3: &Client,
     bucket: S0,
     key: S1,
     delim: Option<S2>,
 ) -> Result<Vec<String>>
 where
-    T: S3 + Send,
     S0: AsRef<str>,
     S1: AsRef<str>,
     S2: AsRef<str>,
@@ -194,39 +185,30 @@ where
     Ok(keys)
 }
 
-pub fn list_objects_stream<'a, T>(
-    s3: &'a T,
+pub fn list_objects_stream<'a>(
+    s3: &'a Client,
     bucket: impl AsRef<str> + 'a,
     key: impl AsRef<str> + 'a,
-) -> impl TryStream<Ok = Vec<S3ListingItem>, Error = Error> + Unpin + 'a
-where
-    T: S3 + Send,
-{
+) -> impl TryStream<Ok = Vec<S3ListingItem>, Error = Error> + Unpin + 'a {
     let no_delim: Option<&str> = None;
     list_objects_stream_with_delim(s3, bucket, key, no_delim)
 }
 
-pub fn list_directory_stream<'a, T>(
-    s3: &'a T,
+pub fn list_directory_stream<'a>(
+    s3: &'a Client,
     bucket: &'a str,
     key: &'a str,
-) -> impl TryStream<Ok = Vec<S3ListingItem>, Error = Error> + Unpin + 'a
-where
-    T: S3 + Send,
-{
+) -> impl TryStream<Ok = Vec<S3ListingItem>, Error = Error> + Unpin + 'a {
     let slash_delim = Some("/");
     list_objects_stream_with_delim(s3, bucket, key, slash_delim)
 }
 
-fn list_objects_stream_with_delim<T>(
-    s3: &'_ T,
+fn list_objects_stream_with_delim(
+    s3: &'_ Client,
     bucket: impl AsRef<str>,
     key: impl AsRef<str>,
     delimiter: Option<impl AsRef<str>>,
-) -> impl TryStream<Ok = Vec<S3ListingItem>, Error = Error> + Unpin + '_
-where
-    T: S3 + Send,
-{
+) -> impl TryStream<Ok = Vec<S3ListingItem>, Error = Error> + Unpin + '_ {
     let (bucket, key) = (bucket.as_ref().to_owned(), key.as_ref().to_owned());
 
     info!("stream-objects: bucket={}, key={}", bucket, key);
@@ -270,26 +252,20 @@ where
     ))
 }
 
-async fn list_objects_request<T>(
-    s3: &T,
+async fn list_objects_request(
+    s3: &Client,
     bucket: &str,
     key: &str,
     continuation: Option<String>,
     delimiter: Option<String>,
-) -> Result<S3Listing>
-where
-    T: S3 + Send,
-{
+) -> Result<S3Listing> {
     let lov2o = handle_dispatch_error(|| async {
-        let lov2r = ListObjectsV2Request {
-            bucket: bucket.into(),
-            prefix: Some(key.into()),
-            continuation_token: continuation.clone(),
-            delimiter: delimiter.clone(),
-            ..Default::default()
-        };
-
-        s3.list_objects_v2(lov2r).await
+        s3.list_objects_v2()
+            .bucket(bucket)
+            .prefix(key)
+            .set_continuation_token(continuation)
+            .set_delimiter(delimiter)
+            .await
     })
     .await
     .map_err(|e| Error::ListObjectsFailed {
@@ -336,22 +312,22 @@ where
 }
 
 pub mod opts {
+    use aws_sdk_s3::types::StorageClass;
     use derive_builder::Builder;
     use glob::Pattern;
 
-    use crate::rusoto::*;
     #[derive(Debug, Copy, Clone, Builder)]
     pub struct AwsCopyOptParams {
-        #[builder(default = "Some(S3StorageClass::Standard)")]
-        pub storage_class: Option<S3StorageClass>,
+        #[builder(default = "Some(StorageClass::Standard)")]
+        pub storage_class: Option<StorageClass>,
         #[builder(default)]
         pub transparent_compression: bool,
     }
 
     #[derive(Debug, Copy, Clone, Builder)]
     pub struct EsthriPutOptParams {
-        #[builder(default = "Some(S3StorageClass::Standard)")]
-        pub storage_class: Option<S3StorageClass>,
+        #[builder(default = "Some(StorageClass::Standard)")]
+        pub storage_class: Option<StorageClass>,
         #[builder(default)]
         pub transparent_compression: bool,
     }
@@ -359,7 +335,7 @@ pub mod opts {
     impl From<SharedSyncOptParams> for EsthriPutOptParams {
         fn from(opt: SharedSyncOptParams) -> Self {
             Self {
-                storage_class: Some(S3StorageClass::Standard),
+                storage_class: Some(StorageClass::Standard),
                 transparent_compression: opt.transparent_compression,
             }
         }

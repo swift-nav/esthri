@@ -47,6 +47,11 @@ strum_macros = "0.24.3"
 reqwest = { version="0.11.20", features=["stream", "json"], default-features = false }
 serde-tuple-vec-map = "1.0.1"
 
+aws-sdk-s3 = { workspace = true }
+aws-smithy-http = { workspace = true }
+aws-types = { workspace = true }
+aws-config = { workspace = true }
+
 [dependencies.esthri-internals]
 version = "10.0.7"
 path = "../esthri-internals"

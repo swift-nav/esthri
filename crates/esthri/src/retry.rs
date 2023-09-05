@@ -20,16 +20,13 @@ use tokio_retry::{
     RetryIf,
 };
 
-use crate::{
-    rusoto::{RusotoError, RusotoResult},
-    Config,
-};
+use crate::Config;
+use aws_smithy_http::result::SdkError;
 
-pub async fn handle_dispatch_error<'a, F, R, T, E>(func: F) -> RusotoResult<T, E>
+pub async fn handle_dispatch_error<'a, F, R, T>(func: F) -> Result<T, SdkError>
 where
     F: Fn() -> R + 'a,
-    R: Future<Output = RusotoResult<T, E>>,
-    E: std::error::Error,
+    R: Future<Output = Result<T, SdkError>>,
 {
     let retry_strategy = ExponentialBackoff::from_millis(500)
         .max_delay(Duration::from_secs(10))
@@ -39,15 +36,23 @@ where
     RetryIf::spawn(retry_strategy, func, is_transient_err).await
 }
 
-fn is_transient_err<E>(err: &RusotoError<E>) -> bool {
+fn is_transient_err(err: &SdkError) -> bool {
     match err {
-        RusotoError::HttpDispatch(ref res) => {
-            warn!("Transient S3 dispatch error {}", res);
+        SdkError::ResponseError(error) => {
+            warn!("Transient server error: {:?}", error);
             true
         }
-        RusotoError::Unknown(ref res) if res.status.is_server_error() => {
-            warn!("Transient S3 server error: {}", res.body_as_str());
+        SdkError::TimeoutError(_) => {
+            warn!("Transient timeout error");
             true
+        }
+        SdkError::ServiceError(error) => {
+            if error.err().is_retryable() {
+                warn!("Service server error: {:?}", error);
+                true
+            } else {
+                false
+            }
         }
         _ => false,
     }

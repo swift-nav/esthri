@@ -10,73 +10,59 @@
  * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
  */
 
+use aws_sdk_s3::Client;
 use std::path::Path;
 
-use crate::{ops::sync::GlobFilter, opts::*, rusoto::*, HeadObjectInfo, Result, S3PathParam};
+use crate::{ops::sync::GlobFilter, opts::*, HeadObjectInfo, Result, S3PathParam};
 
 #[tokio::main]
-pub async fn head_object<T>(
-    s3: &T,
+pub async fn head_object(
+    s3: &Client,
     bucket: impl AsRef<str>,
     key: impl AsRef<str>,
-) -> Result<Option<HeadObjectInfo>>
-where
-    T: S3 + Send,
-{
+) -> Result<Option<HeadObjectInfo>> {
     crate::head_object(s3, bucket, key).await
 }
 
 #[tokio::main]
-pub async fn upload<T>(
-    s3: &T,
+pub async fn upload(
+    s3: &Client,
     bucket: impl AsRef<str>,
     key: impl AsRef<str>,
     file: impl AsRef<Path>,
     opts: EsthriPutOptParams,
-) -> Result<()>
-where
-    T: S3 + Send + Clone,
-{
+) -> Result<()> {
     crate::upload(s3, bucket, key, file, opts).await
 }
 
 #[tokio::main]
-pub async fn download<T>(
-    s3: &T,
+pub async fn download(
+    s3: &Client,
     bucket: impl AsRef<str>,
     key: impl AsRef<str>,
     file: impl AsRef<Path>,
     opts: EsthriGetOptParams,
-) -> Result<()>
-where
-    T: S3 + Sync + Send + Clone,
-{
+) -> Result<()> {
     crate::download(s3, bucket, key, file, opts).await
 }
 
 #[tokio::main]
-pub async fn sync<T>(
-    s3: &T,
+pub async fn sync(
+    s3: &Client,
     source: S3PathParam,
     destination: S3PathParam,
     filters: Option<&[GlobFilter]>,
     opts: SharedSyncOptParams,
-) -> Result<()>
-where
-    T: S3 + Sync + Send + Clone,
-{
+) -> Result<()> {
     crate::sync(s3, source, destination, filters, opts).await
 }
 
 #[tokio::main]
-pub async fn list_objects<T>(
-    s3: &T,
+pub async fn list_objects(
+    s3: &Client,
     bucket: impl AsRef<str>,
     key: impl AsRef<str>,
-) -> Result<Vec<String>>
-where
-    T: S3 + Send,
-{
+) -> Result<Vec<String>> {
     crate::list_objects(s3, bucket, key).await
 }
 
@@ -86,9 +72,6 @@ pub async fn compute_etag(path: impl AsRef<Path>) -> Result<String> {
 }
 
 #[tokio::main]
-pub async fn delete<T>(s3: &T, bucket: impl AsRef<str>, keys: &[impl AsRef<str>]) -> Result<()>
-where
-    T: S3 + Sync + Send + Clone,
-{
+pub async fn delete(s3: &Client, bucket: impl AsRef<str>, keys: &[impl AsRef<str>]) -> Result<()> {
     crate::delete(s3, bucket, keys).await
 }
