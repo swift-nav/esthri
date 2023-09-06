@@ -12,18 +12,15 @@
 
 use std::{path::Path, time::Duration};
 
-use esthri_internals::{
-    hyper::HeaderMap,
-    rusoto::{
-        util::{PreSignedRequest, PreSignedRequestOption},
-        AwsCredentials, PutObjectRequest, Region,
-    },
-};
+use esthri_internals::hyper::HeaderMap;
 
-use reqwest::{header::CONTENT_LENGTH, Body, Client};
+use aws_sdk_s3::presigning::PresigningConfig;
+use aws_sdk_s3::types::ObjectCannedAcl;
+use aws_sdk_s3::Client as S3Client;
+use reqwest::{header::CONTENT_LENGTH, Body, Client as HttpClient};
 use tokio_util::codec::{BytesCodec, FramedRead};
 
-use crate::{compression::compressed_meta_value, opts::EsthriPutOptParams, Result};
+use crate::{compression::compressed_meta_value, opts::EsthriPutOptParams, Error, Result};
 
 use super::{file_maybe_compressed, DEAFULT_EXPIRATION};
 
@@ -33,31 +30,34 @@ const COMPRESS_HEADER: &str = "x-amz-meta-esthri_compress_version";
 /// The file can be deleted using an HTTP PUT on this URL.
 /// Note that the headers `Content-Length`, `x-amz-acl`, `x-amz-storage-class`
 /// and `x-amz-meta-esthri_compress_version` may need to be set.
-pub fn presign_put(
-    credentials: &AwsCredentials,
-    region: &Region,
+pub async fn presign_put(
+    s3: &S3Client,
     bucket: impl AsRef<str>,
     key: impl AsRef<str>,
     expiration: Option<Duration>,
     opts: EsthriPutOptParams,
 ) -> String {
-    let options = PreSignedRequestOption {
-        expires_in: expiration.unwrap_or(DEAFULT_EXPIRATION),
-    };
-    PutObjectRequest {
-        bucket: bucket.as_ref().to_owned(),
-        key: key.as_ref().to_owned(),
-        storage_class: opts.storage_class.map(|s| s.to_string()),
-        acl: Some("bucket-owner-full-control".into()),
-        ..Default::default()
-    }
-    .get_presigned_url(region, credentials, &options)
+    let presigning_config = PresigningConfig::builder()
+        .expires_in(expiration.unwrap_or(DEAFULT_EXPIRATION))
+        .build();
+
+    let presigned_req = s3
+        .put_object()
+        .bucket(bucket)
+        .key(key)
+        .acl(ObjectCannedAcl::BucketOwnerFullControl)
+        .storage_class(opts.storage_class)
+        .presigned(presigning_config)
+        .await
+        .map_err(Error::PutObjectsFailed)?;
+
+    presigned_req.uri()
 }
 
 /// Helper to download a file using a presigned URL, setting appropriate
 /// headers.
 pub async fn upload_file_presigned(
-    client: &Client,
+    client: &HttpClient,
     presigned_url: &str,
     filepath: &Path,
     opts: EsthriPutOptParams,
