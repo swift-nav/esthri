@@ -15,7 +15,7 @@
 
 use std::path::PathBuf;
 
-use crate::S3StorageClass;
+use aws_sdk_s3::types::StorageClass as S3StorageClass;
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
 

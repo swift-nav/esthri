@@ -17,6 +17,7 @@ use std::{
 };
 
 use async_compression::tokio::{bufread::GzipDecoder as GzipDecoderReader, write::GzipDecoder};
+use aws_sdk_s3::Client;
 use bytes::Bytes;
 use futures::{stream, Stream, StreamExt, TryStreamExt};
 use log::info;
@@ -27,23 +28,20 @@ use tokio_util::io::{ReaderStream, StreamReader};
 use crate::{
     config::Config,
     errors::{Error, Result},
-    head_object_request,
+    get_object_part_request, head_object_request,
     opts::*,
-    rusoto::*,
     tempfile::TempFile,
+    GetObjectResponse,
 };
 
 #[logfn(err = "ERROR")]
-pub async fn download<T>(
-    s3: &T,
+pub async fn download(
+    s3: &Client,
     bucket: impl AsRef<str>,
     key: impl AsRef<str>,
     file: impl AsRef<Path>,
     opts: EsthriGetOptParams,
-) -> Result<()>
-where
-    T: S3 + Sync + Send + Clone,
-{
+) -> Result<()> {
     info!(
         "get: bucket={}, key={}, file={}",
         bucket.as_ref(),
@@ -62,30 +60,24 @@ where
 }
 
 #[logfn(err = "ERROR")]
-pub async fn download_streaming<'a, T>(
-    s3: &'a T,
+pub async fn download_streaming<'a>(
+    s3: &'a Client,
     bucket: &'a str,
     key: &'a str,
     transparent_decompression: bool,
-) -> Result<Pin<Box<dyn Stream<Item = Result<Bytes>> + Send + 'a>>>
-where
-    T: S3 + Sync,
-{
+) -> Result<Pin<Box<dyn Stream<Item = Result<Bytes>> + Send + 'a>>> {
     // This is a wrapper for download_streaming_internal just to satisfy the
     // logfn macro, which seems to have issues with the two different stream
     // types returned
     download_streaming_internal(s3, bucket, key, transparent_decompression).await
 }
 
-async fn download_streaming_internal<'a, T>(
-    s3: &'a T,
+async fn download_streaming_internal<'a>(
+    s3: &'a Client,
     bucket: &'a str,
     key: &'a str,
     transparent_decompression: bool,
-) -> Result<Pin<Box<dyn Stream<Item = Result<Bytes>> + Send + 'a>>>
-where
-    T: S3 + Sync,
-{
+) -> Result<Pin<Box<dyn Stream<Item = Result<Bytes>> + Send + 'a>>> {
     let obj_info = head_object_request(s3, bucket, key, Some(1))
         .await?
         .ok_or_else(|| Error::GetObjectInvalidKey(key.to_owned()))?;
@@ -104,16 +96,13 @@ where
     }
 }
 
-async fn download_file<T>(
-    s3: &T,
+async fn download_file(
+    s3: &Client,
     bucket: &str,
     key: &str,
     download_path: &Path,
     transparent_decompression: bool,
-) -> Result<()>
-where
-    T: S3 + Send + Sync + Clone,
-{
+) -> Result<()> {
     let obj_info = head_object_request(s3, bucket, key, Some(1))
         .await?
         .ok_or_else(|| Error::GetObjectInvalidKey(key.into()))?;
@@ -167,15 +156,12 @@ where
 }
 
 /// Fetches an object as a stream of `Byte`s
-fn download_streaming_helper<'a, T>(
-    s3: &'a T,
+fn download_streaming_helper<'a>(
+    s3: &'a Client,
     bucket: &'a str,
     key: &'a str,
     parts: u64,
-) -> impl Stream<Item = Result<Bytes>> + 'a
-where
-    T: S3,
-{
+) -> impl Stream<Item = Result<Bytes>> + 'a {
     stream::iter(1..=parts)
         .map(move |part| get_object_part_request(s3, bucket, key, part as i64))
         .buffered(Config::global().concurrent_downloader_tasks())
@@ -185,15 +171,12 @@ where
 
 /// like download_streaming_helper but the requests are not in order and the part
 /// number is returned with each request
-fn download_unordered_streaming_helper<'a, T>(
-    s3: &'a T,
+fn download_unordered_streaming_helper<'a>(
+    s3: &'a Client,
     bucket: &'a str,
     key: &'a str,
     parts: u64,
-) -> impl Stream<Item = Result<(i64, impl Stream<Item = Result<Bytes>> + 'a)>> + 'a
-where
-    T: S3,
-{
+) -> impl Stream<Item = Result<(i64, impl Stream<Item = Result<Bytes>> + 'a)>> + 'a {
     stream::iter(1..=parts)
         .map(move |part| get_object_part_request(s3, bucket, key, part as i64))
         .buffer_unordered(Config::global().concurrent_downloader_tasks())

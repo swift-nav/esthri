@@ -10,26 +10,23 @@
  * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
  */
 
+use aws_sdk_s3::Client;
 use log_derive::logfn;
 
 use crate::{
     download,
     errors::{Error, Result},
     opts::*,
-    rusoto::S3,
     upload, S3PathParam,
 };
 
 #[logfn(err = "ERROR")]
-pub async fn copy<T>(
-    s3: &T,
+pub async fn copy(
+    s3: &Client,
     source: S3PathParam,
     destination: S3PathParam,
     opts: AwsCopyOptParams,
-) -> Result<()>
-where
-    T: S3 + Sync + Send + Clone,
-{
+) -> Result<()> {
     match source {
         S3PathParam::Bucket { bucket, key } => match destination {
             S3PathParam::Local { path } => download(s3, bucket, key, path, opts.into()).await,
