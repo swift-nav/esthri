@@ -25,12 +25,11 @@ pub(crate) mod types;
 mod config;
 mod ops;
 mod presign;
-mod retry;
 
 use std::{marker::Unpin, path::Path};
 
 pub use crate::config::Config;
-use crate::{aws_sdk::*, retry::handle_dispatch_error, types::S3Listing};
+use crate::{aws_sdk::*, types::S3Listing};
 use futures::{stream, TryStream, TryStreamExt};
 use log::{info, warn};
 use log_derive::logfn;
@@ -59,7 +58,6 @@ pub use presign::{
     upload::{presign_put, upload_file_presigned},
 };
 
-use aws_sdk_s3::operation::head_object::HeadObjectOutput;
 use aws_sdk_s3::Client;
 pub use types::{S3ListingItem, S3Object, S3PathParam};
 
@@ -127,7 +125,7 @@ pub async fn head_object(
     s3: &Client,
     bucket: impl AsRef<str>,
     key: impl AsRef<str>,
-) -> Result<Option<HeadObjectOutput>> {
+) -> Result<Option<HeadObjectInfo>> {
     let (bucket, key) = (bucket.as_ref(), key.as_ref());
     info!("head-object: bucket={}, key={}", bucket, key);
     head_object_request(s3, bucket, key, None).await
@@ -259,19 +257,18 @@ async fn list_objects_request(
     continuation: Option<String>,
     delimiter: Option<String>,
 ) -> Result<S3Listing> {
-    let lov2o = handle_dispatch_error(|| async {
-        s3.list_objects_v2()
-            .bucket(bucket)
-            .prefix(key)
-            .set_continuation_token(continuation)
-            .set_delimiter(delimiter)
-            .await
-    })
-    .await
-    .map_err(|e| Error::ListObjectsFailed {
-        prefix: key.to_string(),
-        source: e,
-    })?;
+    let lov2o = s3
+        .list_objects_v2()
+        .bucket(bucket)
+        .prefix(key)
+        .set_continuation_token(continuation)
+        .set_delimiter(delimiter)
+        .send()
+        .await
+        .map_err(|e| Error::ListObjectsFailed {
+            prefix: key.to_string(),
+            source: e.into_service_error(),
+        })?;
 
     let mut listing = S3Listing {
         continuation: lov2o.next_continuation_token,
@@ -316,7 +313,7 @@ pub mod opts {
     use derive_builder::Builder;
     use glob::Pattern;
 
-    #[derive(Debug, Copy, Clone, Builder)]
+    #[derive(Debug, Clone, Builder)]
     pub struct AwsCopyOptParams {
         #[builder(default = "Some(StorageClass::Standard)")]
         pub storage_class: Option<StorageClass>,
@@ -324,7 +321,7 @@ pub mod opts {
         pub transparent_compression: bool,
     }
 
-    #[derive(Debug, Copy, Clone, Builder)]
+    #[derive(Debug, Clone, Builder)]
     pub struct EsthriPutOptParams {
         #[builder(default = "Some(StorageClass::Standard)")]
         pub storage_class: Option<StorageClass>,

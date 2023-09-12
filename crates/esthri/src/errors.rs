@@ -13,14 +13,8 @@
 pub use std::error::Error as StdError;
 use std::path::StripPrefixError;
 
-use aws_sdk_s3::operation::{
-    abort_multipart_upload::AbortMultipartUploadError,
-    complete_multipart_upload::CompleteMultipartUploadError, copy_object::CopyObjectError,
-    create_multipart_upload::CreateMultipartUploadError, delete_object::DeleteObjectError,
-    get_bucket_location::GetBucketLocationError, get_object::GetObjectError,
-    head_object::HeadObjectError, list_objects_v2::ListObjectsV2Error, put_object::PutObjectError,
-    upload_part::UploadPartError,
-};
+use aws_sdk_s3::operation::list_objects_v2::ListObjectsV2Error;
+use aws_sdk_s3::presigning::PresigningConfigError;
 use chrono::ParseError;
 use glob::PatternError;
 use tokio::task::JoinError;
@@ -54,16 +48,16 @@ pub enum Error {
     ReadZero,
 
     #[error("upload_part failed")]
-    UploadPartFailed(#[from] UploadPartError),
+    UploadPartFailed(String),
 
     #[error("complete_multipart_upload failed")]
-    CompletedMultipartUploadFailed(#[from] CompleteMultipartUploadError),
+    CompletedMultipartUploadFailed(String),
 
-    #[error("put_object failed")]
-    PutObjectFailed(#[from] PutObjectError),
+    #[error(transparent)]
+    PutObjectFailed(String),
 
     #[error("create_multipart_upload failed")]
-    CreateMultipartUploadFailed(#[from] CreateMultipartUploadError),
+    CreateMultipartUploadFailed(String),
 
     #[error("did not expect body field of GetObjectOutput to be none")]
     GetObjectOutputBodyNone,
@@ -77,8 +71,8 @@ pub enum Error {
     #[error("unexpected: parent dir was null")]
     ParentDirNone,
 
-    #[error(transparent)]
-    HeadObjectFailure(#[from] HeadObjectError),
+    #[error("head object failed")]
+    HeadObjectFailure(String),
 
     #[error(transparent)]
     HeadObjectFailedParseError(#[from] ParseError),
@@ -86,8 +80,8 @@ pub enum Error {
     #[error(transparent)]
     WalkDirFailed(#[from] walkdir::Error),
 
-    #[error(transparent)]
-    CopyObjectFailed(#[from] CopyObjectError),
+    #[error("copy object failed")]
+    CopyObjectFailed(String),
 
     #[error("list objects failed on prefix {prefix}: {source}")]
     ListObjectsFailed {
@@ -97,16 +91,16 @@ pub enum Error {
     },
 
     #[error(transparent)]
-    AbortMultipartUploadFailed(#[from] AbortMultipartUploadError),
+    AbortMultipartUploadFailed(String),
 
     #[error(transparent)]
     StripPrefixFailed(#[from] StripPrefixError),
 
-    #[error(transparent)]
-    GetObjectFailed(#[from] GetObjectError),
+    #[error("get object failed")]
+    GetObjectFailed(String),
 
-    #[error(transparent)]
-    DeleteObjectsFailed(#[from] DeleteObjectError),
+    #[error("delete objects failed")]
+    DeleteObjectsFailed(String),
 
     #[error("invalid key, did not exist remotely: {0}")]
     GetObjectInvalidKey(String),
@@ -117,8 +111,8 @@ pub enum Error {
     #[error("remote object sized changed while reading")]
     GetObjectSizeChanged,
 
-    #[error(transparent)]
-    GetBucketLocationFailed(#[from] GetBucketLocationError),
+    #[error("get bucket location failed")]
+    GetBucketLocationFailed(String),
 
     #[error(transparent)]
     IoError(#[from] std::io::Error),
@@ -155,6 +149,12 @@ pub enum Error {
 
     #[error(transparent)]
     HTTPError(#[from] reqwest::Error),
+
+    #[error("byte stream error")]
+    ByteStreamError(String),
+
+    #[error(transparent)]
+    PresigningConfigError(#[from] PresigningConfigError),
 }
 
 impl From<std::convert::Infallible> for Error {

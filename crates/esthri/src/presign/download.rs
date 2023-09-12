@@ -34,20 +34,21 @@ pub async fn presign_get(
     bucket: impl AsRef<str>,
     key: impl AsRef<str>,
     expiration: Option<Duration>,
-) -> String {
+) -> Result<String> {
     let presigning_config = PresigningConfig::builder()
         .expires_in(expiration.unwrap_or(DEAFULT_EXPIRATION))
-        .build();
+        .build()
+        .map_err(Error::PresigningConfigError)?;
 
     let presigned_req = s3
         .get_object()
-        .bucket(bucket)
-        .key(key)
+        .bucket(bucket.as_ref().to_string())
+        .key(key.as_ref().to_string())
         .presigned(presigning_config)
         .await
-        .map_err(Error::GetObjectFailed)?;
+        .map_err(|e| Error::GetObjectFailed(e.to_string()))?;
 
-    presigned_req.uri()
+    Ok(presigned_req.uri().to_string())
 }
 
 /// Helper to download a file using a presigned URL, taking care of transparent

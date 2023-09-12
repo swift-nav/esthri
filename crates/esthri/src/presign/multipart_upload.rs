@@ -71,8 +71,9 @@ pub async fn setup_presigned_multipart_upload(
     .await?
     .upload_id
     .unwrap();
+
     let parts = (1..n_parts + 1)
-        .map(|part| {
+        .map(|part| async {
             (
                 part,
                 presign_multipart_upload(
@@ -82,7 +83,9 @@ pub async fn setup_presigned_multipart_upload(
                     part as i64,
                     upload_id.clone(),
                     expiration,
-                ),
+                )
+                .await
+                .unwrap(),
             )
         })
         .collect();
@@ -144,7 +147,8 @@ pub async fn complete_presigned_multipart_upload(
         .map(|(part, etag)| {
             CompletedPart::builder()
                 .e_tag(etag)
-                .part_number(part as i64)
+                .part_number(part as i32)
+                .build()
         })
         .collect();
     complete_multipart_upload(
@@ -152,7 +156,7 @@ pub async fn complete_presigned_multipart_upload(
         bucket.as_ref(),
         key.as_ref(),
         presigned_multipart_upload.upload_id.as_ref(),
-        &parts,
+        parts.as_slice(),
     )
     .await
 }
@@ -176,20 +180,21 @@ async fn presign_multipart_upload(
     part: i64,
     upload_id: String,
     expiration: Option<Duration>,
-) -> String {
+) -> Result<String> {
     let presigning_config = PresigningConfig::builder()
         .expires_in(expiration.unwrap_or(DEAFULT_EXPIRATION))
-        .build();
+        .build()
+        .map_err(Error::PresigningConfigError)?;
 
     let presigned_req = s3
-        .create_multipart_upload()
-        .bucket(bucket)
-        .key(key)
-        .part_number(part)
+        .upload_part()
+        .bucket(bucket.as_ref().to_string())
+        .key(key.as_ref().to_string())
+        .part_number(part as i32)
         .upload_id(upload_id)
         .presigned(presigning_config)
         .await
-        .map_err(Error::CreateMultipartUploadFailed)?;
+        .map_err(|e| Error::UploadPartFailed(e.to_string()))?;
 
-    presigned_req.uri()
+    Ok(presigned_req.uri().to_string())
 }

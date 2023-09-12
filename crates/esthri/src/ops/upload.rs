@@ -33,7 +33,6 @@ use crate::{
     config::Config,
     create_multipart_upload,
     errors::{Error, Result},
-    handle_dispatch_error,
     opts::*,
 };
 
@@ -67,14 +66,13 @@ impl PendingUpload {
             "abort: bucket={}, key={}, upload_id={}",
             self.bucket, self.key, self.upload_id
         );
-        handle_dispatch_error(|| async {
-            s3.abort_multipart_upload()
-                .bucket(self.bucket)
-                .key(self.key)
-                .upload_id(self.upload_id)
-                .await
-        })
-        .await?;
+        s3.abort_multipart_upload()
+            .bucket(self.bucket.clone())
+            .key(self.key.clone())
+            .upload_id(self.upload_id.clone())
+            .send()
+            .await
+            .map_err(|e| Error::AbortMultipartUploadFailed(e.to_string()))?;
         Ok(())
     }
 
@@ -162,7 +160,7 @@ where
 {
     let (bucket, key) = (bucket.as_ref(), key.as_ref());
     info!(
-        "put: bucket={}, key={}, file_size={}, storage_class={}",
+        "put: bucket={}, key={}, file_size={}, storage_class={:?}",
         bucket, key, file_size, storage_class
     );
 
@@ -216,17 +214,15 @@ async fn empty_upload(
     metadata: Option<HashMap<String, String>>,
     storage_class: StorageClass,
 ) -> Result<()> {
-    handle_dispatch_error(|| async {
-        s3.put_object()
-            .bucket(bucket)
-            .key(key)
-            .acl(ObjectCannedAcl::BucketOwnerFullControl)
-            .set_metadata(metadata)
-            .storage_class(storage_class)
-            .await
-    })
-    .await
-    .map_err(Error::PutObjectFailed)?;
+    s3.put_object()
+        .bucket(bucket)
+        .key(key)
+        .acl(ObjectCannedAcl::BucketOwnerFullControl)
+        .set_metadata(metadata)
+        .storage_class(storage_class)
+        .send()
+        .await
+        .map_err(|e| Error::PutObjectFailed(e.to_string()))?;
     Ok(())
 }
 
@@ -250,19 +246,17 @@ where
         total += read as u64;
     }
     let body = buf.freeze();
-    handle_dispatch_error(|| async {
-        s3.put_object()
-            .bucket(bucket)
-            .key(key)
-            .content_length(body.len() as i64)
-            .body(into_byte_stream(body.clone()))
-            .acl(ObjectCannedAcl::BucketOwnerFullControl)
-            .set_metadata(metadata)
-            .storage_class(storage_class)
-            .await
-    })
-    .await
-    .map_err(Error::PutObjectFailed)?;
+    s3.put_object()
+        .bucket(bucket)
+        .key(key)
+        .content_length(body.len() as i64)
+        .body(into_byte_stream(body.clone()))
+        .acl(ObjectCannedAcl::BucketOwnerFullControl)
+        .set_metadata(metadata)
+        .storage_class(storage_class)
+        .send()
+        .await
+        .map_err(|e| Error::PutObjectFailed(e.to_string()))?;
     Ok(())
 }
 

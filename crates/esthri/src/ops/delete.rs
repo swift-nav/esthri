@@ -18,6 +18,7 @@ use log::{debug, info};
 use log_derive::logfn;
 
 use crate::errors::Result;
+use crate::Error;
 
 const DELETE_BATCH_SIZE: usize = 50;
 
@@ -34,11 +35,7 @@ const DELETE_BATCH_SIZE: usize = 50;
 /// Will transparently pass failures from [crate::rusoto::S3::delete_object] via [crate::errors::Error].
 ///
 #[logfn(err = "ERROR")]
-pub async fn delete<T>(
-    s3: &Client,
-    bucket: impl AsRef<str>,
-    keys: &[impl AsRef<str>],
-) -> Result<()> {
+pub async fn delete(s3: &Client, bucket: impl AsRef<str>, keys: &[impl AsRef<str>]) -> Result<()> {
     info!(
         "delete: bucket={}, keys.len()={:?}",
         bucket.as_ref(),
@@ -46,7 +43,12 @@ pub async fn delete<T>(
     );
 
     let delete = create_delete(keys, false);
-    s3.delete_objects().bucket(bucket).delete(delete).await?;
+    s3.delete_objects()
+        .bucket(bucket.as_ref().to_string())
+        .delete(delete)
+        .send()
+        .await
+        .map_err(|e| Error::DeleteObjectsFailed(e.to_string()))?;
 
     Ok(())
 }
@@ -83,9 +85,16 @@ pub fn delete_streaming<'a>(
             Ok(keys) => {
                 debug!("delete_streaming: keys={:?}", keys);
                 let len = keys.len();
-                let dor = create_delete(&keys, false);
-                let fut = s3.delete_objects().bucket(bucket).delete(delete);
-                future::Either::Left(fut.map_ok(move |_| len).map_err(|e| e.into()))
+                let delete = create_delete(&keys, false);
+                let fut = s3
+                    .delete_objects()
+                    .bucket(bucket.as_ref().to_string())
+                    .delete(delete)
+                    .send();
+                future::Either::Left(
+                    fut.map_ok(move |_| len)
+                        .map_err(|e| Error::DeleteObjectsFailed(e.to_string())),
+                )
             }
             Err(err) => {
                 println!("nothing found in delete_streaming keys");
@@ -98,13 +107,14 @@ pub fn delete_streaming<'a>(
 fn create_delete(keys: &[impl AsRef<str>], quiet: bool) -> Delete {
     let objects = keys
         .iter()
-        .map(|key| ObjectIdentifier {
-            key: Some(key.as_ref().into()),
-            version_id: None,
+        .map(|key| {
+            ObjectIdentifier::builder()
+                .key(key.as_ref().to_string())
+                .build()
         })
         .collect::<Vec<_>>();
-    Delete {
-        objects: Some(objects),
-        quiet,
-    }
+    Delete::builder()
+        .set_objects(Some(objects))
+        .quiet(quiet)
+        .build()
 }

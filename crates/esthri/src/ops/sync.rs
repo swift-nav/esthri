@@ -35,7 +35,7 @@ use crate::{
     compute_etag,
     config::Config,
     errors::{Error, Result},
-    handle_dispatch_error, head_object_request, list_objects_stream,
+    head_object_request, list_objects_stream,
     opts::*,
     tempfile::TEMP_FILE_PREFIX,
     types::ListingMetadata,
@@ -557,24 +557,24 @@ async fn sync_delete_remote(
 }
 
 #[logfn(err = "ERROR")]
-async fn copy_object_request<T>(
-    s3: &T,
+async fn copy_object_request(
+    s3: &Client,
     source_bucket: &str,
     source_key: &str,
     file_name: &str,
     dest_bucket: &str,
     dest_key: &str,
 ) -> Result<CopyObjectOutput> {
-    let res = handle_dispatch_error(|| async {
-        s3.copy_object()
-            .bucket(dest_bucket)
-            .key(file_name.replace(source_key, dest_key))
-            .copy_source(format!("{}/{}", source_bucket, file_name))
-            .await
-    })
-    .await;
+    let res = s3
+        .copy_object()
+        .bucket(dest_bucket)
+        .key(file_name.replace(source_key, dest_key))
+        .copy_source(format!("{}/{}", source_bucket, file_name))
+        .send()
+        .await
+        .map_err(|e| Error::CopyObjectFailed(e.to_string()))?;
 
-    Ok(res?)
+    Ok(res)
 }
 
 async fn sync_across(
@@ -600,10 +600,8 @@ async fn sync_across(
                         head_object_request(s3, dest_bucket, &new_file, None).await?;
 
                     if let Some(dest_object) = dest_object_info {
-                        if let Some(etag) = dest_object.e_tag {
-                            if etag == src_object.e_tag {
-                                should_copy_file = false;
-                            }
+                        if dest_object.e_tag == src_object.e_tag {
+                            should_copy_file = false;
                         }
                     }
 

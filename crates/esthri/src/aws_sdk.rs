@@ -19,11 +19,12 @@ use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart, StorageClass};
 use aws_sdk_s3::Client;
 use aws_smithy_http::result::SdkError;
+use aws_smithy_types_convert::date_time::DateTimeExt;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use futures::Stream;
 
-use crate::{retry::handle_dispatch_error, Error, Result};
+use crate::{Error, Result};
 
 /// The data returned from a head object request
 #[derive(Debug)]
@@ -43,7 +44,7 @@ impl HeadObjectInfo {
     }
 
     pub(crate) fn from_head_object_output(hoo: HeadObjectOutput) -> Result<Option<HeadObjectInfo>> {
-        if let Some(true) = hoo.delete_marker {
+        if hoo.delete_marker {
             return Ok(None);
         }
         let e_tag = hoo
@@ -52,11 +53,15 @@ impl HeadObjectInfo {
         let last_modified: DateTime<Utc> = hoo
             .last_modified
             .ok_or_else(|| Error::HeadObjectUnexpected("no last_modified found".into()))
-            .map(|last| DateTime::parse_from_rfc2822(&last))??
-            .into();
-        let size = hoo
-            .content_length
-            .ok_or_else(|| Error::HeadObjectUnexpected("no content_length found".into()))?;
+            .map(|last| last.to_chrono_utc())?
+            .map_err(|_| {
+                Error::HeadObjectUnexpected(
+                    "cannot convert last_modified to chrono time format".into(),
+                )
+            })?;
+
+        let size = hoo.content_length;
+
         let metadata = hoo
             .metadata
             .ok_or_else(|| Error::HeadObjectUnexpected("no metadata found".into()))?;
@@ -66,7 +71,8 @@ impl HeadObjectInfo {
                 .as_str(),
         )
         .map_err(|e| Error::UnknownStorageClass(e.to_string()))?;
-        let parts = hoo.parts_count.unwrap_or(1) as u64;
+        let parts = hoo.parts_count as u64;
+
         Ok(Some(HeadObjectInfo {
             e_tag,
             size,
@@ -83,14 +89,24 @@ pub async fn head_object_request(
     s3: &Client,
     bucket: &str,
     key: &str,
-    part_number: Option<i64>,
-) -> Result<Option<HeadObjectOutput>> {
-    let res =
-        handle_dispatch_error(|| async { s3.head_object().bucket(bucket).key(key).send().await })
-            .await;
+    part_number: Option<i32>,
+) -> Result<Option<HeadObjectInfo>> {
+    let res = s3
+        .head_object()
+        .bucket(bucket)
+        .key(key)
+        .set_part_number(part_number)
+        .send()
+        .await;
+
     match res {
-        Ok(hoo) => Ok(Some(hoo)),
-        Err(SdkError::ServiceError(error)) => Err(Error::HeadObjectFailure(error.into_err())),
+        Ok(hoo) => {
+            let info = HeadObjectInfo::from_head_object_output(hoo)?;
+            Ok(info)
+        }
+        Err(SdkError::ServiceError(error)) => {
+            Err(Error::HeadObjectFailure(error.into_err().to_string()))
+        }
         Err(_) => Ok(None),
     }
 }
@@ -105,7 +121,7 @@ pub struct GetObjectResponse {
 
 impl GetObjectResponse {
     pub fn into_stream(self) -> impl Stream<Item = Result<Bytes>> {
-        futures::TryStreamExt::map_err(self.stream, Error::IoError)
+        futures::TryStreamExt::map_err(self.stream, |e| Error::ByteStreamError(e.to_string()))
     }
 }
 
@@ -116,16 +132,14 @@ pub async fn get_object_part_request(
     part: i64,
 ) -> Result<GetObjectResponse> {
     log::debug!("get part={} bucket={} key={}", part, bucket, key);
-    let goo = handle_dispatch_error(|| async {
-        s3.get_object()
-            .bucket(bucket)
-            .key(key)
-            .part_number(part)
-            .send()
-            .await
-    })
-    .await
-    .map_err(Error::GetObjectFailed)?;
+    let goo = s3
+        .get_object()
+        .bucket(bucket)
+        .key(key)
+        .part_number(part as i32)
+        .send()
+        .await
+        .map_err(|e| Error::GetObjectFailed(e.to_string()))?;
     log::debug!("got part={} bucket={} key={}", part, bucket, key);
     Ok(GetObjectResponse {
         stream: goo.body,
@@ -140,9 +154,13 @@ pub async fn get_object_request(
     key: &str,
     range: Option<String>,
 ) -> Result<GetObjectOutput> {
-    handle_dispatch_error(|| async { s3.get_object().bucket(bucket).key(key).send().await })
+    s3.get_object()
+        .bucket(bucket)
+        .key(key)
+        .set_range(range)
+        .send()
         .await
-        .map_err(Error::GetObjectFailed)?
+        .map_err(|e| Error::GetObjectFailed(e.to_string()))
 }
 
 pub async fn complete_multipart_upload(
@@ -152,47 +170,52 @@ pub async fn complete_multipart_upload(
     upload_id: &str,
     completed_parts: &[CompletedPart],
 ) -> Result<()> {
-    handle_dispatch_error(|| async {
-        s3.complete_multipart_upload()
-            .bucket(bucket)
-            .key(key)
-            .upload_id(upload_id)
-            .multipart_upload(CompletedMultipartUpload {
-                parts: Some(completed_parts.to_vec()),
-            })
-            .await
-    })
-    .await
-    .map_err(Error::CompletedMultipartUploadFailed)?;
-    Ok(())
+    let completed_parts = CompletedMultipartUpload::builder()
+        .set_parts(Some(completed_parts.to_vec()))
+        .build();
+
+    match s3
+        .complete_multipart_upload()
+        .bucket(bucket)
+        .key(key)
+        .upload_id(upload_id)
+        .multipart_upload(completed_parts)
+        .send()
+        .await
+    {
+        Ok(_) => Ok(()),
+        Err(err) => Err(Error::CompletedMultipartUploadFailed(err.to_string())),
+    }
 }
 
-pub async fn create_multipart_upload<T>(
+pub async fn create_multipart_upload(
     s3: &Client,
     bucket: &str,
     key: &str,
     metadata: Option<HashMap<String, String>>,
     storage_class: StorageClass,
 ) -> Result<CreateMultipartUploadOutput> {
-    handle_dispatch_error(|| async {
-        s3.create_multipart_upload()
-            .bucket(bucket)
-            .key(key)
-            .set_metadata(metadata)
-            .storage_class(storage_class)
-            .await
-    })
-    .await
-    .map_err(Error::CreateMultipartUploadFailed)
+    s3.create_multipart_upload()
+        .bucket(bucket)
+        .key(key)
+        .set_metadata(metadata)
+        .storage_class(storage_class)
+        .send()
+        .await
+        .map_err(|e| Error::CreateMultipartUploadFailed(e.to_string()))
 }
 
 pub async fn get_bucket_location(s3: &Client, bucket: &str) -> Result<String> {
-    let region =
-        handle_dispatch_error(|| async { s3.get_bucket_location().bucket(bucket).send().await })
-            .await
-            .map_err(Error::GetBucketLocationFailed)?
-            .location_constraint
-            .ok_or(Error::LocationConstraintNone)?;
-    log::debug!("got region={}", region);
+    let region = s3
+        .get_bucket_location()
+        .bucket(bucket)
+        .send()
+        .await
+        .map_err(|e| Error::GetBucketLocationFailed(e.to_string()))?
+        .location_constraint
+        .ok_or(Error::LocationConstraintNone)?
+        .as_str()
+        .to_string();
+    log::debug!("got region={:?}", region);
     Ok(region)
 }

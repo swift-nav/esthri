@@ -36,22 +36,23 @@ pub async fn presign_put(
     key: impl AsRef<str>,
     expiration: Option<Duration>,
     opts: EsthriPutOptParams,
-) -> String {
+) -> Result<String> {
     let presigning_config = PresigningConfig::builder()
         .expires_in(expiration.unwrap_or(DEAFULT_EXPIRATION))
-        .build();
+        .build()
+        .map_err(Error::PresigningConfigError)?;
 
     let presigned_req = s3
         .put_object()
-        .bucket(bucket)
-        .key(key)
+        .bucket(bucket.as_ref().to_string())
+        .key(key.as_ref().to_string())
         .acl(ObjectCannedAcl::BucketOwnerFullControl)
-        .storage_class(opts.storage_class)
+        .set_storage_class(opts.storage_class)
         .presigned(presigning_config)
         .await
-        .map_err(Error::PutObjectsFailed)?;
+        .map_err(|e| Error::PutObjectFailed(e.to_string()))?;
 
-    presigned_req.uri()
+    Ok(presigned_req.uri().to_string())
 }
 
 /// Helper to download a file using a presigned URL, setting appropriate
@@ -70,7 +71,10 @@ pub async fn upload_file_presigned(
     headers.insert(CONTENT_LENGTH, file_size.into());
     headers.insert("x-amz-acl", "bucket-owner-full-control".parse().unwrap());
     if let Some(class) = opts.storage_class {
-        headers.insert("x-amz-storage-class", class.to_string().parse().unwrap());
+        headers.insert(
+            "x-amz-storage-class",
+            class.as_str().to_string().parse().unwrap(),
+        );
     }
     if opts.transparent_compression {
         headers.insert(COMPRESS_HEADER, compressed_meta_value().parse().unwrap());

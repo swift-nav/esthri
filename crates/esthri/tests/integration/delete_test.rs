@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use futures::{stream, StreamExt};
 
+use aws_sdk_s3::Client as S3Client;
 use esthri::{opts::*, Result};
-use esthri_internals::rusoto::S3Client;
 
 #[tokio::test]
 async fn test_delete() {
