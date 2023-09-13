@@ -26,7 +26,7 @@ mod config;
 mod ops;
 mod presign;
 
-use std::{marker::Unpin, path::Path};
+use std::{marker::Unpin, path::Path, time::Duration};
 
 pub use crate::config::Config;
 use crate::{aws_sdk::*, types::S3Listing};
@@ -59,11 +59,28 @@ pub use presign::{
 };
 
 use aws_sdk_s3::Client;
+use aws_smithy_client::hyper_ext;
 pub use types::{S3ListingItem, S3Object, S3PathParam};
 
 pub use esthri_internals::new_https_connector;
 
 pub const FILTER_EMPTY: Option<&[GlobFilter]> = None;
+
+pub async fn init_s3client() -> Client {
+    let retry_config = aws_config::retry::RetryConfig::standard()
+        .with_initial_backoff(Duration::from_millis(500))
+        .with_max_attempts(5);
+    let env_config = aws_config::load_from_env().await;
+    let https_connector = new_https_connector();
+    let smithy_connector = hyper_ext::Adapter::builder().build(https_connector);
+
+    let config = aws_sdk_s3::config::Builder::from(&env_config)
+        .retry_config(retry_config)
+        .http_connector(smithy_connector)
+        .build();
+
+    aws_sdk_s3::Client::from_conf(config)
+}
 
 pub async fn compute_etag(path: impl AsRef<Path>) -> Result<String> {
     let f = match fs::File::open(path).await {

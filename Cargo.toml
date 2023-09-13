@@ -7,6 +7,7 @@ aws-smithy-http = "0.56"
 aws-types = "0.56"
 aws-config = "0.56"
 aws-smithy-types-convert = { version = "0.56", features = ["convert-chrono"] }
+aws-smithy-client = "0.56"
 
 
 

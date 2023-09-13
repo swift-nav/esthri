@@ -1105,6 +1105,7 @@ dependencies = [
  "async-stream",
  "aws-config",
  "aws-sdk-s3",
+ "aws-smithy-client",
  "aws-smithy-http",
  "aws-smithy-types-convert",
  "aws-types",
