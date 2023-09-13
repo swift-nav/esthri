@@ -197,7 +197,7 @@ impl Config {
     /// unless specified. View AWS documentation for more specifications on other storage classes.
     /// Defaults to [STORAGE_CLASS].
     pub fn storage_class(&self) -> S3StorageClass {
-        self.storage_class.0
+        self.storage_class.0.clone()
     }
 
     /// The default path for new temp files. Uses to current directory if unset. Defaults to
