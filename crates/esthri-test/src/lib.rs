@@ -7,11 +7,11 @@ use std::{
     sync::Mutex,
 };
 
+use aws_sdk_s3::Client as S3Client;
+use aws_smithy_client::hyper_ext;
 use esthri_internals::new_https_connector;
-use esthri_internals::rusoto::*;
 use fs_extra::dir;
 use fs_extra::dir::CopyOptions;
-use hyper::Client;
 use md5::{Digest, Md5};
 use once_cell::sync::Lazy;
 use tempdir::TempDir;
@@ -85,7 +85,14 @@ pub fn validate_key_hash_pairs(local_directory: impl AsRef<Path>, key_hash_pairs
 }
 
 pub fn get_s3client() -> Arc<S3Client> {
-    init_s3client();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(init_s3client());
+    let test_global = TEST_GLOBAL.lock().expect(TEST_GLOBAL_LOCK_FAILED);
+    test_global.s3client.as_ref().unwrap().clone()
+}
+
+pub async fn get_s3client_async() -> Arc<S3Client> {
+    init_s3client().await;
     let test_global = TEST_GLOBAL.lock().expect(TEST_GLOBAL_LOCK_FAILED);
     test_global.s3client.as_ref().unwrap().clone()
 }
@@ -112,25 +119,22 @@ impl Drop for EphemeralTempDir {
     }
 }
 
-fn init_s3client() {
+async fn init_s3client() {
     let mut test_global = TEST_GLOBAL.lock().expect(TEST_GLOBAL_LOCK_FAILED);
 
     match test_global.s3client {
         None => {
             env_logger::init();
 
-            let mut hyper_builder = Client::builder();
-
-            // Prevent hyper from pooling open connections
-            hyper_builder.pool_idle_timeout(None);
-            hyper_builder.pool_max_idle_per_host(0);
-
+            let env_config = aws_config::load_from_env().await;
             let https_connector = new_https_connector();
-            let http_client = HttpClient::from_builder(hyper_builder, https_connector);
+            let smithy_connector = hyper_ext::Adapter::builder().build(https_connector);
 
-            let credentials_provider = DefaultCredentialsProvider::new().unwrap();
-            let s3 = S3Client::new_with(http_client, credentials_provider, Region::default());
+            let config = aws_sdk_s3::config::Builder::from(&env_config)
+                .http_connector(smithy_connector)
+                .build();
 
+            let s3 = aws_sdk_s3::Client::from_conf(config);
             let s3 = Arc::new(s3);
             test_global.s3client = Some(s3);
         }

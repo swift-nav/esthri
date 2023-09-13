@@ -41,7 +41,7 @@ fn test_head_object() {
 
 #[tokio::test]
 async fn test_head_object_async() {
-    let s3client = esthri_test::get_s3client();
+    let s3client = esthri_test::get_s3client_async().await;
     let filename = "test1mb.bin";
     let filepath = esthri_test::test_data(filename);
     let s3_key = format!("test_handle_head_object/{}", filename);
@@ -100,7 +100,7 @@ fn test_list_objects() {
 
 #[tokio::test]
 async fn test_list_objects_async() {
-    let s3client = esthri_test::get_s3client();
+    let s3client = esthri_test::get_s3client_async().await;
     let filename = "test1mb.bin";
     let filepath = esthri_test::test_data(filename);
     let not_empty_folder = "test_handle_list_objects/not_empty_folder";
@@ -137,7 +137,7 @@ async fn test_list_objects_async() {
 
 #[tokio::test]
 async fn test_stream_objects() {
-    let s3client = esthri_test::get_s3client();
+    let s3client = esthri_test::get_s3client_async().await;
     // Test data created with ./tests/scripts/populate_stream_obj_test_data.bash
     let folder = "test_handle_stream_objects";
 
@@ -152,7 +152,7 @@ async fn test_stream_objects() {
 
 #[tokio::test]
 async fn test_list_directory() {
-    let s3client = esthri_test::get_s3client();
+    let s3client = esthri_test::get_s3client_async().await;
     let filename = esthri_test::test_data("test_file.txt");
     let folder1 = "test_list_directory/folder1/file.txt".to_owned();
     let folder2 = "test_list_directory/folder2/file.txt".to_owned();
@@ -165,7 +165,7 @@ async fn test_list_directory() {
             esthri_test::TEST_BUCKET,
             s3_key,
             &filename,
-            opts,
+            opts.clone(),
         )
         .await;
         assert!(res.is_ok());
