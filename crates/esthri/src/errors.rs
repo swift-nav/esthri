@@ -25,7 +25,6 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub enum Error {
     #[error("did not exist locally")]
     ETagNotPresent,
-
     #[error("invalid s3 etag")]
     InvalidS3ETag,
 
@@ -53,7 +52,7 @@ pub enum Error {
     #[error("complete_multipart_upload failed")]
     CompletedMultipartUploadFailed(String),
 
-    #[error(transparent)]
+    #[error("put object failed")]
     PutObjectFailed(String),
 
     #[error("create_multipart_upload failed")]
@@ -90,7 +89,7 @@ pub enum Error {
         source: ListObjectsV2Error,
     },
 
-    #[error(transparent)]
+    #[error("abort multipart upload failed")]
     AbortMultipartUploadFailed(String),
 
     #[error(transparent)]
