@@ -18,7 +18,7 @@ use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::types::{CompletedPart, ObjectCannedAcl, StorageClass};
 use aws_sdk_s3::Client;
 use bytes::{Bytes, BytesMut};
-use futures::{future, stream, Future, Stream, StreamExt, TryStreamExt};
+use futures::{stream, Future, Stream, StreamExt, TryStreamExt};
 use log::{debug, info, warn};
 use log_derive::logfn;
 use tokio::{
@@ -308,11 +308,11 @@ where
 // multipart uploads of 8MB. Giving the rusuto uploading a stream that
 // it can consume causes less memory to be used than giving it whole 8MB
 // chunks as there is less data waiting around to be uploaded.
-fn create_stream_for_chunk<R>(
+async fn create_stream_for_chunk<R>(
     reader: Arc<Mutex<R>>,
     file_size: u64,
     chunk_number: u64,
-) -> ByteStream
+) -> Result<ByteStream>
 where
     R: AsyncRead + AsyncSeek + Send + Unpin + 'static,
 {
@@ -349,8 +349,15 @@ where
             }
         },
     ));
-    let stream = stream.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err));
-    ByteStream::new_with_size(stream, to_read as usize)
+    let mut stream = stream.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err));
+
+    // stream needs to be collected into Bytes for ByteStream to be retryable
+    let mut collected_bytes = Vec::new();
+
+    while let Some(bytes) = stream.try_next().await? {
+        collected_bytes.extend_from_slice(&bytes);
+    }
+    Ok(ByteStream::from(collected_bytes))
 }
 
 async fn upload_request_stream<'a, R>(
@@ -378,28 +385,30 @@ where
         .chain(last_part);
     let shared_reader = Arc::new(Mutex::new(reader));
 
-    sizes
-        .map(move |part_number| {
+    stream::iter(sizes)
+        .map(move |(part_number, part_size)| {
             let reader = shared_reader.clone();
             (reader, part_number, part_size)
         })
         .map(move |(reader, part_number, part_size)| async move {
-            let res = handle_dispatch_error(|| async {
-                let body = create_stream_for_chunk(
-                    reader.clone(),
-                    file_size,
-                    (part_number - 1).try_into().expect("Part number < 0"),
-                );
-                s3.upload_part()
-                    .bucket(bucket)
-                    .key(key)
-                    .upload_id(upload_id)
-                    .part_number(part_number)
-                    .content_length(part_size)
-                    .body(body)
-                    .await
-            })
+            let body = create_stream_for_chunk(
+                reader.clone(),
+                file_size,
+                (part_number - 1).try_into().expect("Part number < 0"),
+            )
             .await?;
+            let res = s3
+                .upload_part()
+                .bucket(bucket)
+                .key(key)
+                .upload_id(upload_id)
+                .part_number(part_number as i32)
+                .content_length(part_size as i64)
+                .body(body)
+                .send()
+                .await
+                .map_err(|e| Error::UploadPartFailed(e.to_string()))?;
+
             if res.e_tag.is_none() {
                 warn!(
                     "upload_part e_tag was not present (part_number: {})",
@@ -407,15 +416,15 @@ where
                 )
             }
             let compeleted_part = CompletedPart::builder()
-                .e_tag(res.e_tag)
-                .part_number(part_number);
+                .set_e_tag(res.e_tag)
+                .part_number(part_number as i32)
+                .build();
             Ok(compeleted_part)
         })
 }
 
 fn into_byte_stream(chunk: Bytes) -> ByteStream {
-    let size_hint = chunk.len();
-    ByteStream::new_with_size(stream::once(future::ready(Ok(chunk))), size_hint)
+    ByteStream::from(chunk)
 }
 
 // This is to allow a user to upload to a prefix in a bucket, but relies on

@@ -78,15 +78,9 @@ pub async fn setup_presigned_multipart_upload(
             let key = key.as_ref().to_string();
             let upload_id = upload_id.clone();
             async move {
-                let url = presign_multipart_upload(
-                    s3,
-                    bucket,
-                    key,
-                    part as i32,
-                    upload_id.clone(),
-                    expiration,
-                )
-                .await?;
+                let url =
+                    presign_multipart_upload(s3, bucket, key, part as i32, upload_id, expiration)
+                        .await?;
                 Ok((part, url))
             }
         })
