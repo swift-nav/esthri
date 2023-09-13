@@ -72,24 +72,31 @@ pub async fn setup_presigned_multipart_upload(
     .upload_id
     .unwrap();
 
-    let parts = (1..n_parts + 1)
-        .map(|part| async {
-            (
-                part,
-                presign_multipart_upload(
+    let fut: Vec<_> = (1..=n_parts)
+        .map(|part| {
+            let bucket = bucket.as_ref().to_string();
+            let key = key.as_ref().to_string();
+            let upload_id = upload_id.clone();
+            async move {
+                let url = presign_multipart_upload(
                     s3,
-                    bucket.as_ref(),
-                    key.as_ref(),
-                    part as i64,
+                    bucket,
+                    key,
+                    part as i32,
                     upload_id.clone(),
                     expiration,
                 )
-                .await
-                .unwrap(),
-            )
+                .await?;
+                Ok((part, url))
+            }
         })
         .collect();
-    Ok(PresignedMultipartUpload { upload_id, parts })
+
+    let parts: Result<Vec<_>> = futures::future::try_join_all(fut).await;
+    Ok(PresignedMultipartUpload {
+        upload_id,
+        parts: parts?,
+    })
 }
 
 /// Upload a file using a presigned multipart upload.
@@ -175,9 +182,9 @@ pub async fn abort_presigned_multipart_upload(
 
 async fn presign_multipart_upload(
     s3: &S3Client,
-    bucket: impl AsRef<str>,
-    key: impl AsRef<str>,
-    part: i64,
+    bucket: String,
+    key: String,
+    part: i32,
     upload_id: String,
     expiration: Option<Duration>,
 ) -> Result<String> {
@@ -188,9 +195,9 @@ async fn presign_multipart_upload(
 
     let presigned_req = s3
         .upload_part()
-        .bucket(bucket.as_ref().to_string())
-        .key(key.as_ref().to_string())
-        .part_number(part as i32)
+        .bucket(bucket)
+        .key(key)
+        .part_number(part)
         .upload_id(upload_id)
         .presigned(presigning_config)
         .await
