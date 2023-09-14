@@ -14,7 +14,7 @@ use std::{collections::HashMap, str::FromStr};
 
 use aws_sdk_s3::operation::create_multipart_upload::CreateMultipartUploadOutput;
 use aws_sdk_s3::operation::get_object::GetObjectOutput;
-use aws_sdk_s3::operation::head_object::HeadObjectOutput;
+use aws_sdk_s3::operation::head_object::{HeadObjectError, HeadObjectOutput};
 use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart, StorageClass};
 use aws_sdk_s3::Client;
@@ -104,10 +104,11 @@ pub async fn head_object_request(
             let info = HeadObjectInfo::from_head_object_output(hoo)?;
             Ok(info)
         }
-        Err(SdkError::ServiceError(error)) => {
-            Err(Error::HeadObjectFailure(error.into_err().to_string()))
-        }
-        Err(_) => Ok(None),
+        Err(SdkError::ServiceError(error)) => match error.err() {
+            HeadObjectError::NotFound(_) => Ok(None),
+            _ => Err(Error::HeadObjectFailure(error.err().to_string())),
+        },
+        Err(error) => Err(Error::HeadObjectFailure(error.to_string())),
     }
 }
 
