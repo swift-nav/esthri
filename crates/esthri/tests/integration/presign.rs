@@ -12,7 +12,7 @@ async fn test_presign_get() {
     let filename = "test_file.txt";
     let bucket = esthri_test::TEST_BUCKET;
     let s3key = esthri_test::randomised_name(&format!("test_presigned_get/{}", filename));
-    let s3client = esthri_test::get_s3client();
+    let s3client = esthri_test::get_s3client_async().await;
     let opts_compress = SharedSyncOptParamsBuilder::default().build().unwrap();
     esthri::upload(
         s3client.as_ref(),
@@ -23,7 +23,7 @@ async fn test_presign_get() {
     )
     .await
     .unwrap();
-    let s3 = esthri_test::get_s3client();
+    let s3 = esthri_test::get_s3client_async().await;
     let presigned_url = presign_get(&s3, bucket, &s3key, None).await.unwrap();
     let tmpdir = TempDir::new("esthri_tmp").expect("creating temporary directory");
     let download_file_path = tmpdir.path().join(filename);
