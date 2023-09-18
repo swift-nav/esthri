@@ -67,18 +67,75 @@ pub use esthri_internals::new_https_connector;
 
 pub const FILTER_EMPTY: Option<&[GlobFilter]> = None;
 
-pub async fn init_s3client() -> Client {
+pub enum AwsCredProvider {
+    DefaultProvider,
+    Environment,
+    Profile,
+    Ecs,
+    Imds,
+    WebIdentityToken,
+}
+
+pub async fn init_default_s3client() -> Client {
+    init_s3client(AwsCredProvider::DefaultProvider).await
+}
+
+pub async fn init_s3client(provider: AwsCredProvider) -> Client {
     let retry_config = aws_config::retry::RetryConfig::standard()
         .with_initial_backoff(Duration::from_millis(500))
         .with_max_attempts(5);
-    let env_config = aws_config::load_from_env().await;
     let https_connector = new_https_connector();
     let smithy_connector = hyper_ext::Adapter::builder().build(https_connector);
 
-    let config = aws_sdk_s3::config::Builder::from(&env_config)
-        .retry_config(retry_config)
-        .http_connector(smithy_connector)
-        .build();
+    let sdk_config = aws_config::load_from_env().await;
+    let config = match provider {
+        AwsCredProvider::DefaultProvider => aws_sdk_s3::config::Builder::from(&sdk_config)
+            .retry_config(retry_config)
+            .http_connector(smithy_connector)
+            .build(),
+        AwsCredProvider::Environment => {
+            let cred = aws_config::environment::EnvironmentVariableCredentialsProvider::new();
+            aws_sdk_s3::config::Builder::from(&sdk_config)
+                .retry_config(retry_config)
+                .http_connector(smithy_connector)
+                .credentials_provider(cred)
+                .build()
+        }
+        AwsCredProvider::Profile => {
+            let cred = aws_config::profile::ProfileFileCredentialsProvider::builder().build();
+            aws_sdk_s3::config::Builder::from(&sdk_config)
+                .retry_config(retry_config)
+                .http_connector(smithy_connector)
+                .credentials_provider(cred)
+                .build()
+        }
+        AwsCredProvider::Ecs => {
+            let cred = aws_config::ecs::EcsCredentialsProvider::builder().build();
+            aws_sdk_s3::config::Builder::from(&sdk_config)
+                .retry_config(retry_config)
+                .http_connector(smithy_connector)
+                .credentials_provider(cred)
+                .build()
+        }
+        AwsCredProvider::Imds => {
+            let cred = aws_config::imds::credentials::ImdsCredentialsProvider::builder().build();
+            aws_sdk_s3::config::Builder::from(&sdk_config)
+                .retry_config(retry_config)
+                .http_connector(smithy_connector)
+                .credentials_provider(cred)
+                .build()
+        }
+        AwsCredProvider::WebIdentityToken => {
+            let cred =
+                aws_config::web_identity_token::WebIdentityTokenCredentialsProvider::builder()
+                    .build();
+            aws_sdk_s3::config::Builder::from(&sdk_config)
+                .retry_config(retry_config)
+                .http_connector(smithy_connector)
+                .credentials_provider(cred)
+                .build()
+        }
+    };
 
     aws_sdk_s3::Client::from_conf(config)
 }
