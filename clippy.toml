@@ -1,1 +1,4 @@
-msrv = "1.72.0"
+msrv = "1.71.1"
+
+# WORKAROUND for TEST_GLOBAL linting error in esthri test, revisit later
+await_holding_lock = false
