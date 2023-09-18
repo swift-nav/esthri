@@ -1,12 +1,5 @@
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    sync::Arc,
-    sync::Mutex,
-};
-
 use aws_sdk_s3::Client as S3Client;
 use aws_smithy_client::hyper_ext;
 use esthri_internals::new_https_connector;
@@ -14,7 +7,13 @@ use fs_extra::dir;
 use fs_extra::dir::CopyOptions;
 use md5::{Digest, Md5};
 use once_cell::sync::Lazy;
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 use tempdir::TempDir;
+use tokio::sync::Mutex;
 use uuid::Uuid;
 
 pub struct TestGlobal {
@@ -24,7 +23,7 @@ pub struct TestGlobal {
 static TEST_GLOBAL: Lazy<Mutex<TestGlobal>> =
     Lazy::new(|| Mutex::new(TestGlobal { s3client: None }));
 
-const TEST_GLOBAL_LOCK_FAILED: &str = "locking global test data failed";
+// const TEST_GLOBAL_LOCK_FAILED: &str = "locking global test data failed";
 
 pub const TEST_BUCKET: &str = "esthri-test";
 
@@ -86,14 +85,16 @@ pub fn validate_key_hash_pairs(local_directory: impl AsRef<Path>, key_hash_pairs
 
 pub fn get_s3client() -> Arc<S3Client> {
     let rt = tokio::runtime::Runtime::new().unwrap();
-    rt.block_on(init_s3client());
-    let test_global = TEST_GLOBAL.lock().expect(TEST_GLOBAL_LOCK_FAILED);
+    let test_global = rt.block_on(async {
+        init_s3client().await;
+        TEST_GLOBAL.lock().await
+    });
     test_global.s3client.as_ref().unwrap().clone()
 }
 
 pub async fn get_s3client_async() -> Arc<S3Client> {
     init_s3client().await;
-    let test_global = TEST_GLOBAL.lock().expect(TEST_GLOBAL_LOCK_FAILED);
+    let test_global = TEST_GLOBAL.lock().await;
     test_global.s3client.as_ref().unwrap().clone()
 }
 
@@ -120,7 +121,7 @@ impl Drop for EphemeralTempDir {
 }
 
 async fn init_s3client() {
-    let mut test_global = TEST_GLOBAL.lock().expect(TEST_GLOBAL_LOCK_FAILED);
+    let mut test_global = TEST_GLOBAL.lock().await;
 
     match test_global.s3client {
         None => {

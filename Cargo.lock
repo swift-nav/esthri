@@ -209,7 +209,7 @@ dependencies = [
  "http",
  "hyper",
  "ring",
- "time 0.3.14",
+ "time",
  "tokio",
  "tower",
  "tracing",
@@ -368,7 +368,7 @@ dependencies = [
  "percent-encoding",
  "regex",
  "sha2 0.10.2",
- "time 0.3.14",
+ "time",
  "tracing",
 ]
 
@@ -546,7 +546,7 @@ dependencies = [
  "num-integer",
  "ryu",
  "serde",
- "time 0.3.14",
+ "time",
 ]
 
 [[package]]
@@ -1205,6 +1205,7 @@ dependencies = [
  "esthri-internals",
  "flate2",
  "fs_extra",
+ "futures",
  "hyper",
  "md-5 0.10.5",
  "once_cell",
