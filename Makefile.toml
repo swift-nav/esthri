@@ -80,12 +80,12 @@ TLS_PROVIDER = "nativetls"
 VERBOSE = "-vv"
 
 [env.'dev+msrv']
-MSRV = "+1.71.1"
+MSRV = "+1.72.0"
 VERBOSE = "-vv"
 
 [env.'dev+msrv+nativetls']
 TLS_PROVIDER = "nativetls"
-MSRV = "+1.71.1"
+MSRV = "+1.72.0"
 VERBOSE = "-vv"
 
 [tasks.check]
