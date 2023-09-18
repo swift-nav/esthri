@@ -1,4 +1,4 @@
-use std::{io::Cursor, str::FromStr};
+use std::io::Cursor;
 
 use esthri::{blocking, opts::*, upload, upload_from_reader, HeadObjectInfo};
 
@@ -138,13 +138,13 @@ fn test_upload_storage_class_all() {
     // Reference: https://aws.amazon.com/s3/faqs/
     // 2. Uploading to S3 bucket in AWS region via OUTPOSTS is not supported, skipping test...
     // Reference: https://docs.aws.amazon.com/AmazonS3/latest/userguide/storage-class-intro.html#s3-outposts
-    for class in S3StorageClass::values().iter().filter(|x| {
-        !x.to_string().eq(S3StorageClass::DeepArchive.as_str())
-            && !x.to_string().eq(S3StorageClass::Glacier.as_str())
-            && !x.to_string().eq(S3StorageClass::GlacierIr.as_str())
-            && !x.to_string().eq(S3StorageClass::Outposts.as_str())
-    }) {
-        let class = S3StorageClass::from_str(class).unwrap();
+    for class in vec![
+        S3StorageClass::IntelligentTiering,
+        S3StorageClass::OnezoneIa,
+        S3StorageClass::ReducedRedundancy,
+        S3StorageClass::Standard,
+        S3StorageClass::StandardIa,
+    ] {
         let opts = EsthriPutOptParamsBuilder::default()
             .storage_class(Some(class.clone()))
             .build()

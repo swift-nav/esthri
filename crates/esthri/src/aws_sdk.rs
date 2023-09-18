@@ -67,7 +67,7 @@ impl HeadObjectInfo {
             .ok_or_else(|| Error::HeadObjectUnexpected("no metadata found".into()))?;
         let storage_class = StorageClass::from_str(
             hoo.storage_class
-                .unwrap_or_else(|| "Standard".into()) // AWS doesn't set header for STANDARD
+                .unwrap_or_else(|| "STANDARD".into()) // AWS doesn't set header for STANDARD
                 .as_str(),
         )
         .map_err(|e| Error::UnknownStorageClass(e.to_string()))?;
