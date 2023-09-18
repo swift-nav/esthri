@@ -71,7 +71,12 @@ impl HeadObjectInfo {
                 .as_str(),
         )
         .map_err(|e| Error::UnknownStorageClass(e.to_string()))?;
-        let parts = hoo.parts_count as u64;
+
+        // parts_count = 0 means it is not a multipart upload, default parts count to 1
+        let parts = match hoo.parts_count {
+            0 => 1,
+            _ => hoo.parts_count as u64,
+        };
 
         Ok(Some(HeadObjectInfo {
             e_tag,
