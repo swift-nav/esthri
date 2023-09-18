@@ -85,14 +85,13 @@ pub fn validate_key_hash_pairs(local_directory: impl AsRef<Path>, key_hash_pairs
 }
 
 pub fn get_s3client() -> Arc<S3Client> {
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    rt.block_on(init_s3client());
+    init_s3client();
     let test_global = TEST_GLOBAL.lock().expect(TEST_GLOBAL_LOCK_FAILED);
     test_global.s3client.as_ref().unwrap().clone()
 }
 
 pub async fn get_s3client_async() -> Arc<S3Client> {
-    init_s3client().await;
+    init_s3client();
     let test_global = TEST_GLOBAL.lock().expect(TEST_GLOBAL_LOCK_FAILED);
     test_global.s3client.as_ref().unwrap().clone()
 }
@@ -119,14 +118,15 @@ impl Drop for EphemeralTempDir {
     }
 }
 
-async fn init_s3client() {
+fn init_s3client() {
     let mut test_global = TEST_GLOBAL.lock().expect(TEST_GLOBAL_LOCK_FAILED);
 
     match test_global.s3client {
         None => {
             env_logger::init();
 
-            let env_config = aws_config::load_from_env().await;
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let env_config = rt.block_on(aws_config::load_from_env());
             let https_connector = new_https_connector();
             let smithy_connector = hyper_ext::Adapter::builder().build(https_connector);
 

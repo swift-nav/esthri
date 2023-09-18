@@ -205,7 +205,7 @@ fn upload_test_data() -> anyhow::Result<()> {
             esthri_test::TEST_BUCKET,
             s3_key,
             filepath.to_str().unwrap(),
-            opts,
+            opts.clone(),
         )?;
     }
     Ok(())

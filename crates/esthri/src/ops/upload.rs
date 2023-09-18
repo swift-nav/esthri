@@ -10,9 +10,7 @@
  * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-use std::{
-    borrow::Cow, collections::HashMap, convert::TryInto, io::SeekFrom, path::Path, sync::Arc,
-};
+use std::{borrow::Cow, collections::HashMap, io::SeekFrom, path::Path, sync::Arc};
 
 use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::types::{CompletedPart, ObjectCannedAcl, StorageClass};
@@ -391,12 +389,7 @@ where
             (reader, part_number, part_size)
         })
         .map(move |(reader, part_number, part_size)| async move {
-            let body = create_stream_for_chunk(
-                reader.clone(),
-                file_size,
-                (part_number - 1).try_into().expect("Part number < 0"),
-            )
-            .await?;
+            let body = create_stream_for_chunk(reader.clone(), file_size, part_number - 1).await?;
             let res = s3
                 .upload_part()
                 .bucket(bucket)

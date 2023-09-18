@@ -342,7 +342,7 @@ async fn list_objects_request(
         .await
         .map_err(|e| Error::ListObjectsFailed {
             prefix: key.to_string(),
-            source: e.into_service_error(),
+            source: Box::new(e.into_service_error()),
         })?;
 
     let mut listing = S3Listing {

@@ -231,7 +231,7 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
         Presign(params) => {
             println!(
                 "{}",
-                esthri::presign_get(&s3, params.bucket, params.key, None,).await?
+                esthri::presign_get(s3, params.bucket, params.key, None,).await?
             );
         }
     }

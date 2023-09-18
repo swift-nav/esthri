@@ -86,7 +86,7 @@ pub enum Error {
     ListObjectsFailed {
         prefix: String,
         #[source]
-        source: ListObjectsV2Error,
+        source: Box<ListObjectsV2Error>,
     },
 
     #[error("abort multipart upload failed")]
