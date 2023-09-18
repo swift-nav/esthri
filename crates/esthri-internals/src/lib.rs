@@ -25,7 +25,6 @@ pub fn new_https_connector() -> HttpsConnector<HttpConnector> {
         .with_webpki_roots()
         .https_only()
         .enable_http1()
-        .enable_http2()
         .build()
 }
 
