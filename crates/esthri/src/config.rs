@@ -80,7 +80,7 @@ where
     D: Deserializer<'de>,
 {
     let s = String::deserialize(deserializer)?;
-    S3StorageClass::from_str(&s)
+    S3StorageClass::from_str(&s.to_uppercase())
         .map(StorageClass)
         .map_err(de::Error::custom)
 }
