@@ -759,7 +759,7 @@ dependencies = [
 
 [[package]]
 name = "esthri-test"
-version = "10.0.7"
+version = "10.0.8"
 dependencies = [
  "chrono",
  "env_logger",
