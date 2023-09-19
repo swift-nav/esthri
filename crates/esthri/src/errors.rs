@@ -71,8 +71,12 @@ pub enum Error {
     #[error("unexpected: parent dir was null")]
     ParentDirNone,
 
-    #[error(transparent)]
-    HeadObjectFailure(#[from] RusotoError<HeadObjectError>),
+    #[error("head object failed on prefix {prefix}: {source}")]
+    HeadObjectFailure {
+        prefix: String,
+        #[source]
+        source: RusotoError<HeadObjectError>,
+    },
 
     #[error(transparent)]
     HeadObjectFailedParseError(#[from] ParseError),
