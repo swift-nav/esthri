@@ -100,7 +100,10 @@ where
     match res {
         Ok(hoo) => HeadObjectInfo::from_head_object_output(hoo),
         Err(RusotoError::Unknown(err)) if err.status == 404 => Ok(None),
-        Err(err) => Err(Error::HeadObjectFailure(err)),
+        Err(err) => Err(Error::HeadObjectFailure {
+            prefix: key.to_string(),
+            source: err,
+        }),
     }
 }
 
