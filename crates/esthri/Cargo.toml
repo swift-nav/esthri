@@ -55,7 +55,7 @@ aws-config = { workspace = true }
 aws-smithy-types-convert = { workspace = true }
 
 [dependencies.esthri-internals]
-version = "10.0.7"
+version = "11.0.0"
 path = "../esthri-internals"
 
 [dev-dependencies]
