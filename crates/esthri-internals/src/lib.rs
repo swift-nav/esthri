@@ -35,5 +35,3 @@ pub use hyper_tls::HttpsConnector;
 pub fn new_https_connector() -> hyper_tls::HttpsConnector<HttpConnector> {
     HttpsConnector::new()
 }
-
-pub mod rusoto;

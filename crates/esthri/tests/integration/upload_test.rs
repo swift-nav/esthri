@@ -1,10 +1,8 @@
 use std::io::Cursor;
 
-use strum::IntoEnumIterator;
+use esthri::{blocking, opts::*, upload, upload_from_reader, HeadObjectInfo};
 
-use esthri::{
-    blocking, opts::*, rusoto::S3StorageClass, upload, upload_from_reader, HeadObjectInfo,
-};
+use aws_sdk_s3::types::StorageClass as S3StorageClass;
 
 #[test]
 fn test_upload() {
@@ -72,7 +70,7 @@ fn test_upload_compressed() {
 
 #[tokio::test]
 async fn test_upload_async() {
-    let s3client = esthri_test::get_s3client();
+    let s3client = esthri_test::get_s3client_async().await;
     let filename = "test5mb.bin";
     let filepath = esthri_test::test_data(filename);
     let s3_key = esthri_test::randomised_lifecycled_prefix(&format!("test_upload/{}", filename));
@@ -91,7 +89,7 @@ async fn test_upload_async() {
 
 #[tokio::test]
 async fn test_upload_reader() {
-    let s3client = esthri_test::get_s3client();
+    let s3client = esthri_test::get_s3client_async().await;
     let filename = "test_reader_upload.bin";
     let filepath =
         esthri_test::randomised_lifecycled_prefix(&format!("test_upload_reader/{}", filename));
@@ -140,14 +138,15 @@ fn test_upload_storage_class_all() {
     // Reference: https://aws.amazon.com/s3/faqs/
     // 2. Uploading to S3 bucket in AWS region via OUTPOSTS is not supported, skipping test...
     // Reference: https://docs.aws.amazon.com/AmazonS3/latest/userguide/storage-class-intro.html#s3-outposts
-    for class in S3StorageClass::iter().filter(|x| {
-        !x.eq(&S3StorageClass::GlacierDeepArchive)
-            && !x.eq(&S3StorageClass::GlacierFlexibleRetrieval)
-            && !x.eq(&S3StorageClass::GlacierInstantRetrieval)
-            && !x.eq(&S3StorageClass::Outposts)
-    }) {
+    for class in vec![
+        S3StorageClass::IntelligentTiering,
+        S3StorageClass::OnezoneIa,
+        S3StorageClass::ReducedRedundancy,
+        S3StorageClass::Standard,
+        S3StorageClass::StandardIa,
+    ] {
         let opts = EsthriPutOptParamsBuilder::default()
-            .storage_class(Some(class))
+            .storage_class(Some(class.clone()))
             .build()
             .unwrap();
 

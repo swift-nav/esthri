@@ -13,11 +13,22 @@
 pub use std::error::Error as StdError;
 use std::path::StripPrefixError;
 
+use aws_sdk_s3::operation::abort_multipart_upload::AbortMultipartUploadError;
+use aws_sdk_s3::operation::complete_multipart_upload::CompleteMultipartUploadError;
+use aws_sdk_s3::operation::copy_object::CopyObjectError;
+use aws_sdk_s3::operation::create_multipart_upload::CreateMultipartUploadError;
+use aws_sdk_s3::operation::delete_object::DeleteObjectError;
+use aws_sdk_s3::operation::delete_objects::DeleteObjectsError;
+use aws_sdk_s3::operation::get_bucket_location::GetBucketLocationError;
+use aws_sdk_s3::operation::get_object::GetObjectError;
+use aws_sdk_s3::operation::head_object::HeadObjectError;
+use aws_sdk_s3::operation::list_objects_v2::ListObjectsV2Error;
+use aws_sdk_s3::operation::put_object::PutObjectError;
+use aws_sdk_s3::operation::upload_part::UploadPartError;
+use aws_sdk_s3::presigning::PresigningConfigError;
 use chrono::ParseError;
 use glob::PatternError;
 use tokio::task::JoinError;
-
-use crate::rusoto::*;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -25,7 +36,6 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub enum Error {
     #[error("did not exist locally")]
     ETagNotPresent,
-
     #[error("invalid s3 etag")]
     InvalidS3ETag,
 
@@ -47,17 +57,17 @@ pub enum Error {
     #[error("a read of zero occured")]
     ReadZero,
 
-    #[error("upload_part failed")]
-    UploadPartFailed(#[from] RusotoError<UploadPartError>),
+    #[error(transparent)]
+    UploadPartFailed(#[from] Box<UploadPartError>),
 
-    #[error("complete_multipart_upload failed")]
-    CompletedMultipartUploadFailed(#[from] RusotoError<CompleteMultipartUploadError>),
+    #[error(transparent)]
+    CompletedMultipartUploadFailed(#[from] Box<CompleteMultipartUploadError>),
 
-    #[error("put_object failed")]
-    PutObjectFailed(#[from] RusotoError<PutObjectError>),
+    #[error(transparent)]
+    PutObjectFailed(#[from] Box<PutObjectError>),
 
-    #[error("create_multipart_upload failed")]
-    CreateMultipartUploadFailed(#[from] RusotoError<CreateMultipartUploadError>),
+    #[error(transparent)]
+    CreateMultipartUploadFailed(#[from] Box<CreateMultipartUploadError>),
 
     #[error("did not expect body field of GetObjectOutput to be none")]
     GetObjectOutputBodyNone,
@@ -75,7 +85,7 @@ pub enum Error {
     HeadObjectFailure {
         prefix: String,
         #[source]
-        source: RusotoError<HeadObjectError>,
+        source: Box<HeadObjectError>,
     },
 
     #[error(transparent)]
@@ -85,26 +95,29 @@ pub enum Error {
     WalkDirFailed(#[from] walkdir::Error),
 
     #[error(transparent)]
-    CopyObjectFailed(#[from] RusotoError<CopyObjectError>),
+    CopyObjectFailed(#[from] Box<CopyObjectError>),
 
     #[error("list objects failed on prefix {prefix}: {source}")]
     ListObjectsFailed {
         prefix: String,
         #[source]
-        source: RusotoError<ListObjectsV2Error>,
+        source: Box<ListObjectsV2Error>,
     },
 
     #[error(transparent)]
-    AbortMultipartUploadFailed(#[from] RusotoError<AbortMultipartUploadError>),
+    AbortMultipartUploadFailed(#[from] Box<AbortMultipartUploadError>),
 
     #[error(transparent)]
     StripPrefixFailed(#[from] StripPrefixError),
 
     #[error(transparent)]
-    GetObjectFailed(#[from] RusotoError<GetObjectError>),
+    GetObjectFailed(#[from] Box<GetObjectError>),
 
     #[error(transparent)]
-    DeleteObjectsFailed(#[from] RusotoError<DeleteObjectsError>),
+    DeleteObjectFailed(#[from] Box<DeleteObjectError>),
+
+    #[error(transparent)]
+    DeleteObjectsFailed(#[from] Box<DeleteObjectsError>),
 
     #[error("invalid key, did not exist remotely: {0}")]
     GetObjectInvalidKey(String),
@@ -116,7 +129,7 @@ pub enum Error {
     GetObjectSizeChanged,
 
     #[error(transparent)]
-    GetBucketLocationFailed(#[from] RusotoError<GetBucketLocationError>),
+    GetBucketLocationFailed(#[from] Box<GetBucketLocationError>),
 
     #[error(transparent)]
     IoError(#[from] std::io::Error),
@@ -153,6 +166,15 @@ pub enum Error {
 
     #[error(transparent)]
     HTTPError(#[from] reqwest::Error),
+
+    #[error("byte stream error")]
+    ByteStreamError(String),
+
+    #[error(transparent)]
+    PresigningConfigError(#[from] PresigningConfigError),
+
+    #[error("aws sdk error")]
+    SdkError(String),
 }
 
 impl From<std::convert::Infallible> for Error {

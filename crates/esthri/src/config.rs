@@ -13,11 +13,11 @@
 //! Configuration module for the library, allows sizing of internal concurrent task counts,
 //! multipart upload sizes and read buffer sizes, among other things.
 
-use std::path::PathBuf;
+use std::{path::PathBuf, str::FromStr};
 
-use crate::S3StorageClass;
+use aws_sdk_s3::types::StorageClass as S3StorageClass;
 use once_cell::sync::OnceCell;
-use serde::Deserialize;
+use serde::{de, Deserialize, Deserializer};
 
 /// The default size of parts in a multipart upload to S3.  8 MiB is the default chunk
 /// size from awscli, changing this size will affect the calculation of ETags.
@@ -38,7 +38,7 @@ pub const CONCURRENT_WRITER_TASKS: u16 = 1;
 /// Holds configuration information for the library.
 #[derive(Debug, Deserialize)]
 pub struct Config {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_storage_class")]
     storage_class: StorageClass,
     #[serde(default)]
     upload_part_size: UploadPartSize,
@@ -66,14 +66,23 @@ struct TempDirPath(Option<PathBuf>);
 
 /// Wrapper type for [STORAGE_CLASS] which allows [Config::storage_class()] to bind a default
 /// value.
-#[derive(Debug, Deserialize)]
-#[serde(transparent)]
+#[derive(Debug)]
 struct StorageClass(S3StorageClass);
 
 impl Default for StorageClass {
     fn default() -> Self {
         StorageClass(S3StorageClass::Standard)
     }
+}
+
+fn deserialize_storage_class<'de, D>(deserializer: D) -> Result<StorageClass, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    S3StorageClass::from_str(&s.to_uppercase())
+        .map(StorageClass)
+        .map_err(de::Error::custom)
 }
 
 /// Wrapper type for [UPLOAD_PART_SIZE] which allows [Config::upload_part_size()] to bind a default
@@ -188,7 +197,7 @@ impl Config {
     /// unless specified. View AWS documentation for more specifications on other storage classes.
     /// Defaults to [STORAGE_CLASS].
     pub fn storage_class(&self) -> S3StorageClass {
-        self.storage_class.0
+        self.storage_class.0.clone()
     }
 
     /// The default path for new temp files. Uses to current directory if unset. Defaults to

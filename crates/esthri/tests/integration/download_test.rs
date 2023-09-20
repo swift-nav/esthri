@@ -65,7 +65,7 @@ fn test_download_to_current_directory() {
 
 #[tokio::test]
 async fn test_download_async() {
-    let s3client = esthri_test::get_s3client();
+    let s3client = esthri_test::get_s3client_async().await;
     let filename = "test_file.txt";
     let filepath = esthri_test::test_data(filename);
     let s3_key = format!("test_folder/{}", filename);
@@ -84,7 +84,7 @@ async fn test_download_async() {
 
 #[tokio::test]
 async fn test_download_zero_size() {
-    let s3client = esthri_test::get_s3client();
+    let s3client = esthri_test::get_s3client_async().await;
     let _tmp_dir = esthri_test::EphemeralTempDir::pushd();
     let opts = EsthriGetOptParamsBuilder::default().build().unwrap();
 

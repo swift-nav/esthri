@@ -12,13 +12,14 @@
 
 use futures::{future, stream::Stream, Future, StreamExt, TryFutureExt};
 
+use aws_sdk_s3::error::SdkError;
+use aws_sdk_s3::types::{Delete, ObjectIdentifier};
+use aws_sdk_s3::Client;
 use log::{debug, info};
 use log_derive::logfn;
 
-use crate::{
-    errors::Result,
-    rusoto::{Delete, DeleteObjectsRequest, ObjectIdentifier, S3},
-};
+use crate::errors::Result;
+use crate::Error;
 
 const DELETE_BATCH_SIZE: usize = 50;
 
@@ -35,18 +36,23 @@ const DELETE_BATCH_SIZE: usize = 50;
 /// Will transparently pass failures from [crate::rusoto::S3::delete_object] via [crate::errors::Error].
 ///
 #[logfn(err = "ERROR")]
-pub async fn delete<T>(s3: &T, bucket: impl AsRef<str>, keys: &[impl AsRef<str>]) -> Result<()>
-where
-    T: S3 + Sync + Send + Clone,
-{
+pub async fn delete(s3: &Client, bucket: impl AsRef<str>, keys: &[impl AsRef<str>]) -> Result<()> {
     info!(
         "delete: bucket={}, keys.len()={:?}",
         bucket.as_ref(),
         keys.len()
     );
 
-    let dor = create_delete_request(bucket, keys);
-    s3.delete_objects(dor).await?;
+    let delete = create_delete(keys, false);
+    s3.delete_objects()
+        .bucket(bucket.as_ref().to_string())
+        .delete(delete)
+        .send()
+        .await
+        .map_err(|e| match e {
+            SdkError::ServiceError(error) => Error::DeleteObjectsFailed(Box::new(error.into_err())),
+            _ => Error::SdkError(e.to_string()),
+        })?;
 
     Ok(())
 }
@@ -64,14 +70,11 @@ where
 ///
 /// Returns a stream of [Result] values.  Any S3 errors are mapped into the local [crate::errors::Error] types.
 ///
-pub fn delete_streaming<'a, T>(
-    s3: &'a T,
+pub fn delete_streaming<'a>(
+    s3: &'a Client,
     bucket: impl AsRef<str> + 'a,
     keys: impl Stream<Item = Result<String>> + Unpin + 'a,
-) -> impl Stream<Item = impl Future<Output = Result<usize>> + 'a> + 'a
-where
-    T: S3 + Sync + Send + Clone,
-{
+) -> impl Stream<Item = impl Future<Output = Result<usize>> + 'a> + 'a {
     info!(
         "delete_streaming: bucket={}, batch_size={}",
         bucket.as_ref(),
@@ -86,9 +89,18 @@ where
             Ok(keys) => {
                 debug!("delete_streaming: keys={:?}", keys);
                 let len = keys.len();
-                let dor = create_delete_request(&bucket, &keys);
-                let fut = s3.delete_objects(dor);
-                future::Either::Left(fut.map_ok(move |_| len).map_err(|e| e.into()))
+                let delete = create_delete(&keys, false);
+                let fut = s3
+                    .delete_objects()
+                    .bucket(bucket.as_ref().to_string())
+                    .delete(delete)
+                    .send();
+                future::Either::Left(fut.map_ok(move |_| len).map_err(|e| match e {
+                    SdkError::ServiceError(error) => {
+                        Error::DeleteObjectsFailed(Box::new(error.into_err()))
+                    }
+                    _ => Error::SdkError(e.to_string()),
+                }))
             }
             Err(err) => {
                 println!("nothing found in delete_streaming keys");
@@ -98,24 +110,17 @@ where
     })
 }
 
-fn create_delete_request(
-    bucket: impl AsRef<str>,
-    keys: &[impl AsRef<str>],
-) -> DeleteObjectsRequest {
+fn create_delete(keys: &[impl AsRef<str>], quiet: bool) -> Delete {
     let objects = keys
         .iter()
-        .map(|key| ObjectIdentifier {
-            key: key.as_ref().into(),
-            ..Default::default()
+        .map(|key| {
+            ObjectIdentifier::builder()
+                .key(key.as_ref().to_string())
+                .build()
         })
         .collect::<Vec<_>>();
-    let del = Delete {
-        objects,
-        ..Default::default()
-    };
-    DeleteObjectsRequest {
-        bucket: bucket.as_ref().into(),
-        delete: del,
-        ..Default::default()
-    }
+    Delete::builder()
+        .set_objects(Some(objects))
+        .quiet(quiet)
+        .build()
 }

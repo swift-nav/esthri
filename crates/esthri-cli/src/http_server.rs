@@ -26,6 +26,7 @@ use async_zip::{
     write::{EntryOptions, ZipFileWriter},
     Compression,
 };
+use aws_sdk_s3::Client as S3Client;
 use bytes::{Bytes, BytesMut};
 use futures::stream::{Stream, StreamExt, TryStreamExt};
 use hyper::header::{CONTENT_ENCODING, LOCATION};
@@ -50,8 +51,8 @@ use warp::{
 };
 
 use esthri::{
-    download_streaming, head_object, list_directory_stream, list_objects_stream, rusoto::*,
-    HeadObjectInfo, S3ListingItem,
+    download_streaming, head_object, list_directory_stream, list_objects_stream, HeadObjectInfo,
+    S3ListingItem,
 };
 
 const LAST_MODIFIED_TIME_FMT: &str = "%a, %d %b %Y %H:%M:%S GMT";
@@ -289,8 +290,8 @@ async fn abort_with_error(error_tracker: ErrorTrackerArc, err: anyhow::Error) {
     ErrorTracker::record_error(error_tracker, err);
 }
 
-async fn stream_object_to_archive<T: S3 + Send + Clone + Sync>(
-    s3: &T,
+async fn stream_object_to_archive(
+    s3: &S3Client,
     bucket: &str,
     path: &str,
     archive: &mut ZipFileWriter<DuplexStream>,
@@ -515,11 +516,7 @@ fn format_title(bucket: &str, path: &str) -> Markup {
     }
 }
 
-async fn is_object<'a, T: S3 + Send>(
-    s3: &T,
-    bucket: &str,
-    path: &str,
-) -> Result<bool, warp::Rejection> {
+async fn is_object(s3: &S3Client, bucket: &str, path: &str) -> Result<bool, warp::Rejection> {
     if path.is_empty() {
         Ok(false)
     } else {
@@ -527,11 +524,7 @@ async fn is_object<'a, T: S3 + Send>(
     }
 }
 
-async fn is_directory<'a, T: S3 + Send>(
-    s3: &T,
-    bucket: &str,
-    path: &str,
-) -> Result<bool, warp::Rejection> {
+async fn is_directory(s3: &S3Client, bucket: &str, path: &str) -> Result<bool, warp::Rejection> {
     if is_object(s3, bucket, path).await? {
         return Ok(false);
     }
@@ -617,8 +610,8 @@ async fn create_item_stream(
     }
 }
 
-async fn get_obj_info<'a, T: S3 + Send>(
-    s3: &T,
+async fn get_obj_info(
+    s3: &S3Client,
     bucket: &str,
     path: &str,
 ) -> Result<HeadObjectInfo, warp::Rejection> {
@@ -637,8 +630,8 @@ async fn get_obj_info<'a, T: S3 + Send>(
     }
 }
 
-async fn item_pre_response<'a, T: S3 + Send>(
-    s3: &T,
+async fn item_pre_response(
+    s3: &S3Client,
     bucket: String,
     path: String,
     if_none_match: Option<String>,
@@ -732,8 +725,8 @@ fn sanitize_filename(filename: String) -> String {
 /// redirect to a version of the path with a trailing slash.  This makes downstream logic around what is an isn't a
 /// directory much easier to implement.
 ///
-async fn redirect_on_dir_without_slash<'a, T: S3 + Send>(
-    s3: &T,
+async fn redirect_on_dir_without_slash(
+    s3: &S3Client,
     bucket: &str,
     path: &str,
 ) -> Result<(bool, Option<Result<http::Response<Body>, warp::Rejection>>), warp::Rejection> {
@@ -756,8 +749,8 @@ async fn redirect_on_dir_without_slash<'a, T: S3 + Send>(
 /// currently been requested, then we'll serve that file in place of the usualy directory listing.  This allows the
 /// server to behave more like a "real" http server.
 ///
-async fn maybe_serve_index_html<'a, T: S3 + Send>(
-    s3: &T,
+async fn maybe_serve_index_html(
+    s3: &S3Client,
     bucket: &str,
     path: String,
     index_html: bool,

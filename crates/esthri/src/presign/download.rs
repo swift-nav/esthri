@@ -13,46 +13,52 @@
 use std::{path::Path, time::Duration};
 
 use async_compression::tokio::write::GzipDecoder;
-use esthri_internals::rusoto::{
-    util::{PreSignedRequest, PreSignedRequestOption},
-    AwsCredentials, GetObjectRequest, Region,
-};
+use aws_sdk_s3::error::SdkError;
+use aws_sdk_s3::presigning::PresigningConfig;
+use aws_sdk_s3::Client as S3Client;
 use futures::TryStreamExt;
-use reqwest::Client;
+use reqwest::Client as HttpClient;
 use tokio::{
     fs::File,
     io::{copy, AsyncWriteExt},
 };
 use tokio_util::io::StreamReader;
 
-use crate::{opts::EsthriGetOptParams, Result};
+use crate::{opts::EsthriGetOptParams, Error, Result};
 
 use super::DEAFULT_EXPIRATION;
 
 /// Generate a presigned URL for a client to use to download a file.
 /// The file can be downloaded using an HTTP GET on this URL.
-pub fn presign_get(
-    credentials: &AwsCredentials,
-    region: &Region,
+pub async fn presign_get(
+    s3: &S3Client,
     bucket: impl AsRef<str>,
     key: impl AsRef<str>,
     expiration: Option<Duration>,
-) -> String {
-    let options = PreSignedRequestOption {
-        expires_in: expiration.unwrap_or(DEAFULT_EXPIRATION),
-    };
-    GetObjectRequest {
-        bucket: bucket.as_ref().to_owned(),
-        key: key.as_ref().to_owned(),
-        ..Default::default()
-    }
-    .get_presigned_url(region, credentials, &options)
+) -> Result<String> {
+    let presigning_config = PresigningConfig::builder()
+        .expires_in(expiration.unwrap_or(DEAFULT_EXPIRATION))
+        .build()
+        .map_err(Error::PresigningConfigError)?;
+
+    let presigned_req = s3
+        .get_object()
+        .bucket(bucket.as_ref().to_string())
+        .key(key.as_ref().to_string())
+        .presigned(presigning_config)
+        .await
+        .map_err(|e| match e {
+            SdkError::ServiceError(error) => Error::GetObjectFailed(Box::new(error.into_err())),
+            _ => Error::SdkError(e.to_string()),
+        })?;
+
+    Ok(presigned_req.uri().to_string())
 }
 
 /// Helper to download a file using a presigned URL, taking care of transparent
 /// compression.
 pub async fn download_file_presigned(
-    client: &Client,
+    client: &HttpClient,
     presigned_url: &str,
     filepath: &Path,
     opts: &EsthriGetOptParams,

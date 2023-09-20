@@ -1,10 +1,8 @@
 use esthri::{
     complete_presigned_multipart_upload, delete_file_presigned, download_file_presigned,
     opts::{EsthriGetOptParamsBuilder, EsthriPutOptParamsBuilder, SharedSyncOptParamsBuilder},
-    presign_delete, presign_get, presign_put,
-    rusoto::{AwsCredentials, DefaultCredentialsProvider, ProvideAwsCredentials, Region},
-    setup_presigned_multipart_upload, upload_file_presigned,
-    upload_file_presigned_multipart_upload,
+    presign_delete, presign_get, presign_put, setup_presigned_multipart_upload,
+    upload_file_presigned, upload_file_presigned_multipart_upload,
 };
 use reqwest::Client;
 use tempdir::TempDir;
@@ -14,7 +12,7 @@ async fn test_presign_get() {
     let filename = "test_file.txt";
     let bucket = esthri_test::TEST_BUCKET;
     let s3key = esthri_test::randomised_name(&format!("test_presigned_get/{}", filename));
-    let s3client = esthri_test::get_s3client();
+    let s3client = esthri_test::get_s3client_async().await;
     let opts_compress = SharedSyncOptParamsBuilder::default().build().unwrap();
     esthri::upload(
         s3client.as_ref(),
@@ -25,9 +23,8 @@ async fn test_presign_get() {
     )
     .await
     .unwrap();
-    let region = Region::default();
-    let creds = creds().await;
-    let presigned_url = presign_get(&creds, &region, bucket, &s3key, None);
+    let s3 = esthri_test::get_s3client_async().await;
+    let presigned_url = presign_get(&s3, bucket, &s3key, None).await.unwrap();
     let tmpdir = TempDir::new("esthri_tmp").expect("creating temporary directory");
     let download_file_path = tmpdir.path().join(filename);
     download_file_presigned(
@@ -44,16 +41,16 @@ async fn test_presign_get() {
 
 #[tokio::test]
 async fn test_presign_put() {
-    let s3client_owned = esthri_test::get_s3client();
+    let s3client_owned = esthri_test::get_s3client_async().await;
     let s3 = s3client_owned.as_ref();
     let filename = "test5mb.bin";
     let filepath = esthri_test::test_data(filename);
     let s3_key = esthri_test::randomised_name(&format!("test_upload/{}", filename));
-    let region = Region::default();
     let bucket = esthri_test::TEST_BUCKET;
-    let creds = creds().await;
     let opts = EsthriPutOptParamsBuilder::default().build().unwrap();
-    let presigned_url = presign_put(&creds, &region, bucket, &s3_key, None, opts);
+    let presigned_url = presign_put(&s3, bucket, &s3_key, None, opts.clone())
+        .await
+        .unwrap();
     upload_file_presigned(&Client::new(), &presigned_url, &filepath, opts)
         .await
         .unwrap();
@@ -69,7 +66,7 @@ async fn test_presign_put() {
 
 #[tokio::test]
 async fn test_presign_delete() {
-    let s3client_owned = esthri_test::get_s3client();
+    let s3client_owned = esthri_test::get_s3client_async().await;
     let s3 = s3client_owned.as_ref();
     let filepath = esthri_test::test_data("test_file.txt");
     let s3_key = "delete_me.txt";
@@ -87,9 +84,7 @@ async fn test_presign_delete() {
         .await
         .unwrap()
         .is_some());
-    let region = Region::default();
-    let creds = creds().await;
-    let presigned_url = presign_delete(&creds, &region, bucket, s3_key, None);
+    let presigned_url = presign_delete(&s3, bucket, s3_key, None).await.unwrap();
     delete_file_presigned(&Client::new(), &presigned_url)
         .await
         .unwrap();
@@ -101,20 +96,16 @@ async fn test_presign_delete() {
 
 #[tokio::test]
 async fn test_presign_multipart_upload() {
-    let s3client_owned = esthri_test::get_s3client();
+    let s3client_owned = esthri_test::get_s3client_async().await;
     let s3 = s3client_owned.as_ref();
     let filename = "test5mb.bin";
     let filepath = esthri_test::test_data(filename);
     let s3_key = esthri_test::randomised_name(&format!("test_upload/{}", filename));
-    let region = Region::default();
     let bucket = esthri_test::TEST_BUCKET;
     let size = 5242880;
     let part_size = size;
-    let creds = creds().await;
     let upload = setup_presigned_multipart_upload(
         s3,
-        &creds,
-        &region,
         &bucket,
         &s3_key,
         1,
@@ -135,12 +126,4 @@ async fn test_presign_multipart_upload() {
         .unwrap()
         .unwrap();
     assert_eq!(res.size, size as i64);
-}
-
-async fn creds() -> AwsCredentials {
-    DefaultCredentialsProvider::new()
-        .unwrap()
-        .credentials()
-        .await
-        .unwrap()
 }

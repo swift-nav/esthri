@@ -9,23 +9,17 @@ repository = "https://github.com/swift-nav/esthri/"
 homepage = "https://github.com/swift-nav/esthri/"
 readme = "../../README.md"
 keywords = ["aws", "s3"]
-rust-version = "1.63.0"
+rust-version = "1.72.0"
 
 [features]
 default = []
-nativetls = ["rusoto_core/native-tls", "rusoto_s3/native-tls", "hyper-tls"]
-rustls = ["rusoto_core/rustls", "rusoto_s3/rustls", "hyper-rustls"]
+nativetls = ["hyper-tls"]
+rustls = ["hyper-rustls"]
 aggressive_lint = []
 blocking = []
 
 [dependencies]
 hyper = "0.14"
-rusoto_core = { version = ">= 0.46, < 1", default-features = false }
-rusoto_credential = { version = ">= 0.46, < 1", default-features = false }
-rusoto_s3 = { version = ">= 0.46, < 1", default-features = false }
-rusoto_signature = { version = ">= 0.46, < 1", default-features = false }
-rusoto_sts = { version = ">= 0.46, < 1", default-features = false }
-
 [dependencies.hyper-tls]
 version = "0.5"
 optional = true

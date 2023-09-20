@@ -4,12 +4,11 @@ use glob::Pattern;
 use tempdir::TempDir;
 use tempfile::tempdir;
 
-use esthri::{
-    blocking, opts::*, rusoto::S3Client, sync, sync_streaming, GlobFilter, S3PathParam,
-    FILTER_EMPTY,
-};
+use esthri::{blocking, opts::*, sync, sync_streaming, GlobFilter, S3PathParam, FILTER_EMPTY};
 use esthri_test::{validate_key_hash_pairs, KeyHashPair};
 use tokio_stream::StreamExt;
+
+use aws_sdk_s3::Client as S3Client;
 
 #[test]
 fn test_sync_down() {
@@ -38,7 +37,7 @@ fn test_sync_down() {
 
 #[tokio::test]
 async fn test_sync_down_async() {
-    let s3client = esthri_test::get_s3client();
+    let s3client = esthri_test::get_s3client_async().await;
     let local_directory = esthri_test::test_data_dir();
     let s3_key = "test_folder/";
     let filters: Option<Vec<GlobFilter>> = Some(vec![
@@ -135,7 +134,7 @@ fn test_sync_up() {
 
 #[tokio::test]
 async fn test_sync_up_async() {
-    let s3client = esthri_test::get_s3client();
+    let s3client = esthri_test::get_s3client_async().await;
     let local_directory = esthri_test::test_data_dir();
     let s3_key = esthri_test::randomised_lifecycled_prefix("test_folder/");
     let filters: Option<Vec<GlobFilter>> = Some(vec![
@@ -449,7 +448,7 @@ fn test_sync_down_filter() {
 
 #[tokio::test]
 async fn test_sync_across() {
-    let s3client = esthri_test::get_s3client();
+    let s3client = esthri_test::get_s3client_async().await;
     let source_prefix = "test_sync_folder1/";
     let dest_prefix = esthri_test::randomised_lifecycled_prefix("test_sync_folder2/");
 
@@ -657,7 +656,7 @@ fn test_sync_down_compressed_mixed() {
 
 #[tokio::test]
 async fn test_sync_down_async_streaming() {
-    let s3client = esthri_test::get_s3client();
+    let s3client = esthri_test::get_s3client_async().await;
     let local_directory = esthri_test::test_data_dir();
     let s3_key = "test_folder/";
     let filters: Vec<GlobFilter> = vec![

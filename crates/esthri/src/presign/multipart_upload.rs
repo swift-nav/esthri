@@ -28,16 +28,15 @@
 use std::{path::PathBuf, time::Duration};
 
 use crate::{
+    aws_sdk::{complete_multipart_upload, create_multipart_upload},
     opts::EsthriPutOptParams,
     presign::n_parts,
-    rusoto::{complete_multipart_upload, create_multipart_upload},
-    PendingUpload, Result,
+    Error, PendingUpload, Result,
 };
-use esthri_internals::rusoto::{
-    util::{PreSignedRequest, PreSignedRequestOption},
-    AwsCredentials, CompletedPart, Region, S3Client, UploadPartRequest,
-};
-use reqwest::Client;
+use aws_sdk_s3::error::SdkError;
+use aws_sdk_s3::Client as S3Client;
+use aws_sdk_s3::{presigning::PresigningConfig, types::CompletedPart};
+use reqwest::Client as HttpClient;
 use serde::{Deserialize, Serialize};
 use tokio::{
     fs::File,
@@ -56,9 +55,7 @@ pub struct PresignedMultipartUpload {
 /// Begin a multipart upload and presign the urls for each part.
 #[allow(clippy::too_many_arguments)]
 pub async fn setup_presigned_multipart_upload(
-    client: &S3Client,
-    credentials: &AwsCredentials,
-    region: &Region,
+    s3: &S3Client,
     bucket: impl AsRef<str>,
     key: impl AsRef<str>,
     n_parts: usize,
@@ -66,7 +63,7 @@ pub async fn setup_presigned_multipart_upload(
     opts: EsthriPutOptParams,
 ) -> Result<PresignedMultipartUpload> {
     let upload_id = create_multipart_upload(
-        client,
+        s3,
         bucket.as_ref(),
         key.as_ref(),
         None,
@@ -75,28 +72,31 @@ pub async fn setup_presigned_multipart_upload(
     .await?
     .upload_id
     .unwrap();
-    let parts = (1..n_parts + 1)
+
+    let fut: Vec<_> = (1..=n_parts)
         .map(|part| {
-            (
-                part,
-                presign_multipart_upload(
-                    credentials,
-                    region,
-                    bucket.as_ref(),
-                    key.as_ref(),
-                    part as i64,
-                    upload_id.clone(),
-                    expiration,
-                ),
-            )
+            let bucket = bucket.as_ref().to_string();
+            let key = key.as_ref().to_string();
+            let upload_id = upload_id.clone();
+            async move {
+                let url =
+                    presign_multipart_upload(s3, bucket, key, part as i32, upload_id, expiration)
+                        .await?;
+                Ok((part, url))
+            }
         })
         .collect();
-    Ok(PresignedMultipartUpload { upload_id, parts })
+
+    let parts: Result<Vec<_>> = futures::future::try_join_all(fut).await;
+    Ok(PresignedMultipartUpload {
+        upload_id,
+        parts: parts?,
+    })
 }
 
 /// Upload a file using a presigned multipart upload.
 pub async fn upload_file_presigned_multipart_upload(
-    client: &Client,
+    client: &HttpClient,
     presigned_multipart_upload: PresignedMultipartUpload,
     file: &PathBuf,
     part_size: usize,
@@ -146,9 +146,11 @@ pub async fn complete_presigned_multipart_upload(
     let parts: Vec<_> = presigned_multipart_upload
         .parts
         .into_iter()
-        .map(|(part, etag)| CompletedPart {
-            e_tag: Some(etag),
-            part_number: Some(part as i64),
+        .map(|(part, etag)| {
+            CompletedPart::builder()
+                .e_tag(etag)
+                .part_number(part as i32)
+                .build()
         })
         .collect();
     complete_multipart_upload(
@@ -156,7 +158,7 @@ pub async fn complete_presigned_multipart_upload(
         bucket.as_ref(),
         key.as_ref(),
         presigned_multipart_upload.upload_id.as_ref(),
-        &parts,
+        parts.as_slice(),
     )
     .await
 }
@@ -173,24 +175,31 @@ pub async fn abort_presigned_multipart_upload(
         .await
 }
 
-fn presign_multipart_upload(
-    credentials: &AwsCredentials,
-    region: &Region,
-    bucket: impl AsRef<str>,
-    key: impl AsRef<str>,
-    part: i64,
+async fn presign_multipart_upload(
+    s3: &S3Client,
+    bucket: String,
+    key: String,
+    part: i32,
     upload_id: String,
     expiration: Option<Duration>,
-) -> String {
-    let options = PreSignedRequestOption {
-        expires_in: expiration.unwrap_or(DEAFULT_EXPIRATION),
-    };
-    UploadPartRequest {
-        bucket: bucket.as_ref().to_owned(),
-        key: key.as_ref().to_owned(),
-        part_number: part,
-        upload_id,
-        ..Default::default()
-    }
-    .get_presigned_url(region, credentials, &options)
+) -> Result<String> {
+    let presigning_config = PresigningConfig::builder()
+        .expires_in(expiration.unwrap_or(DEAFULT_EXPIRATION))
+        .build()
+        .map_err(Error::PresigningConfigError)?;
+
+    let presigned_req = s3
+        .upload_part()
+        .bucket(bucket)
+        .key(key)
+        .part_number(part)
+        .upload_id(upload_id)
+        .presigned(presigning_config)
+        .await
+        .map_err(|e| match e {
+            SdkError::ServiceError(error) => Error::UploadPartFailed(Box::new(error.into_err())),
+            _ => Error::SdkError(e.to_string()),
+        })?;
+
+    Ok(presigned_req.uri().to_string())
 }

@@ -11,37 +11,46 @@
  */
 use std::time::Duration;
 
-use crate::Result;
-use esthri_internals::rusoto::{
-    util::{PreSignedRequest, PreSignedRequestOption},
-    AwsCredentials, DeleteObjectRequest, Region,
-};
-use reqwest::Client;
+use crate::{Error, Result};
+use aws_sdk_s3::error::SdkError;
+use aws_sdk_s3::presigning::PresigningConfig;
+use aws_sdk_s3::Client as S3Client;
+use reqwest::Client as HttpClient;
 
 use super::DEAFULT_EXPIRATION;
 
 /// Generate a presigned URL for a client to use to delete a file.
 /// The file can be deleted using an HTTP DELETE on this URL.
-pub fn presign_delete(
-    credentials: &AwsCredentials,
-    region: &Region,
+pub async fn presign_delete(
+    s3: &S3Client,
     bucket: impl AsRef<str>,
     key: impl AsRef<str>,
     expiration: Option<Duration>,
-) -> String {
-    let options = PreSignedRequestOption {
-        expires_in: expiration.unwrap_or(DEAFULT_EXPIRATION),
-    };
-    DeleteObjectRequest {
-        bucket: bucket.as_ref().to_owned(),
-        key: key.as_ref().to_owned(),
-        ..Default::default()
-    }
-    .get_presigned_url(region, credentials, &options)
+) -> Result<String> {
+    let presigning_config = PresigningConfig::builder()
+        .expires_in(expiration.unwrap_or(DEAFULT_EXPIRATION))
+        .build()
+        .map_err(Error::PresigningConfigError)?;
+
+    let presigned_req = s3
+        .delete_object()
+        .bucket(bucket.as_ref().to_string())
+        .key(key.as_ref().to_string())
+        .presigned(presigning_config)
+        .await
+        .map_err(|e| match e {
+            SdkError::ServiceError(error) => Error::DeleteObjectFailed(Box::new(error.into_err())),
+            _ => Error::SdkError(e.to_string()),
+        })?;
+
+    Ok(presigned_req.uri().to_string())
 }
 
 /// Helper to delete a file using a presigned URL.
-pub async fn delete_file_presigned(client: &Client, presigned_url: impl AsRef<str>) -> Result<()> {
+pub async fn delete_file_presigned(
+    client: &HttpClient,
+    presigned_url: impl AsRef<str>,
+) -> Result<()> {
     client
         .delete(presigned_url.as_ref())
         .send()

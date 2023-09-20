@@ -14,7 +14,7 @@ use esthri_test::{validate_key_hash_pairs, DateTime, KeyHashPair};
 async fn test_fetch_object() {
     let filename = esthri_test::test_data("test_file.txt");
 
-    let s3client = esthri_test::get_s3client();
+    let s3client = esthri_test::get_s3client_async().await;
     let bucket = esthri_test::TEST_BUCKET;
 
     let s3_key = "test_file.txt".to_owned();
@@ -49,7 +49,7 @@ async fn test_fetch_object() {
 async fn test_allowed_prefixes() {
     let filename = esthri_test::test_data("test_file.txt");
 
-    let s3client = esthri_test::get_s3client();
+    let s3client = esthri_test::get_s3client_async().await;
     let bucket = esthri_test::TEST_BUCKET;
 
     // Nominal happy path, a prefix is allowed, so access to a file is allowed.
@@ -145,7 +145,7 @@ async fn test_allowed_prefixes() {
 
 async fn upload_compressed_html_file() {
     let filename = esthri_test::test_data("index.html");
-    let s3client = esthri_test::get_s3client();
+    let s3client = esthri_test::get_s3client_async().await;
     let s3_key = "index_compressed.html".to_owned();
     let opts = EsthriPutOptParamsBuilder::default()
         .transparent_compression(true)
@@ -168,7 +168,7 @@ async fn upload_compressed_html_file() {
 #[tokio::test]
 async fn test_fetch_compressed_object_encoding() {
     upload_compressed_html_file().await;
-    let s3client = esthri_test::get_s3client();
+    let s3client = esthri_test::get_s3client_async().await;
 
     let filter = esthri_filter((*s3client).clone(), esthri_test::TEST_BUCKET, false, &[]);
 
@@ -205,7 +205,7 @@ fn upload_test_data() -> anyhow::Result<()> {
             esthri_test::TEST_BUCKET,
             s3_key,
             filepath.to_str().unwrap(),
-            opts,
+            opts.clone(),
         )?;
     }
     Ok(())
@@ -213,7 +213,7 @@ fn upload_test_data() -> anyhow::Result<()> {
 
 async fn upload_index_url_test_data() -> anyhow::Result<()> {
     let s3_key = "index_html";
-    let s3client = esthri_test::get_s3client();
+    let s3client = esthri_test::get_s3client_async().await;
     let local_directory = esthri_test::test_data(s3_key);
     let opts = SharedSyncOptParamsBuilder::default().build().unwrap();
     esthri::sync(
@@ -282,7 +282,7 @@ async fn fetch_archive_and_validate(
     key_hash_pairs: &[KeyHashPair],
     upload_time: DateTime,
 ) {
-    let s3client = esthri_test::get_s3client();
+    let s3client = esthri_test::get_s3client_async().await;
     let filter = esthri_filter((*s3client).clone(), esthri_test::TEST_BUCKET, false, &[]);
     let mut body = warp::test::request()
         .path(request_path)
@@ -436,7 +436,7 @@ fn test_fetch_archive_with_compressed_files() {
 async fn test_index_url_nominal() {
     upload_index_url_test_data().await.unwrap();
 
-    let s3client = esthri_test::get_s3client();
+    let s3client = esthri_test::get_s3client_async().await;
     let s3client = (*s3client).clone();
 
     let bucket = esthri_test::TEST_BUCKET;
@@ -460,7 +460,7 @@ async fn test_index_url_nominal() {
 async fn test_index_url_redirect() {
     upload_index_url_test_data().await.unwrap();
 
-    let s3client = esthri_test::get_s3client();
+    let s3client = esthri_test::get_s3client_async().await;
     let s3client = (*s3client).clone();
 
     let bucket = esthri_test::TEST_BUCKET;
@@ -492,7 +492,7 @@ async fn test_index_url_redirect() {
 async fn test_index_url_listing_fallback() {
     upload_index_url_test_data().await.unwrap();
 
-    let s3client = esthri_test::get_s3client();
+    let s3client = esthri_test::get_s3client_async().await;
     let s3client = (*s3client).clone();
 
     let bucket = esthri_test::TEST_BUCKET;
@@ -517,7 +517,7 @@ async fn test_index_url_listing_fallback() {
 async fn test_index_url_different_index_html() {
     upload_index_url_test_data().await.unwrap();
 
-    let s3client = esthri_test::get_s3client();
+    let s3client = esthri_test::get_s3client_async().await;
     let s3client = (*s3client).clone();
 
     let bucket = esthri_test::TEST_BUCKET;

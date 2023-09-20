@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use futures::{stream, StreamExt};
 
+use aws_sdk_s3::Client as S3Client;
 use esthri::{opts::*, Result};
-use esthri_internals::rusoto::S3Client;
 
 #[tokio::test]
 async fn test_delete() {
@@ -42,14 +42,14 @@ fn test_delete_blocking() {
 }
 
 async fn upload_test_data() -> (Arc<S3Client>, String, String, String) {
-    let s3client_owned = esthri_test::get_s3client();
+    let s3client_owned = esthri_test::get_s3client_async().await;
     let s3client = s3client_owned.as_ref();
     let filepath = "test_file.txt";
     let filepath = esthri_test::test_data(filepath);
     let s3_key = "delete_me.txt";
     let bucket = esthri_test::TEST_BUCKET;
     let opts = EsthriPutOptParamsBuilder::default().build().unwrap();
-    let res = esthri::upload(s3client, &bucket, &s3_key, &filepath, opts).await;
+    let res = esthri::upload(s3client, &bucket, &s3_key, &filepath, opts.clone()).await;
     assert!(res.is_ok());
     let s3_key2 = "delete_me2.txt";
     let res = esthri::upload(s3client, &bucket, &s3_key, &filepath, opts).await;

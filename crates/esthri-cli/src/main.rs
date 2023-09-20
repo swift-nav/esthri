@@ -23,9 +23,10 @@ use glob::Pattern;
 use log::*;
 use tokio::runtime::Builder;
 
+use aws_sdk_s3::Client as S3Client;
 use cli_opts::*;
 use cli_utils::*;
-use esthri::{rusoto::*, GlobFilter, PendingUpload};
+use esthri::{self, GlobFilter, PendingUpload};
 
 #[derive(Debug, Parser)]
 #[clap(name = "esthri", about = "Simple S3 file transfer utility.", version)]
@@ -228,14 +229,9 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
         }
 
         Presign(params) => {
-            let creds = &DefaultCredentialsProvider::new()
-                .unwrap()
-                .credentials()
-                .await
-                .unwrap();
             println!(
                 "{}",
-                esthri::presign_get(creds, &Region::ApEast1, params.bucket, params.key, None,)
+                esthri::presign_get(s3, params.bucket, params.key, None,).await?
             );
         }
     }
@@ -258,11 +254,7 @@ async fn async_main() -> Result<()> {
         call_real_aws();
     }
 
-    let region = Region::default();
-
-    info!("Starting, using region: {:?}...", region);
-
-    let s3 = setup_s3client_with_cred_provider()?;
+    let s3 = setup_s3client_with_cred_provider().await.unwrap();
 
     if aws_compat_mode {
         let args = AwsCompatCli::try_parse().map_err(|e| {
