@@ -23,8 +23,6 @@ pub struct TestGlobal {
 static TEST_GLOBAL: Lazy<Mutex<TestGlobal>> =
     Lazy::new(|| Mutex::new(TestGlobal { s3client: None }));
 
-// const TEST_GLOBAL_LOCK_FAILED: &str = "locking global test data failed";
-
 pub const TEST_BUCKET: &str = "esthri-test";
 
 pub type DateTime = chrono::DateTime<chrono::Utc>;
