@@ -1,7 +1,7 @@
 [package]
 name = "esthri-test"
 description = "Tests for esthri"
-version = "10.0.7"
+version = "11.0.0"
 authors = ["Swift Navigation <dev@swift-nav.com>"]
 edition = "2018"
 license = "MIT"
