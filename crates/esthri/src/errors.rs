@@ -13,7 +13,7 @@
 pub use std::error::Error as StdError;
 use std::path::StripPrefixError;
 
-use aws_sdk_s3::operation::list_objects_v2::ListObjectsV2Error;
+use aws_sdk_s3::operation::{head_object::HeadObjectError, list_objects_v2::ListObjectsV2Error};
 use aws_sdk_s3::presigning::PresigningConfigError;
 use chrono::ParseError;
 use glob::PatternError;
@@ -70,8 +70,12 @@ pub enum Error {
     #[error("unexpected: parent dir was null")]
     ParentDirNone,
 
-    #[error("head object failed")]
-    HeadObjectFailure(String),
+    #[error("head object failed on prefix {prefix}: {source}")]
+    HeadObjectFailure {
+        prefix: String,
+        #[source]
+        source: Box<HeadObjectError>,
+    },
 
     #[error(transparent)]
     HeadObjectFailedParseError(#[from] ParseError),
@@ -154,6 +158,9 @@ pub enum Error {
 
     #[error(transparent)]
     PresigningConfigError(#[from] PresigningConfigError),
+
+    #[error("aws sdk error")]
+    SdkError(String),
 }
 
 impl From<std::convert::Infallible> for Error {
