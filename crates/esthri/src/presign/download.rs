@@ -48,7 +48,7 @@ pub async fn presign_get(
         .presigned(presigning_config)
         .await
         .map_err(|e| match e {
-            SdkError::ServiceError(error) => Error::GetObjectFailed(error.into_err()),
+            SdkError::ServiceError(error) => Error::GetObjectFailed(Box::new(error.into_err())),
             _ => Error::SdkError(e.to_string()),
         })?;
 

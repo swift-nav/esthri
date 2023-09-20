@@ -50,7 +50,7 @@ pub async fn delete(s3: &Client, bucket: impl AsRef<str>, keys: &[impl AsRef<str
         .send()
         .await
         .map_err(|e| match e {
-            SdkError::ServiceError(error) => Error::DeleteObjectsFailed(error.into_err()),
+            SdkError::ServiceError(error) => Error::DeleteObjectsFailed(Box::new(error.into_err())),
             _ => Error::SdkError(e.to_string()),
         })?;
 
@@ -96,7 +96,9 @@ pub fn delete_streaming<'a>(
                     .delete(delete)
                     .send();
                 future::Either::Left(fut.map_ok(move |_| len).map_err(|e| match e {
-                    SdkError::ServiceError(error) => Error::DeleteObjectsFailed(error.into_err()),
+                    SdkError::ServiceError(error) => {
+                        Error::DeleteObjectsFailed(Box::new(error.into_err()))
+                    }
                     _ => Error::SdkError(e.to_string()),
                 }))
             }

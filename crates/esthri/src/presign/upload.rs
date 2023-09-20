@@ -52,7 +52,7 @@ pub async fn presign_put(
         .presigned(presigning_config)
         .await
         .map_err(|e| match e {
-            SdkError::ServiceError(error) => Error::PutObjectFailed(error.into_err()),
+            SdkError::ServiceError(error) => Error::PutObjectFailed(Box::new(error.into_err())),
             _ => Error::SdkError(e.to_string()),
         })?;
 

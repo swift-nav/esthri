@@ -197,7 +197,7 @@ async fn presign_multipart_upload(
         .presigned(presigning_config)
         .await
         .map_err(|e| match e {
-            SdkError::ServiceError(error) => Error::UploadPartFailed(error.into_err()),
+            SdkError::ServiceError(error) => Error::UploadPartFailed(Box::new(error.into_err())),
             _ => Error::SdkError(e.to_string()),
         })?;
 

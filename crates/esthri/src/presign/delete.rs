@@ -39,7 +39,7 @@ pub async fn presign_delete(
         .presigned(presigning_config)
         .await
         .map_err(|e| match e {
-            SdkError::ServiceError(error) => Error::DeleteObjectFailed(error.into_err()),
+            SdkError::ServiceError(error) => Error::DeleteObjectFailed(Box::new(error.into_err())),
             _ => Error::SdkError(e.to_string()),
         })?;
 

@@ -73,7 +73,7 @@ impl PendingUpload {
             .await
             .map_err(|e| match e {
                 SdkError::ServiceError(error) => {
-                    Error::AbortMultipartUploadFailed(error.into_err())
+                    Error::AbortMultipartUploadFailed(Box::new(error.into_err()))
                 }
                 _ => Error::SdkError(e.to_string()),
             })?;
@@ -227,7 +227,7 @@ async fn empty_upload(
         .send()
         .await
         .map_err(|e| match e {
-            SdkError::ServiceError(error) => Error::PutObjectFailed(error.into_err()),
+            SdkError::ServiceError(error) => Error::PutObjectFailed(Box::new(error.into_err())),
             _ => Error::SdkError(e.to_string()),
         })?;
     Ok(())
@@ -264,7 +264,7 @@ where
         .send()
         .await
         .map_err(|e| match e {
-            SdkError::ServiceError(error) => Error::PutObjectFailed(error.into_err()),
+            SdkError::ServiceError(error) => Error::PutObjectFailed(Box::new(error.into_err())),
             _ => Error::SdkError(e.to_string()),
         })?;
     Ok(())
@@ -413,7 +413,9 @@ where
                 .send()
                 .await
                 .map_err(|e| match e {
-                    SdkError::ServiceError(error) => Error::UploadPartFailed(error.into_err()),
+                    SdkError::ServiceError(error) => {
+                        Error::UploadPartFailed(Box::new(error.into_err()))
+                    }
                     _ => Error::SdkError(e.to_string()),
                 })?;
 

@@ -58,16 +58,16 @@ pub enum Error {
     ReadZero,
 
     #[error(transparent)]
-    UploadPartFailed(#[from] UploadPartError),
+    UploadPartFailed(#[from] Box<UploadPartError>),
 
     #[error(transparent)]
-    CompletedMultipartUploadFailed(#[from] CompleteMultipartUploadError),
+    CompletedMultipartUploadFailed(#[from] Box<CompleteMultipartUploadError>),
 
     #[error(transparent)]
-    PutObjectFailed(#[from] PutObjectError),
+    PutObjectFailed(#[from] Box<PutObjectError>),
 
     #[error(transparent)]
-    CreateMultipartUploadFailed(#[from] CreateMultipartUploadError),
+    CreateMultipartUploadFailed(#[from] Box<CreateMultipartUploadError>),
 
     #[error("did not expect body field of GetObjectOutput to be none")]
     GetObjectOutputBodyNone,
@@ -95,7 +95,7 @@ pub enum Error {
     WalkDirFailed(#[from] walkdir::Error),
 
     #[error(transparent)]
-    CopyObjectFailed(#[from] CopyObjectError),
+    CopyObjectFailed(#[from] Box<CopyObjectError>),
 
     #[error("list objects failed on prefix {prefix}: {source}")]
     ListObjectsFailed {
@@ -105,19 +105,19 @@ pub enum Error {
     },
 
     #[error(transparent)]
-    AbortMultipartUploadFailed(#[from] AbortMultipartUploadError),
+    AbortMultipartUploadFailed(#[from] Box<AbortMultipartUploadError>),
 
     #[error(transparent)]
     StripPrefixFailed(#[from] StripPrefixError),
 
     #[error(transparent)]
-    GetObjectFailed(#[from] GetObjectError),
+    GetObjectFailed(#[from] Box<GetObjectError>),
 
     #[error(transparent)]
-    DeleteObjectFailed(#[from] DeleteObjectError),
+    DeleteObjectFailed(#[from] Box<DeleteObjectError>),
 
     #[error(transparent)]
-    DeleteObjectsFailed(#[from] DeleteObjectsError),
+    DeleteObjectsFailed(#[from] Box<DeleteObjectsError>),
 
     #[error("invalid key, did not exist remotely: {0}")]
     GetObjectInvalidKey(String),
@@ -129,7 +129,7 @@ pub enum Error {
     GetObjectSizeChanged,
 
     #[error(transparent)]
-    GetBucketLocationFailed(#[from] GetBucketLocationError),
+    GetBucketLocationFailed(#[from] Box<GetBucketLocationError>),
 
     #[error(transparent)]
     IoError(#[from] std::io::Error),

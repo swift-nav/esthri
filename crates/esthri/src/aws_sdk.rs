@@ -149,7 +149,7 @@ pub async fn get_object_part_request(
         .send()
         .await
         .map_err(|e| match e {
-            SdkError::ServiceError(error) => Error::GetObjectFailed(error.into_err()),
+            SdkError::ServiceError(error) => Error::GetObjectFailed(Box::new(error.into_err())),
             _ => Error::SdkError(e.to_string()),
         })?;
     log::debug!("got part={} bucket={} key={}", part, bucket, key);
@@ -173,7 +173,7 @@ pub async fn get_object_request(
         .send()
         .await
         .map_err(|e| match e {
-            SdkError::ServiceError(error) => Error::GetObjectFailed(error.into_err()),
+            SdkError::ServiceError(error) => Error::GetObjectFailed(Box::new(error.into_err())),
             _ => Error::SdkError(e.to_string()),
         })
 }
@@ -200,9 +200,9 @@ pub async fn complete_multipart_upload(
     {
         Ok(_) => Ok(()),
         Err(err) => match err {
-            SdkError::ServiceError(error) => {
-                Err(Error::CompletedMultipartUploadFailed(error.into_err()))
-            }
+            SdkError::ServiceError(error) => Err(Error::CompletedMultipartUploadFailed(Box::new(
+                error.into_err(),
+            ))),
             _ => Err(Error::SdkError(err.to_string())),
         },
     }
@@ -223,7 +223,9 @@ pub async fn create_multipart_upload(
         .send()
         .await
         .map_err(|e| match e {
-            SdkError::ServiceError(error) => Error::CreateMultipartUploadFailed(error.into_err()),
+            SdkError::ServiceError(error) => {
+                Error::CreateMultipartUploadFailed(Box::new(error.into_err()))
+            }
             _ => Error::SdkError(e.to_string()),
         })
 }
@@ -235,7 +237,9 @@ pub async fn get_bucket_location(s3: &Client, bucket: &str) -> Result<String> {
         .send()
         .await
         .map_err(|e| match e {
-            SdkError::ServiceError(error) => Error::GetBucketLocationFailed(error.into_err()),
+            SdkError::ServiceError(error) => {
+                Error::GetBucketLocationFailed(Box::new(error.into_err()))
+            }
             _ => Error::SdkError(e.to_string()),
         })?
         .location_constraint

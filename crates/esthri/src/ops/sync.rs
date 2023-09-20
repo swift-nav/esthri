@@ -574,7 +574,7 @@ async fn copy_object_request(
         .send()
         .await
         .map_err(|e| match e {
-            SdkError::ServiceError(error) => Error::CopyObjectFailed(error.into_err()),
+            SdkError::ServiceError(error) => Error::CopyObjectFailed(Box::new(error.into_err())),
             _ => Error::SdkError(e.to_string()),
         })?;
 
