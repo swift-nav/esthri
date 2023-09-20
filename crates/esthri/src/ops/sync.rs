@@ -18,6 +18,7 @@ use std::{
 
 use futures::{future, pin_mut, Future, Stream, StreamExt, TryStreamExt};
 
+use aws_sdk_s3::error::SdkError;
 use aws_sdk_s3::operation::copy_object::CopyObjectOutput;
 use aws_sdk_s3::Client;
 use glob::Pattern;
@@ -572,7 +573,10 @@ async fn copy_object_request(
         .copy_source(format!("{}/{}", source_bucket, file_name))
         .send()
         .await
-        .map_err(|e| Error::CopyObjectFailed(e.to_string()))?;
+        .map_err(|e| match e {
+            SdkError::ServiceError(error) => Error::CopyObjectFailed(error.into_err()),
+            _ => Error::SdkError(e.to_string()),
+        })?;
 
     Ok(res)
 }

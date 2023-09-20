@@ -12,6 +12,7 @@
 
 use std::{borrow::Cow, collections::HashMap, io::SeekFrom, path::Path, sync::Arc};
 
+use aws_sdk_s3::error::SdkError;
 use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::types::{CompletedPart, ObjectCannedAcl, StorageClass};
 use aws_sdk_s3::Client;
@@ -70,7 +71,12 @@ impl PendingUpload {
             .upload_id(self.upload_id.clone())
             .send()
             .await
-            .map_err(|e| Error::AbortMultipartUploadFailed(e.to_string()))?;
+            .map_err(|e| match e {
+                SdkError::ServiceError(error) => {
+                    Error::AbortMultipartUploadFailed(error.into_err())
+                }
+                _ => Error::SdkError(e.to_string()),
+            })?;
         Ok(())
     }
 
@@ -220,7 +226,10 @@ async fn empty_upload(
         .storage_class(storage_class)
         .send()
         .await
-        .map_err(|e| Error::PutObjectFailed(e.to_string()))?;
+        .map_err(|e| match e {
+            SdkError::ServiceError(error) => Error::PutObjectFailed(error.into_err()),
+            _ => Error::SdkError(e.to_string()),
+        })?;
     Ok(())
 }
 
@@ -254,7 +263,10 @@ where
         .storage_class(storage_class)
         .send()
         .await
-        .map_err(|e| Error::PutObjectFailed(e.to_string()))?;
+        .map_err(|e| match e {
+            SdkError::ServiceError(error) => Error::PutObjectFailed(error.into_err()),
+            _ => Error::SdkError(e.to_string()),
+        })?;
     Ok(())
 }
 
@@ -400,7 +412,10 @@ where
                 .body(body)
                 .send()
                 .await
-                .map_err(|e| Error::UploadPartFailed(e.to_string()))?;
+                .map_err(|e| match e {
+                    SdkError::ServiceError(error) => Error::UploadPartFailed(error.into_err()),
+                    _ => Error::SdkError(e.to_string()),
+                })?;
 
             if res.e_tag.is_none() {
                 warn!(

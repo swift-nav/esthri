@@ -12,6 +12,7 @@
 use std::time::Duration;
 
 use crate::{Error, Result};
+use aws_sdk_s3::error::SdkError;
 use aws_sdk_s3::presigning::PresigningConfig;
 use aws_sdk_s3::Client as S3Client;
 use reqwest::Client as HttpClient;
@@ -37,7 +38,10 @@ pub async fn presign_delete(
         .key(key.as_ref().to_string())
         .presigned(presigning_config)
         .await
-        .map_err(|e| Error::DeleteObjectsFailed(e.to_string()))?;
+        .map_err(|e| match e {
+            SdkError::ServiceError(error) => Error::DeleteObjectFailed(error.into_err()),
+            _ => Error::SdkError(e.to_string()),
+        })?;
 
     Ok(presigned_req.uri().to_string())
 }

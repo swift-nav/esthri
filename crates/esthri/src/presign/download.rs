@@ -13,6 +13,7 @@
 use std::{path::Path, time::Duration};
 
 use async_compression::tokio::write::GzipDecoder;
+use aws_sdk_s3::error::SdkError;
 use aws_sdk_s3::presigning::PresigningConfig;
 use aws_sdk_s3::Client as S3Client;
 use futures::TryStreamExt;
@@ -46,7 +47,10 @@ pub async fn presign_get(
         .key(key.as_ref().to_string())
         .presigned(presigning_config)
         .await
-        .map_err(|e| Error::GetObjectFailed(e.to_string()))?;
+        .map_err(|e| match e {
+            SdkError::ServiceError(error) => Error::GetObjectFailed(error.into_err()),
+            _ => Error::SdkError(e.to_string()),
+        })?;
 
     Ok(presigned_req.uri().to_string())
 }

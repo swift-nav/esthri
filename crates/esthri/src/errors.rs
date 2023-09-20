@@ -13,7 +13,18 @@
 pub use std::error::Error as StdError;
 use std::path::StripPrefixError;
 
-use aws_sdk_s3::operation::{head_object::HeadObjectError, list_objects_v2::ListObjectsV2Error};
+use aws_sdk_s3::operation::abort_multipart_upload::AbortMultipartUploadError;
+use aws_sdk_s3::operation::complete_multipart_upload::CompleteMultipartUploadError;
+use aws_sdk_s3::operation::copy_object::CopyObjectError;
+use aws_sdk_s3::operation::create_multipart_upload::CreateMultipartUploadError;
+use aws_sdk_s3::operation::delete_object::DeleteObjectError;
+use aws_sdk_s3::operation::delete_objects::DeleteObjectsError;
+use aws_sdk_s3::operation::get_bucket_location::GetBucketLocationError;
+use aws_sdk_s3::operation::get_object::GetObjectError;
+use aws_sdk_s3::operation::head_object::HeadObjectError;
+use aws_sdk_s3::operation::list_objects_v2::ListObjectsV2Error;
+use aws_sdk_s3::operation::put_object::PutObjectError;
+use aws_sdk_s3::operation::upload_part::UploadPartError;
 use aws_sdk_s3::presigning::PresigningConfigError;
 use chrono::ParseError;
 use glob::PatternError;
@@ -46,17 +57,17 @@ pub enum Error {
     #[error("a read of zero occured")]
     ReadZero,
 
-    #[error("upload_part failed")]
-    UploadPartFailed(String),
+    #[error(transparent)]
+    UploadPartFailed(#[from] UploadPartError),
 
-    #[error("complete_multipart_upload failed")]
-    CompletedMultipartUploadFailed(String),
+    #[error(transparent)]
+    CompletedMultipartUploadFailed(#[from] CompleteMultipartUploadError),
 
-    #[error("put object failed")]
-    PutObjectFailed(String),
+    #[error(transparent)]
+    PutObjectFailed(#[from] PutObjectError),
 
-    #[error("create_multipart_upload failed")]
-    CreateMultipartUploadFailed(String),
+    #[error(transparent)]
+    CreateMultipartUploadFailed(#[from] CreateMultipartUploadError),
 
     #[error("did not expect body field of GetObjectOutput to be none")]
     GetObjectOutputBodyNone,
@@ -83,8 +94,8 @@ pub enum Error {
     #[error(transparent)]
     WalkDirFailed(#[from] walkdir::Error),
 
-    #[error("copy object failed")]
-    CopyObjectFailed(String),
+    #[error(transparent)]
+    CopyObjectFailed(#[from] CopyObjectError),
 
     #[error("list objects failed on prefix {prefix}: {source}")]
     ListObjectsFailed {
@@ -93,17 +104,20 @@ pub enum Error {
         source: Box<ListObjectsV2Error>,
     },
 
-    #[error("abort multipart upload failed")]
-    AbortMultipartUploadFailed(String),
+    #[error(transparent)]
+    AbortMultipartUploadFailed(#[from] AbortMultipartUploadError),
 
     #[error(transparent)]
     StripPrefixFailed(#[from] StripPrefixError),
 
-    #[error("get object failed")]
-    GetObjectFailed(String),
+    #[error(transparent)]
+    GetObjectFailed(#[from] GetObjectError),
 
-    #[error("delete objects failed")]
-    DeleteObjectsFailed(String),
+    #[error(transparent)]
+    DeleteObjectFailed(#[from] DeleteObjectError),
+
+    #[error(transparent)]
+    DeleteObjectsFailed(#[from] DeleteObjectsError),
 
     #[error("invalid key, did not exist remotely: {0}")]
     GetObjectInvalidKey(String),
@@ -114,8 +128,8 @@ pub enum Error {
     #[error("remote object sized changed while reading")]
     GetObjectSizeChanged,
 
-    #[error("get bucket location failed")]
-    GetBucketLocationFailed(String),
+    #[error(transparent)]
+    GetBucketLocationFailed(#[from] GetBucketLocationError),
 
     #[error(transparent)]
     IoError(#[from] std::io::Error),

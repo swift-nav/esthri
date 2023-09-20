@@ -33,6 +33,7 @@ use crate::{
     presign::n_parts,
     Error, PendingUpload, Result,
 };
+use aws_sdk_s3::error::SdkError;
 use aws_sdk_s3::Client as S3Client;
 use aws_sdk_s3::{presigning::PresigningConfig, types::CompletedPart};
 use reqwest::Client as HttpClient;
@@ -195,7 +196,10 @@ async fn presign_multipart_upload(
         .upload_id(upload_id)
         .presigned(presigning_config)
         .await
-        .map_err(|e| Error::UploadPartFailed(e.to_string()))?;
+        .map_err(|e| match e {
+            SdkError::ServiceError(error) => Error::UploadPartFailed(error.into_err()),
+            _ => Error::SdkError(e.to_string()),
+        })?;
 
     Ok(presigned_req.uri().to_string())
 }

@@ -12,6 +12,7 @@
 
 use futures::{future, stream::Stream, Future, StreamExt, TryFutureExt};
 
+use aws_sdk_s3::error::SdkError;
 use aws_sdk_s3::types::{Delete, ObjectIdentifier};
 use aws_sdk_s3::Client;
 use log::{debug, info};
@@ -48,7 +49,10 @@ pub async fn delete(s3: &Client, bucket: impl AsRef<str>, keys: &[impl AsRef<str
         .delete(delete)
         .send()
         .await
-        .map_err(|e| Error::DeleteObjectsFailed(e.to_string()))?;
+        .map_err(|e| match e {
+            SdkError::ServiceError(error) => Error::DeleteObjectsFailed(error.into_err()),
+            _ => Error::SdkError(e.to_string()),
+        })?;
 
     Ok(())
 }
@@ -91,10 +95,10 @@ pub fn delete_streaming<'a>(
                     .bucket(bucket.as_ref().to_string())
                     .delete(delete)
                     .send();
-                future::Either::Left(
-                    fut.map_ok(move |_| len)
-                        .map_err(|e| Error::DeleteObjectsFailed(e.to_string())),
-                )
+                future::Either::Left(fut.map_ok(move |_| len).map_err(|e| match e {
+                    SdkError::ServiceError(error) => Error::DeleteObjectsFailed(error.into_err()),
+                    _ => Error::SdkError(e.to_string()),
+                }))
             }
             Err(err) => {
                 println!("nothing found in delete_streaming keys");

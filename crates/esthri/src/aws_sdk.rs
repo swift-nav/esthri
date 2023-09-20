@@ -12,13 +12,13 @@
 
 use std::{collections::HashMap, str::FromStr};
 
+use aws_sdk_s3::error::SdkError;
 use aws_sdk_s3::operation::create_multipart_upload::CreateMultipartUploadOutput;
 use aws_sdk_s3::operation::get_object::GetObjectOutput;
 use aws_sdk_s3::operation::head_object::{HeadObjectError, HeadObjectOutput};
 use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart, StorageClass};
 use aws_sdk_s3::Client;
-use aws_smithy_http::result::SdkError;
 use aws_smithy_types_convert::date_time::DateTimeExt;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
@@ -148,7 +148,10 @@ pub async fn get_object_part_request(
         .part_number(part as i32)
         .send()
         .await
-        .map_err(|e| Error::GetObjectFailed(e.to_string()))?;
+        .map_err(|e| match e {
+            SdkError::ServiceError(error) => Error::GetObjectFailed(error.into_err()),
+            _ => Error::SdkError(e.to_string()),
+        })?;
     log::debug!("got part={} bucket={} key={}", part, bucket, key);
     Ok(GetObjectResponse {
         stream: goo.body,
@@ -169,7 +172,10 @@ pub async fn get_object_request(
         .set_range(range)
         .send()
         .await
-        .map_err(|e| Error::GetObjectFailed(e.to_string()))
+        .map_err(|e| match e {
+            SdkError::ServiceError(error) => Error::GetObjectFailed(error.into_err()),
+            _ => Error::SdkError(e.to_string()),
+        })
 }
 
 pub async fn complete_multipart_upload(
@@ -193,7 +199,12 @@ pub async fn complete_multipart_upload(
         .await
     {
         Ok(_) => Ok(()),
-        Err(err) => Err(Error::CompletedMultipartUploadFailed(err.to_string())),
+        Err(err) => match err {
+            SdkError::ServiceError(error) => {
+                Err(Error::CompletedMultipartUploadFailed(error.into_err()))
+            }
+            _ => Err(Error::SdkError(err.to_string())),
+        },
     }
 }
 
@@ -211,7 +222,10 @@ pub async fn create_multipart_upload(
         .storage_class(storage_class)
         .send()
         .await
-        .map_err(|e| Error::CreateMultipartUploadFailed(e.to_string()))
+        .map_err(|e| match e {
+            SdkError::ServiceError(error) => Error::CreateMultipartUploadFailed(error.into_err()),
+            _ => Error::SdkError(e.to_string()),
+        })
 }
 
 pub async fn get_bucket_location(s3: &Client, bucket: &str) -> Result<String> {
@@ -220,7 +234,10 @@ pub async fn get_bucket_location(s3: &Client, bucket: &str) -> Result<String> {
         .bucket(bucket)
         .send()
         .await
-        .map_err(|e| Error::GetBucketLocationFailed(e.to_string()))?
+        .map_err(|e| match e {
+            SdkError::ServiceError(error) => Error::GetBucketLocationFailed(error.into_err()),
+            _ => Error::SdkError(e.to_string()),
+        })?
         .location_constraint
         .ok_or(Error::LocationConstraintNone)?
         .as_str()
