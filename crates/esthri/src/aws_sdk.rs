@@ -111,9 +111,12 @@ pub async fn head_object_request(
         }
         Err(SdkError::ServiceError(error)) => match error.err() {
             HeadObjectError::NotFound(_) => Ok(None),
-            _ => Err(Error::HeadObjectFailure(error.err().to_string())),
+            _ => Err(Error::HeadObjectFailure {
+                prefix: key.to_string(),
+                source: Box::new(error.into_err()),
+            }),
         },
-        Err(error) => Err(Error::HeadObjectFailure(error.to_string())),
+        Err(error) => Err(Error::SdkError(error.to_string())),
     }
 }
 
