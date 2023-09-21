@@ -58,6 +58,7 @@ pub use presign::{
     upload::{presign_put, upload_file_presigned},
 };
 
+pub use aws_sdk::HeadObjectInfo;
 pub use aws_smithy_client::hyper_ext;
 pub use types::{S3ListingItem, S3Object, S3PathParam};
 
