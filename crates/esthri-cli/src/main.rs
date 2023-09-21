@@ -19,14 +19,13 @@ mod cli_utils;
 
 use anyhow::Result;
 use clap::{CommandFactory, Parser, Subcommand};
+use cli_opts::*;
+use cli_utils::*;
+use esthri::aws_sdk::Client as S3Client;
+use esthri::{self, GlobFilter, PendingUpload};
 use glob::Pattern;
 use log::*;
 use tokio::runtime::Builder;
-
-use aws_sdk_s3::Client as S3Client;
-use cli_opts::*;
-use cli_utils::*;
-use esthri::{self, GlobFilter, PendingUpload};
 
 #[derive(Debug, Parser)]
 #[clap(name = "esthri", about = "Simple S3 file transfer utility.", version)]

@@ -1089,7 +1089,6 @@ dependencies = [
  "async-compression 0.4.3",
  "async-stream",
  "async_zip",
- "aws-sdk-s3",
  "backtrace",
  "bytes",
  "clap",

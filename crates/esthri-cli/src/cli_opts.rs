@@ -1,9 +1,8 @@
-use std::path::PathBuf;
-
-use aws_sdk_s3::types::StorageClass as S3StorageClass;
 use clap::Args;
+use esthri::aws_sdk::StorageClass as S3StorageClass;
 use esthri::{opts::*, S3PathParam};
 use glob::Pattern;
+use std::path::PathBuf;
 
 // Esthri does this by default (and can currently only do this), exposing this
 // as an option just ensures that Esthri will still be able to handle the case

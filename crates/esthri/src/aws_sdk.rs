@@ -17,14 +17,16 @@ use aws_sdk_s3::operation::create_multipart_upload::CreateMultipartUploadOutput;
 use aws_sdk_s3::operation::get_object::GetObjectOutput;
 use aws_sdk_s3::operation::head_object::{HeadObjectError, HeadObjectOutput};
 use aws_sdk_s3::primitives::ByteStream;
-use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart, StorageClass};
-use aws_sdk_s3::Client;
+use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart};
 use aws_smithy_types_convert::date_time::DateTimeExt;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use futures::Stream;
 
 use crate::{Error, Result};
+
+pub use aws_sdk_s3::types::StorageClass;
+pub use aws_sdk_s3::Client;
 
 /// The data returned from a head object request
 #[derive(Debug)]
