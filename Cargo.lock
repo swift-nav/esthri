@@ -1036,7 +1036,7 @@ dependencies = [
 
 [[package]]
 name = "esthri"
-version = "11.0.0"
+version = "11.0.1"
 dependencies = [
  "assert_cmd",
  "async-compression 0.4.3",
