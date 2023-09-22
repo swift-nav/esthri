@@ -26,8 +26,8 @@ use async_zip::{
     write::{EntryOptions, ZipFileWriter},
     Compression,
 };
-use aws_sdk_s3::Client as S3Client;
 use bytes::{Bytes, BytesMut};
+use esthri::aws_sdk::Client as S3Client;
 use futures::stream::{Stream, StreamExt, TryStreamExt};
 use hyper::header::{CONTENT_ENCODING, LOCATION};
 use log::*;

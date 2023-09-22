@@ -1,17 +1,16 @@
+use anyhow::{bail, Result};
+use clap::ArgMatches;
+use esthri::aws_sdk::Client as S3Client;
+use esthri::{AwsCredProvider, GlobFilter};
+use glob::Pattern;
+use log::*;
+use log_derive::logfn;
 use std::{
     env,
     ffi::OsStr,
     path::Path,
     process::{Command, Stdio},
 };
-
-use anyhow::{bail, Result};
-use aws_sdk_s3::Client as S3Client;
-use clap::ArgMatches;
-use esthri::{AwsCredProvider, GlobFilter};
-use glob::Pattern;
-use log::*;
-use log_derive::logfn;
 
 // Environment variable that can be set to set the path to the aws tool that esthri falls back to
 const REAL_AWS_EXECUTABLE_ENV_NAME: &str = "ESTHRI_AWS_PATH";

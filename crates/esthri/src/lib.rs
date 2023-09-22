@@ -59,8 +59,7 @@ pub use presign::{
 };
 
 pub use aws_sdk::HeadObjectInfo;
-use aws_sdk_s3::Client;
-use aws_smithy_client::hyper_ext;
+pub use aws_smithy_client::hyper_ext;
 pub use types::{S3ListingItem, S3Object, S3PathParam};
 
 pub use esthri_internals::new_https_connector;
