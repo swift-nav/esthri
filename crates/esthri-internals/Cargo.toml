@@ -1,7 +1,7 @@
 [package]
 name = "esthri-internals"
 description = "Internals common to esthri crates"
-version = "11.0.0"
+version = "11.0.1"
 authors = ["Swift Navigation <dev@swift-nav.com>"]
 edition = "2018"
 license = "MIT"
