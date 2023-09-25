@@ -221,7 +221,6 @@ async fn write_all_at(file: Arc<std::fs::File>, buf: Bytes, offset: u64) -> Resu
 #[cfg(windows)]
 async fn write_all_at(file: Arc<std::fs::File>, buf: Bytes, offset: u64) -> Result<()> {
     use std::os::windows::prelude::FileExt;
-
     tokio::task::spawn_blocking(move || {
         let (mut offset, mut length) = (offset, buf.len());
         let mut buffer_offset = 0;
@@ -233,8 +232,7 @@ async fn write_all_at(file: Arc<std::fs::File>, buf: Bytes, offset: u64) -> Resu
             offset += write_size as u64;
             buffer_offset += write_size;
         }
-        Result::Ok(())
+        Ok(())
     })
-    .await??;
-    Ok(())
+    .await?
 }
