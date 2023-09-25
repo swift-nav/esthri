@@ -127,18 +127,21 @@ async fn download_file(
     } else {
         let dest = &Arc::new(dest.take_std_file().await);
         let part_size = obj_info.size;
-        let stream = download_unordered_streaming_helper(s3, bucket, key, obj_info.parts)
-            .map_ok(|(part, mut chunks)| async move {
-                let mut offset = (part - 1) * part_size;
-                while let Some(buf) = chunks.try_next().await? {
-                    let len = buf.len();
-                    write_all_at(Arc::clone(dest), buf, offset as u64).await?;
-                    offset += len as i64;
-                }
-                Result::Ok(())
-            })
-            .try_buffer_unordered(Config::global().concurrent_writer_tasks());
-        stream.try_collect().await?;
+        let stream = download_unordered_streaming_helper(s3, bucket, key, obj_info.parts);
+        stream
+            .try_for_each_concurrent(
+                Config::global().concurrent_writer_tasks(),
+                |(part, mut chunks)| async move {
+                    let mut offset = (part - 1) * part_size;
+                    while let Some(buf) = chunks.try_next().await? {
+                        let len = buf.len();
+                        write_all_at(Arc::clone(dest), buf, offset as u64).await?;
+                        offset += len as i64;
+                    }
+                    Ok(())
+                },
+            )
+            .await?;
     };
 
     // If we're trying to download into a directory, assemble the path for the user
