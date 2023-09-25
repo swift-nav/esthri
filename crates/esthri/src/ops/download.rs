@@ -211,13 +211,11 @@ async fn init_download_dir(path: &Path) -> Result<PathBuf> {
 #[cfg(unix)]
 async fn write_all_at(file: Arc<std::fs::File>, buf: Bytes, offset: u64) -> Result<()> {
     use std::os::unix::prelude::FileExt;
-
     tokio::task::spawn_blocking(move || {
         file.write_all_at(&buf, offset)?;
         Ok(())
     })
-    .await??;
-    Ok(())
+    .await?
 }
 
 #[cfg(windows)]
