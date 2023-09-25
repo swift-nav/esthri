@@ -131,7 +131,7 @@ pub struct GetObjectResponse {
 }
 
 impl GetObjectResponse {
-    pub fn into_stream<'a>(self) -> impl Stream<Item = Result<Bytes>> {
+    pub fn into_stream(self) -> impl Stream<Item = Result<Bytes>> {
         TryStreamExt::map_err(self.stream, |e| Error::ByteStreamError(e.to_string()))
     }
 }
