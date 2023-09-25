@@ -127,18 +127,18 @@ async fn download_file(
     } else {
         let dest = &Arc::new(dest.take_std_file().await);
         let part_size = obj_info.size;
-        let stream = download_unordered_streaming_helper(s3, bucket, key, obj_info.parts)
-            .map_ok(|(part, mut chunks)| async move {
+        let limit = Config::global().concurrent_writer_tasks();
+        download_unordered_streaming_helper(s3, bucket, key, obj_info.parts)
+            .try_for_each_concurrent(limit, |(part, mut chunks)| async move {
                 let mut offset = (part - 1) * part_size;
                 while let Some(buf) = chunks.try_next().await? {
                     let len = buf.len();
-                    write_all_at(Arc::clone(dest), buf, offset as u64).await?;
+                    write_all_at(dest.clone(), buf, offset as u64).await?;
                     offset += len as i64;
                 }
-                Result::Ok(())
+                Ok(())
             })
-            .try_buffer_unordered(Config::global().concurrent_writer_tasks());
-        stream.try_collect().await?;
+            .await?;
     };
 
     // If we're trying to download into a directory, assemble the path for the user
@@ -211,19 +211,16 @@ async fn init_download_dir(path: &Path) -> Result<PathBuf> {
 #[cfg(unix)]
 async fn write_all_at(file: Arc<std::fs::File>, buf: Bytes, offset: u64) -> Result<()> {
     use std::os::unix::prelude::FileExt;
-
     tokio::task::spawn_blocking(move || {
         file.write_all_at(&buf, offset)?;
-        Result::Ok(())
+        Ok(())
     })
-    .await??;
-    Ok(())
+    .await?
 }
 
 #[cfg(windows)]
 async fn write_all_at(file: Arc<std::fs::File>, buf: Bytes, offset: u64) -> Result<()> {
     use std::os::windows::prelude::FileExt;
-
     tokio::task::spawn_blocking(move || {
         let (mut offset, mut length) = (offset, buf.len());
         let mut buffer_offset = 0;
@@ -235,8 +232,7 @@ async fn write_all_at(file: Arc<std::fs::File>, buf: Bytes, offset: u64) -> Resu
             offset += write_size as u64;
             buffer_offset += write_size;
         }
-        Result::Ok(())
+        Ok(())
     })
-    .await??;
-    Ok(())
+    .await?
 }

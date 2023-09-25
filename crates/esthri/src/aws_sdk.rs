@@ -21,7 +21,7 @@ use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart};
 use aws_smithy_types_convert::date_time::DateTimeExt;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
-use futures::Stream;
+use futures::{Stream, TryStreamExt};
 
 use crate::{Error, Result};
 
@@ -132,7 +132,7 @@ pub struct GetObjectResponse {
 
 impl GetObjectResponse {
     pub fn into_stream(self) -> impl Stream<Item = Result<Bytes>> {
-        futures::TryStreamExt::map_err(self.stream, |e| Error::ByteStreamError(e.to_string()))
+        TryStreamExt::map_err(self.stream, |e| Error::ByteStreamError(e.to_string()))
     }
 }
 
