@@ -10,6 +10,7 @@
  * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
  */
 
+use async_stream::stream;
 use std::{
     borrow::Cow,
     io::ErrorKind,
@@ -162,7 +163,7 @@ pub async fn sync(
                 key
             );
 
-            // sync_remote_to_local(s3, &bucket, &key, &path, &filters, opts).await?;
+            sync_remote_to_local(s3, &bucket, &key, &path, &filters, opts).await?;
         }
         (
             S3PathParam::Bucket {
@@ -179,16 +180,16 @@ pub async fn sync(
                 source_bucket, source_key, destination_bucket, destination_key
             );
 
-            // sync_across(
-            //     s3,
-            //     &source_bucket,
-            //     &source_key,
-            //     &destination_bucket,
-            //     &destination_key,
-            //     &filters,
-            //     opts.delete,
-            // )
-            // .await?;
+            sync_across(
+                s3,
+                &source_bucket,
+                &source_key,
+                &destination_bucket,
+                &destination_key,
+                &filters,
+                opts.delete,
+            )
+            .await?;
         }
         _ => {
             warn!("Local to Local copy not implemented");
@@ -466,19 +467,16 @@ async fn sync_local_to_remote(
     };
 
     let etag_stream = translate_paths(dirent_stream, cmd).buffer_unordered(task_count);
-    let sync_tasks = local_to_remote_sync_tasks(
+    local_to_remote_sync_tasks(
         s3.clone(),
         bucket.into(),
         key.into(),
         directory.into(),
         etag_stream,
         compressed,
-    );
-
-    sync_tasks
-        .buffer_unordered(task_count)
-        .try_for_each_concurrent(task_count, |_| future::ready(Ok(())))
-        .await?;
+    )
+    .for_each_concurrent(task_count, |_| async {})
+    .await;
 
     if delete {
         sync_delete_local(s3, bucket, key, directory, filters, task_count).await
@@ -497,23 +495,26 @@ async fn sync_delete_local(
     task_count: usize,
 ) -> Result<()> {
     let stream = flattened_object_listing(s3, bucket, key, directory, filters, false);
-    let delete_paths_stream = stream.try_filter_map(|(path, _, s3_metadata)| async move {
-        if let Some(s3_metadata) = s3_metadata {
-            let fs_metadata = fs::metadata(&path).await;
-            match fs_metadata {
-                Ok(_) => Ok(None),
-                Err(e) if e.kind() != ErrorKind::NotFound => Err(e.into()),
-                Err(_) => Ok(Some(key.to_owned() + &s3_metadata.s3_suffix)),
+    let delete_paths_stream = stream.try_filter_map(move |obj| {
+        let key = key.to_string();
+        async {
+            let (path, _, s3_metadata) = obj;
+            if let Some(s3_metadata) = s3_metadata {
+                match fs::metadata(&path).await {
+                    Ok(_) => Ok(None),
+                    Err(e) if e.kind() != ErrorKind::NotFound => Err(e.into()),
+                    Err(_) => Ok(Some(key + &s3_metadata.s3_suffix)),
+                }
+            } else {
+                Err(Error::MetadataNone)
             }
-        } else {
-            Err(Error::MetadataNone)
         }
     });
     pin_mut!(delete_paths_stream);
     crate::delete_streaming(s3, bucket, delete_paths_stream)
-        .buffer_unordered(task_count)
-        .try_for_each_concurrent(task_count, |_| future::ready(Ok(())))
-        .await
+        .for_each_concurrent(task_count, |_| async {})
+        .await;
+    Ok(())
 }
 
 /// Delete all files in `directory` which do not exist withing a `bucket's` corresponding `directory` key prefix
@@ -628,46 +629,35 @@ async fn sync_across(
 /// Delete all files in `directory` which do not exist withing a `bucket's` corresponding `directory` key prefix
 async fn sync_delete_across(
     s3: &Client,
-    source_bucket: &str,
-    source_prefix: &str,
-    destination_bucket: &str,
-    destination_prefix: &str,
+    src_bucket: &str,
+    src_prefix: &str,
+    dst_bucket: &str,
+    dst_prefix: &str,
     filters: &[GlobFilter],
 ) -> Result<()> {
     // Identify all files in destination bucket
-    let all_files_in_destination_bucket_stream = flattened_object_listing(
-        s3,
-        destination_bucket,
-        destination_prefix,
-        std::path::Path::new(source_prefix),
-        filters,
-        false,
-    );
-
+    let dir = Path::new(&src_prefix);
+    let bucket_stream = flattened_object_listing(s3, dst_bucket, dst_prefix, dir, filters, false);
     // For each file, perform a head_object_request on the source directory to determine if file only exists in the destination
-    let delete_paths_stream = all_files_in_destination_bucket_stream.try_filter_map(
-        |(_path, key, _s3_metadata)| async move {
-            let filename = key.strip_prefix(destination_prefix).unwrap();
-            let source_key = source_prefix.to_string() + filename;
-            if head_object_request(s3, source_bucket, &source_key, None)
-                .await?
-                .is_none()
-            {
-                Ok(Some(source_key))
-            } else {
-                Ok(None)
-            }
-        },
-    );
+    let delete_paths_stream = bucket_stream.try_filter_map(move |(_, key, _)| {
+        let s3 = s3.clone();
+        let src_bucket = src_bucket.to_string();
+        let src_prefix = src_prefix.to_string();
+        let dst_prefix = dst_prefix.to_string();
+        async move {
+            let filename = key.strip_prefix(&dst_prefix).unwrap();
+            let source_key = src_prefix + filename;
+            let head_object_info = head_object_request(&s3, &src_bucket, &source_key, None).await?;
+            Ok(head_object_info.map(|_| source_key))
+        }
+    });
 
     // Delete files that exist in destination, but not in source
     pin_mut!(delete_paths_stream);
-    crate::delete_streaming(s3, destination_bucket, delete_paths_stream)
-        .buffer_unordered(Config::global().concurrent_sync_tasks())
-        .try_for_each_concurrent(Config::global().concurrent_sync_tasks(), |_| {
-            future::ready(Ok(()))
-        })
-        .await
+    crate::delete_streaming(s3, &dst_bucket, delete_paths_stream)
+        .for_each_concurrent(Config::global().concurrent_sync_tasks(), |_| async {})
+        .await;
+    Ok(())
 }
 
 // Create a result stream consisting of tuples for all files in bucket/prefix. Tuples are of the form (path to file locally <if applicable>, file prefix, file metadata)
@@ -685,7 +675,7 @@ fn flattened_object_listing<'a>(
         Cow::Owned(format!("{}/", key))
     };
 
-    async_stream::stream! {
+    stream! {
         let mut stream = list_objects_stream(s3, bucket, prefix);
         loop {
             let entries = match stream.try_next().await {

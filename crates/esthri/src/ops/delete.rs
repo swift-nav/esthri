@@ -10,12 +10,13 @@
  * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
  */
 
+use async_stream::stream;
 use futures::{future, stream::Stream, Future, StreamExt, TryFutureExt};
 
 use aws_sdk_s3::error::SdkError;
 use aws_sdk_s3::types::{Delete, ObjectIdentifier};
 use aws_sdk_s3::Client;
-use log::{debug, info};
+use log::{debug, error, info};
 use log_derive::logfn;
 
 use crate::errors::Result;
@@ -103,7 +104,7 @@ pub fn delete_streaming<'a>(
                 }))
             }
             Err(err) => {
-                println!("nothing found in delete_streaming keys");
+                error!("nothing found in delete_streaming keys");
                 future::Either::Right(future::ready(Err(err)))
             }
         }
