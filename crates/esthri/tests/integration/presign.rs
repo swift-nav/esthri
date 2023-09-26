@@ -48,7 +48,7 @@ async fn test_presign_put() {
     let s3_key = esthri_test::randomised_name(&format!("test_upload/{}", filename));
     let bucket = esthri_test::TEST_BUCKET;
     let opts = EsthriPutOptParamsBuilder::default().build().unwrap();
-    let presigned_url = presign_put(&s3, bucket, &s3_key, None, opts.clone())
+    let presigned_url = presign_put(s3, bucket, &s3_key, None, opts.clone())
         .await
         .unwrap();
     upload_file_presigned(&Client::new(), &presigned_url, &filepath, opts)
@@ -84,7 +84,7 @@ async fn test_presign_delete() {
         .await
         .unwrap()
         .is_some());
-    let presigned_url = presign_delete(&s3, bucket, s3_key, None).await.unwrap();
+    let presigned_url = presign_delete(s3, bucket, s3_key, None).await.unwrap();
     delete_file_presigned(&Client::new(), &presigned_url)
         .await
         .unwrap();

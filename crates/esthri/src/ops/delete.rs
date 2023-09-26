@@ -10,7 +10,6 @@
  * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-use async_stream::stream;
 use futures::{future, stream::Stream, Future, StreamExt, TryFutureExt};
 
 use aws_sdk_s3::error::SdkError;

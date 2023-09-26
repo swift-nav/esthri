@@ -68,8 +68,4 @@ impl TempFile {
     pub fn path(&self) -> &Path {
         &self.path
     }
-
-    pub fn into_path(self) -> Box<dyn AsRef<Path>> {
-        Box::new(self.path)
-    }
 }
