@@ -44,7 +44,7 @@ use crate::{
 };
 
 struct MappedPathResult {
-    file_path: Box<dyn AsRef<Path>>,
+    file_path: PathBuf,
     source_path: PathBuf,
     local_etag: Result<Option<String>>,
     metadata: Option<ListingMetadata>,
@@ -162,7 +162,7 @@ pub async fn sync(
                 key
             );
 
-            sync_remote_to_local(s3, &bucket, &key, &path, &filters, opts).await?;
+            // sync_remote_to_local(s3, &bucket, &key, &path, &filters, opts).await?;
         }
         (
             S3PathParam::Bucket {
@@ -179,16 +179,16 @@ pub async fn sync(
                 source_bucket, source_key, destination_bucket, destination_key
             );
 
-            sync_across(
-                s3,
-                &source_bucket,
-                &source_key,
-                &destination_bucket,
-                &destination_key,
-                &filters,
-                opts.delete,
-            )
-            .await?;
+            // sync_across(
+            //     s3,
+            //     &source_bucket,
+            //     &source_key,
+            //     &destination_bucket,
+            //     &destination_key,
+            //     &filters,
+            //     opts.delete,
+            // )
+            // .await?;
         }
         _ => {
             warn!("Local to Local copy not implemented");
@@ -286,7 +286,7 @@ where
 {
     input_stream.map(move |params| async move {
         let (source_path, metadata) = params?;
-        let file_path: Box<dyn AsRef<Path>> = Box::new(source_path.clone());
+        let file_path = source_path.clone();
 
         let (file_path, source_path, local_etag) = match sync_cmd {
             SyncCmd::Up => {
@@ -306,7 +306,7 @@ where
                 } else {
                     Ok(None)
                 };
-                (tmp.into_path(), source_path, local_etag)
+                (tmp.path().to_path_buf(), source_path, local_etag)
             }
             SyncCmd::Down => {
                 let local_etag = compute_etag(&source_path).await.map(Option::Some);
@@ -374,7 +374,7 @@ where
         .map(move |clones| async move {
             let (s3, bucket, key, directory, entry) = clones;
             let MappedPathResult {
-                file_path: filepath,
+                file_path,
                 source_path,
                 local_etag,
                 metadata: object_info,
@@ -384,17 +384,14 @@ where
             let stripped_path = path.strip_prefix(&directory);
             let stripped_path = match stripped_path {
                 Err(e) => {
-                    warn!(
-                        "unexpected: failed to strip prefix: {}, {:?}, {:?}",
-                        e, &path, &directory
-                    );
+                    warn!("unexpected: failed to strip prefix: {e}, {path:?}, {directory:?}");
                     return Ok(());
                 }
                 Ok(result) => result,
             };
             let remote_path = remote_path.join(stripped_path);
             let remote_path = remote_path.to_string_lossy();
-            debug!("checking remote: {}", remote_path);
+            debug!("checking remote: {remote_path}");
             let local_etag = local_etag?;
             let metadata = if transparent_compression {
                 Some(crate::compression::compressed_file_metadata())
@@ -406,25 +403,19 @@ where
                 let remote_etag = object_info.e_tag;
                 let local_etag = local_etag.unwrap();
                 if remote_etag != local_etag {
-                    info!(
-                        "etag mis-match: {}, remote_etag={}, local_etag={}",
-                        remote_path, remote_etag, local_etag
-                    );
-                    let f = File::open(&*filepath).await?;
+                    info!("etag mis-match: {remote_path}, remote_etag={remote_etag}, local_etag={local_etag}");
+                    let f = File::open(&*file_path).await?;
                     let reader = BufReader::new(f);
-                    let size = fs::metadata(&*filepath).await?.len();
+                    let size = fs::metadata(&*file_path).await?.len();
                     upload_from_reader(&s3, bucket, remote_path, reader, size, metadata).await?;
                 } else {
-                    debug!(
-                        "etags matched: {}, remote_etag={}, local_etag={}",
-                        remote_path, remote_etag, local_etag
-                    );
+                    debug!("etags matched: {remote_path}, remote_etag={remote_etag}, local_etag={local_etag}");
                 }
             } else {
-                info!("file did not exist remotely: {}", remote_path);
-                let f = File::open(&*filepath).await?;
+                info!("file did not exist remotely: {remote_path}");
+                let f = File::open(&*file_path).await?;
                 let reader = BufReader::new(f);
-                let size = fs::metadata(&*filepath).await?.len();
+                let size = fs::metadata(&*file_path).await?.len();
                 upload_from_reader(&s3, bucket, remote_path, reader, size, metadata).await?;
             }
             Ok(())
@@ -450,7 +441,7 @@ async fn sync_local_to_remote(
             Err(e) => {
                 unreachable!(
                     "unexpected: failed to strip prefix: {}, {:?}, {:?}",
-                    e, &path, &directory
+                    e, path, directory
                 );
             }
         };
@@ -506,19 +497,13 @@ async fn sync_delete_local(
     task_count: usize,
 ) -> Result<()> {
     let stream = flattened_object_listing(s3, bucket, key, directory, filters, false);
-    let delete_paths_stream = stream.try_filter_map(|object_info| async {
-        let (path, _, s3_metadata) = object_info;
+    let delete_paths_stream = stream.try_filter_map(|(path, _, s3_metadata)| async move {
         if let Some(s3_metadata) = s3_metadata {
             let fs_metadata = fs::metadata(&path).await;
-            if let Err(err) = fs_metadata {
-                if err.kind() == ErrorKind::NotFound {
-                    let obj_path = String::from(key) + &s3_metadata.s3_suffix;
-                    Ok(Some(obj_path))
-                } else {
-                    Err(err.into())
-                }
-            } else {
-                Ok(None)
+            match fs_metadata {
+                Ok(_) => Ok(None),
+                Err(e) if e.kind() != ErrorKind::NotFound => Err(e.into()),
+                Err(_) => Ok(Some(key.to_owned() + &s3_metadata.s3_suffix)),
             }
         } else {
             Err(Error::MetadataNone)
