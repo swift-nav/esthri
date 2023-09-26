@@ -6,7 +6,7 @@ use esthri::{GlobFilter, HeadObjectInfo, S3PathParam};
 use glob::Pattern;
 
 #[tokio::test]
-async fn test_download() {
+async fn test_send_download() {
     let s3client = esthri_test::get_s3client_async().await;
     let filename = "test_file.txt";
     let filepath = esthri_test::test_data(filename);
@@ -22,7 +22,7 @@ async fn test_download() {
 }
 
 #[tokio::test]
-async fn test_upload() {
+async fn test_send_upload() {
     let s3client = esthri_test::get_s3client_async().await;
     let filename = "test5mb.bin";
     let filepath = esthri_test::test_data(filename);
@@ -48,7 +48,7 @@ async fn test_upload() {
 }
 
 #[tokio::test]
-async fn test_sync_down() {
+async fn test_send_sync_down() {
     let s3client = esthri_test::get_s3client_async().await;
     let local_directory = esthri_test::test_data_dir();
     let s3_key = "test_folder/";
@@ -68,7 +68,7 @@ async fn test_sync_down() {
 }
 
 #[tokio::test]
-async fn test_sync_up() {
+async fn test_send_sync_up() {
     let s3client = esthri_test::get_s3client_async().await;
     let local_directory = esthri_test::test_data_dir();
     let s3_key = esthri_test::randomised_lifecycled_prefix("test_folder/");

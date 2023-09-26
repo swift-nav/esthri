@@ -303,7 +303,7 @@ where
                 // should be compressed
                 let (tmp, _) = compress_to_tempfile(&source_path).await?;
                 let local_etag = if metadata.is_some() {
-                    compute_etag(tmp.path()).await.map(Option::Some)
+                    compute_etag(tmp.path()).await.map(Some)
                 } else {
                     Ok(None)
                 };
@@ -331,11 +331,11 @@ where
                         // the local file to see if it matches with
                         // the compressed version
                         let (tmp, _) = compress_to_tempfile(&source_path).await?;
-                        let local_etag = compute_etag(tmp.path()).await.map(Option::Some);
+                        let local_etag = compute_etag(tmp.path()).await.map(Some);
                         (file_path, source_path, local_etag)
                     }
                 } else {
-                    let local_etag = compute_etag(&source_path).await.map(Option::Some);
+                    let local_etag = compute_etag(&source_path).await.map(Some);
                     (file_path, source_path, local_etag)
                 }
             }
@@ -475,8 +475,9 @@ async fn sync_local_to_remote(
         etag_stream,
         compressed,
     )
-    .for_each_concurrent(task_count, |_| async {})
-    .await;
+    .buffer_unordered(task_count)
+    .try_for_each_concurrent(task_count, |_| future::ready(Ok(())))
+    .await?;
 
     if delete {
         sync_delete_local(s3, bucket, key, directory, filters, task_count).await
@@ -512,9 +513,9 @@ async fn sync_delete_local(
     });
     pin_mut!(delete_paths_stream);
     crate::delete_streaming(s3, bucket, delete_paths_stream)
-        .for_each_concurrent(task_count, |_| async {})
-        .await;
-    Ok(())
+        .buffer_unordered(task_count)
+        .try_for_each_concurrent(task_count, |_| future::ready(Ok(())))
+        .await
 }
 
 /// Delete all files in `directory` which do not exist withing a `bucket's` corresponding `directory` key prefix
@@ -635,6 +636,7 @@ async fn sync_delete_across(
     dst_prefix: &str,
     filters: &[GlobFilter],
 ) -> Result<()> {
+    let task_count = Config::global().concurrent_sync_tasks();
     // Identify all files in destination bucket
     let dir = Path::new(&src_prefix);
     let bucket_stream = flattened_object_listing(s3, dst_bucket, dst_prefix, dir, filters, false);
@@ -655,9 +657,9 @@ async fn sync_delete_across(
     // Delete files that exist in destination, but not in source
     pin_mut!(delete_paths_stream);
     crate::delete_streaming(s3, &dst_bucket, delete_paths_stream)
-        .for_each_concurrent(Config::global().concurrent_sync_tasks(), |_| async {})
-        .await;
-    Ok(())
+        .buffer_unordered(task_count)
+        .try_for_each_concurrent(task_count, |_| future::ready(Ok(())))
+        .await
 }
 
 // Create a result stream consisting of tuples for all files in bucket/prefix. Tuples are of the form (path to file locally <if applicable>, file prefix, file metadata)
