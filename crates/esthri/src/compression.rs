@@ -38,9 +38,8 @@ pub async fn compress_to_tempfile(path: &Path) -> Result<(TempFile, u64)> {
     };
     let mut dest = TempFile::new(dir, Some(".gz")).await?;
     let new_size = io::copy(&mut src, dest.file_mut()).await?;
-    let m = tokio::fs::metadata(dest.path()).await?;
     dest.rewind().await?;
-    debug!("new file size: {}", m.len());
+    debug!("new file size: {}", new_size);
     Ok((dest, new_size))
 }
 
