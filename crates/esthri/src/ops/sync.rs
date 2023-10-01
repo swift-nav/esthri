@@ -45,7 +45,7 @@ use crate::{
 };
 
 struct MappedPathResult {
-    file_path: PathBuf,
+    file_path: Box<dyn AsRef<Path> + Send + Sync>,
     source_path: PathBuf,
     local_etag: Result<Option<String>>,
     metadata: Option<ListingMetadata>,
@@ -287,12 +287,12 @@ where
 {
     input_stream.map(move |params| async move {
         let (source_path, metadata) = params?;
-        let file_path = source_path.clone();
+        let file_path: Box<dyn AsRef<Path> + Send + Sync> = Box::new(source_path.clone());
 
         let (file_path, source_path, local_etag) = match sync_cmd {
             SyncCmd::Up => {
                 let local_etag = if metadata.is_some() {
-                    compute_etag(&source_path).await.map(Option::Some)
+                    compute_etag(&source_path).await.map(Some)
                 } else {
                     Ok(None)
                 };
@@ -307,7 +307,7 @@ where
                 } else {
                     Ok(None)
                 };
-                (tmp.path().to_path_buf(), source_path, local_etag)
+                (tmp.into_path(), source_path, local_etag)
             }
             SyncCmd::Down => {
                 let local_etag = compute_etag(&source_path).await.map(Option::Some);

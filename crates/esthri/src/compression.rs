@@ -10,10 +10,12 @@
  * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-use std::{collections::HashMap, path::Path};
+use std::io::Read;
+use std::{collections::HashMap, fs, path::Path};
 
 use async_compression::tokio::bufread::GzipEncoder;
 use log::debug;
+use tokio::io::{AsyncBufRead, AsyncRead};
 use tokio::{
     fs::File,
     io::{self, BufReader},
@@ -38,9 +40,15 @@ pub async fn compress_to_tempfile(path: &Path) -> Result<(TempFile, u64)> {
     };
     let mut dest = TempFile::new(dir, Some(".gz")).await?;
     let new_size = io::copy(&mut src, dest.file_mut()).await?;
+    let m = tokio::fs::metadata(dest.path()).await?;
     dest.rewind().await?;
-    debug!("new file size: {}", new_size);
+    debug!("new file size: {}", m.len());
     Ok((dest, new_size))
+}
+
+pub async fn compress_stream(read: impl AsyncBufRead) {
+    let src = GzipEncoder::new(read);
+    // src
 }
 
 pub fn compressed_file_metadata() -> HashMap<String, String> {
