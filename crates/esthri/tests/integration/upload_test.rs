@@ -12,7 +12,7 @@ fn test_upload() {
     let s3_key = esthri_test::randomised_lifecycled_prefix(&format!("test_upload/{}", filename));
     let opts = EsthriPutOptParamsBuilder::default().build().unwrap();
 
-    let res = esthri::blocking::upload(
+    let res = blocking::upload(
         s3client.as_ref(),
         esthri_test::TEST_BUCKET,
         &s3_key,
@@ -21,7 +21,7 @@ fn test_upload() {
     );
     assert!(res.is_ok());
 
-    let res = esthri::blocking::head_object(s3client.as_ref(), esthri_test::TEST_BUCKET, &s3_key);
+    let res = blocking::head_object(s3client.as_ref(), esthri_test::TEST_BUCKET, &s3_key);
     let obj_info: Option<HeadObjectInfo> = res.unwrap();
     assert!(obj_info.is_some());
     let obj_info: HeadObjectInfo = obj_info.unwrap();
@@ -138,7 +138,7 @@ fn test_upload_storage_class_all() {
     // Reference: https://aws.amazon.com/s3/faqs/
     // 2. Uploading to S3 bucket in AWS region via OUTPOSTS is not supported, skipping test...
     // Reference: https://docs.aws.amazon.com/AmazonS3/latest/userguide/storage-class-intro.html#s3-outposts
-    for class in vec![
+    for class in [
         S3StorageClass::IntelligentTiering,
         S3StorageClass::OnezoneIa,
         S3StorageClass::ReducedRedundancy,
