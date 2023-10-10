@@ -75,18 +75,43 @@ pub enum AwsCredProvider {
     WebIdentityToken,
 }
 
+/// This function builds a AWS client using the default AWS region
+/// and default credentials_provider
 pub async fn init_default_s3client() -> Client {
-    init_s3client(AwsCredProvider::DefaultProvider).await
+    init_default_s3client_with_region(None::<&str>).await
 }
 
+/// This function builds a AWS client using default credentials_provider,
+/// allowing you to optionally override the default aws_region
+pub async fn init_default_s3client_with_region(region: Option<impl AsRef<str>>) -> Client {
+    init_s3client_with_region(AwsCredProvider::DefaultProvider, region).await
+}
+
+/// This function builds a AWS client using the default AWS region.
 pub async fn init_s3client(provider: AwsCredProvider) -> Client {
+    init_s3client_with_region(provider, None::<&str>).await
+}
+
+/// This function builds a AWS client, while allowing you to optionally
+/// override the default aws region.
+pub async fn init_s3client_with_region(
+    provider: AwsCredProvider,
+    region: Option<impl AsRef<str>>,
+) -> Client {
     let retry_config = aws_config::retry::RetryConfig::standard()
         .with_initial_backoff(Duration::from_millis(500))
         .with_max_attempts(5);
     let https_connector = new_https_connector();
     let smithy_connector = hyper_ext::Adapter::builder().build(https_connector);
 
-    let sdk_config = aws_config::load_from_env().await;
+    let sdk_config = if let Some(region) = region {
+        aws_config::from_env()
+            .region(Region::new(region.as_ref().to_owned()))
+            .load()
+            .await
+    } else {
+        aws_config::load_from_env().await
+    };
     let config = match provider {
         AwsCredProvider::DefaultProvider => aws_sdk_s3::config::Builder::from(&sdk_config)
             .retry_config(retry_config)

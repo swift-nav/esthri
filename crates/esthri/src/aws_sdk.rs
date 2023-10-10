@@ -26,7 +26,7 @@ use futures::{Stream, TryStreamExt};
 use crate::{Error, Result};
 
 pub use aws_sdk_s3::types::StorageClass;
-pub use aws_sdk_s3::Client;
+pub use aws_sdk_s3::{config::Region, Client};
 
 /// The data returned from a head object request
 #[derive(Debug)]
