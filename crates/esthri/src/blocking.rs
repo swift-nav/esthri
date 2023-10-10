@@ -16,6 +16,11 @@ use std::path::Path;
 use crate::{ops::sync::GlobFilter, opts::*, HeadObjectInfo, Result, S3PathParam};
 
 #[tokio::main]
+pub async fn build_s3_client(region: Option<impl AsRef<str>>) -> Client {
+    crate::init_default_s3client_with_region(region).await
+}
+
+#[tokio::main]
 pub async fn head_object(
     s3: &Client,
     bucket: impl AsRef<str>,
