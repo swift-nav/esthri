@@ -288,7 +288,6 @@ where
     input_stream.map(move |params| async move {
         let (source_path, metadata) = params?;
         let file_path: Box<dyn AsRef<Path> + Send + Sync> = Box::new(source_path.clone());
-
         let (file_path, source_path, local_etag) = match sync_cmd {
             SyncCmd::Up => {
                 let local_etag = if metadata.is_some() {
@@ -310,7 +309,7 @@ where
                 (tmp.into_path(), source_path, local_etag)
             }
             SyncCmd::Down => {
-                let local_etag = compute_etag(&source_path).await.map(Option::Some);
+                let local_etag = compute_etag(&source_path).await.map(Some);
                 (file_path, source_path, local_etag)
             }
             SyncCmd::DownCompressed => {
@@ -671,14 +670,8 @@ fn flattened_object_listing<'a>(
     filters: &'a [GlobFilter],
     transparent_decompress: bool,
 ) -> impl Stream<Item = Result<(PathBuf, String, Option<ListingMetadata>)>> + 'a {
-    let prefix = if key.ends_with('/') {
-        Cow::Borrowed(key)
-    } else {
-        Cow::Owned(format!("{}/", key))
-    };
-
     stream! {
-        let mut stream = list_objects_stream(s3, bucket, prefix);
+        let mut stream = list_objects_stream(s3, bucket, key);
         loop {
             let entries = match stream.try_next().await {
                 Ok(Some(entries)) => entries,
@@ -712,8 +705,7 @@ fn flattened_object_listing<'a>(
                         return;
                     }
                 };
-                let path_result = Path::new(&entry.key).strip_prefix(key);
-                if let Ok(s3_suffix) = path_result {
+                let s3_suffix = Path::new(&entry.key);
                     if process_globs(&s3_suffix, filters).is_some() {
                         let local_path = directory.join(s3_suffix);
                         let s3_suffix = s3_suffix.to_string_lossy().into();
@@ -723,10 +715,6 @@ fn flattened_object_listing<'a>(
                             ListingMetadata::some(s3_suffix, entry.e_tag, compressed),
                         ));
                     }
-                } else {
-                    yield Err(path_result.err().unwrap().into());
-                    return;
-                }
             }
         }
     }
@@ -751,7 +739,7 @@ where
                 key.clone(),
                 directory.clone(),
                 opts.clone(),
-                entry.unwrap(),
+                entry,
             )
         })
         .map(
@@ -761,14 +749,13 @@ where
                     local_etag,
                     metadata,
                     ..
-                } = entry;
-                let metadata = metadata.unwrap();
+                } = entry?;
+                let metadata = metadata.ok_or(Error::MetadataNone)?;
                 let dest_path = directory
                     .join(&metadata.s3_suffix)
-                    .to_str()
-                    .unwrap()
-                    .to_owned();
-                let src_path = directory.to_str().unwrap().to_owned();
+                    .to_string_lossy()
+                    .to_string();
+                let src_path = directory.to_string_lossy().to_string();
                 match local_etag {
                     Ok(Some(local_etag)) => {
                         if local_etag != metadata.e_tag {
@@ -799,7 +786,7 @@ where
                             download_with_dir(
                                 &s3,
                                 &bucket,
-                                &key,
+                                "",
                                 &metadata.s3_suffix,
                                 &directory,
                                 opts,

@@ -77,9 +77,11 @@ enum EsthriCommand {
     Sync(EsthriSyncParams),
     /// Retreive the ETag for a remote object
     HeadObject(EsthriHeadObjectParams),
-    /// List remote objects in S3
+    /// List all remote objects in S3 under path provided. Includes all items in subdirectories
+    #[clap(alias = "ls")]
     ListObjects(EsthriListObjectsParams),
     /// Delete objects from the specified bucket.
+    #[clap(alias = "rm")]
     DeleteObjects(EsthriDeleteObjectsParams),
     #[cfg(not(windows))]
     /// Launch an HTTP server attached to the specified bucket
