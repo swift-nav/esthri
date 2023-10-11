@@ -182,25 +182,18 @@ async fn dispatch_esthri_cli(cmd: EsthriCommand, s3: &S3Client) -> Result<()> {
             setup_upload_termination_handler(s3.clone());
             let opts = EsthriSyncParams::build_opts(&params);
             if params.transparent_compression
-                && (params.source.is_bucket() && params.destination.is_bucket())
+                && params.source.is_bucket()
+                && params.destination.is_bucket()
             {
                 return Err(esthri::errors::Error::InvalidSyncCompress.into());
             }
-
-            let command = EsthriCommand::augment_subcommands(EsthriCli::command());
-            let matches = command.get_matches();
+            let matches = EsthriCli::command().get_matches();
             let matches = matches
                 .subcommand_matches("sync")
                 .expect("Expected sync command");
             let filters = globs_to_filter_list(&opts.include, &opts.exclude, matches);
-            esthri::sync(
-                s3,
-                params.source.clone(),
-                params.destination.clone(),
-                filters.as_deref(),
-                opts,
-            )
-            .await?;
+            let filters = filters.as_deref();
+            esthri::sync(s3, params.source, params.destination, filters, opts).await?;
         }
 
         HeadObject(params) => {
