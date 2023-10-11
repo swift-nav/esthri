@@ -1042,7 +1042,7 @@ dependencies = [
 
 [[package]]
 name = "esthri"
-version = "11.0.3"
+version = "11.1.0"
 dependencies = [
  "assert_cmd",
  "async-compression 0.4.3",
@@ -1088,7 +1088,7 @@ dependencies = [
 
 [[package]]
 name = "esthri-cli"
-version = "11.0.3"
+version = "11.1.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -1123,7 +1123,7 @@ dependencies = [
 
 [[package]]
 name = "esthri-internals"
-version = "11.0.3"
+version = "11.1.0"
 dependencies = [
  "hyper",
  "hyper-rustls 0.23.2",
@@ -1132,7 +1132,7 @@ dependencies = [
 
 [[package]]
 name = "esthri-test"
-version = "11.0.3"
+version = "11.1.0"
 dependencies = [
  "aws-config",
  "aws-sdk-s3",
