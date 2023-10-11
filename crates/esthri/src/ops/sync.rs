@@ -751,7 +751,7 @@ where
                 key.clone(),
                 directory.clone(),
                 opts.clone(),
-                entry.unwrap(),
+                entry,
             )
         })
         .map(
@@ -761,14 +761,13 @@ where
                     local_etag,
                     metadata,
                     ..
-                } = entry;
+                } = entry?;
                 let metadata = metadata.unwrap();
                 let dest_path = directory
                     .join(&metadata.s3_suffix)
-                    .to_str()
-                    .unwrap()
-                    .to_owned();
-                let src_path = directory.to_str().unwrap().to_owned();
+                    .to_string_lossy()
+                    .to_string();
+                let src_path = directory.to_string_lossy().to_string();
                 match local_etag {
                     Ok(Some(local_etag)) => {
                         if local_etag != metadata.e_tag {
