@@ -395,7 +395,9 @@ async fn create_archive_stream(
                     Ok(None) => break,
                     Ok(Some(items)) => {
                         for s3obj in items {
-                            let s3obj = s3obj.unwrap_object();
+                            let s3obj = s3obj
+                                .as_object()
+                                .expect("list_objects_stream only returns objects");
                             if !stream_object_to_archive(
                                 &s3,
                                 &bucket,
