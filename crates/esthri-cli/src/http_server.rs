@@ -22,10 +22,7 @@ use std::{
 
 use anyhow::anyhow;
 use async_stream::stream;
-use async_zip::{
-    write::{EntryOptions, ZipFileWriter},
-    Compression,
-};
+use async_zip::{base::write::ZipFileWriter, Compression, ZipEntryBuilder};
 use bytes::{Bytes, BytesMut};
 use esthri::aws_sdk::Client as S3Client;
 use futures::stream::{Stream, StreamExt, TryStreamExt};
@@ -35,7 +32,10 @@ use maud::{html, Markup, DOCTYPE};
 use mime_guess::mime::{APPLICATION_OCTET_STREAM, TEXT_HTML_UTF_8};
 use serde::{Deserialize, Serialize};
 use tokio::io::DuplexStream;
-use tokio_util::codec::{BytesCodec, FramedRead};
+use tokio_util::{
+    codec::{BytesCodec, FramedRead},
+    compat::{Compat, FuturesAsyncWriteCompatExt},
+};
 use warp::{
     http::{
         self,
@@ -294,7 +294,7 @@ async fn stream_object_to_archive(
     s3: &S3Client,
     bucket: &str,
     path: &str,
-    archive: &mut ZipFileWriter<DuplexStream>,
+    archive: &mut ZipFileWriter<Compat<DuplexStream>>,
     error_tracker: ErrorTrackerArc,
 ) -> bool {
     let stream = match download_streaming(s3, bucket, path, true).await {
@@ -312,9 +312,13 @@ async fn stream_object_to_archive(
     let stream_reader = stream.into_async_read();
     let mut stream_reader = tokio_util::compat::FuturesAsyncReadCompatExt::compat(stream_reader);
 
-    let options = EntryOptions::new(path.to_string(), Compression::Deflate);
+    let options = ZipEntryBuilder::new(path.into(), Compression::Deflate);
 
-    match archive.write_entry_stream(options).await {
+    match archive
+        .write_entry_stream(options)
+        .await
+        .map(FuturesAsyncWriteCompatExt::compat_write)
+    {
         Ok(mut writer) => {
             match tokio::io::copy(&mut stream_reader, &mut writer).await {
                 Ok(_) => {}
@@ -326,7 +330,7 @@ async fn stream_object_to_archive(
                     .await;
                 }
             }
-            match writer.close().await {
+            match writer.into_inner().close().await {
                 Ok(_) => {}
                 Err(err) => {
                     abort_with_error(
@@ -383,7 +387,7 @@ async fn create_archive_stream(
     error_tracker: ErrorTrackerArc,
 ) -> impl Stream<Item = io::Result<BytesMut>> {
     let (zip_reader, zip_writer) = tokio::io::duplex(MAX_BUF_SIZE);
-    let mut writer = ZipFileWriter::new(zip_writer);
+    let mut writer = ZipFileWriter::with_tokio(zip_writer);
 
     let error_tracker_reader = error_tracker.clone();
     tokio::spawn(async move {
