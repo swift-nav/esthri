@@ -115,6 +115,13 @@ impl S3ListingItem {
             S3ListingItem::S3CommonPrefix(_cp) => panic!("invalid type"),
         }
     }
+
+    pub fn as_object(self) -> Option<S3Object> {
+        match self {
+            S3ListingItem::S3Object(o) => Some(o),
+            S3ListingItem::S3CommonPrefix(_cp) => None,
+        }
+    }
 }
 
 #[derive(Default)]

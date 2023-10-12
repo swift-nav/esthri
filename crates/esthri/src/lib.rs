@@ -376,31 +376,32 @@ async fn list_objects_request(
 
     if let Some(contents) = lov2o.contents {
         for object in contents {
-            let key = if object.key.is_some() {
-                object.key.unwrap()
-            } else {
-                warn!("unexpected: object key was null");
-                continue;
-            };
-            let e_tag = if object.e_tag.is_some() {
-                object.e_tag.unwrap()
-            } else {
-                warn!("unexpected: object ETag was null");
-                continue;
-            };
-            listing.contents.push(S3Object { key, e_tag });
+            match (object.key, object.e_tag) {
+                (Some(key), Some(e_tag)) => {
+                    listing.contents.push(S3Object { key, e_tag });
+                }
+                (key, etag) => {
+                    if key.is_none() {
+                        warn!("unexpected: object key was null");
+                    }
+                    if etag.is_none() {
+                        warn!("unexpected: object ETag was null");
+                    }
+                    continue;
+                }
+            }
         }
     }
 
     if let Some(common_prefixes) = lov2o.common_prefixes {
         for common_prefix in common_prefixes {
-            let prefix = if common_prefix.prefix.is_some() {
-                common_prefix.prefix.unwrap()
-            } else {
-                warn!("unexpected: prefix was null");
-                continue;
-            };
-            listing.common_prefixes.push(prefix);
+            match common_prefix.prefix {
+                Some(prefix) => listing.common_prefixes.push(prefix),
+                None => {
+                    warn!("unexpected: prefix was null");
+                    continue;
+                }
+            }
         }
     }
 

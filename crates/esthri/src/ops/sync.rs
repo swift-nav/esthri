@@ -239,12 +239,12 @@ fn flattened_local_directory(
                         continue;
                     }
                     let metadata = entry.metadata();
-                    let stat = if let Ok(stat) = metadata {
-                        stat
-                    } else {
-                        tx.send(Err(metadata.err().unwrap().into()))
-                            .expect("failed to send error");
-                        return;
+                    let stat = match metadata {
+                        Ok(stat) => stat,
+                        Err(e) => {
+                            tx.send(Err(e.into())).expect("failed to send error");
+                            return;
+                        }
                     };
                     if stat.is_dir() {
                         continue;
@@ -402,7 +402,7 @@ where
 
             if let Some(object_info) = object_info {
                 let remote_etag = object_info.e_tag;
-                let local_etag = local_etag.unwrap();
+                let local_etag = local_etag.ok_or_else(|| Error::NoLocalETag)?;
                 if remote_etag != local_etag {
                     info!("etag mis-match: {remote_path}, remote_etag={remote_etag}, local_etag={local_etag}");
                     let f = File::open(&*file_path).await?;
@@ -647,7 +647,9 @@ async fn sync_delete_across(
         let src_prefix = src_prefix.to_string();
         let dst_prefix = dst_prefix.to_string();
         async move {
-            let filename = key.strip_prefix(&dst_prefix).unwrap();
+            let filename = key
+                .strip_prefix(&dst_prefix)
+                .expect("key must contain prefix because used to filter results");
             let source_key = src_prefix + filename;
             let head_object_info = head_object_request(&s3, &src_bucket, &source_key, None).await?;
             Ok(head_object_info.map(|_| source_key))
@@ -690,7 +692,9 @@ fn flattened_object_listing<'a>(
             };
             let mut entries = futures::stream::iter(entries)
                 .map(|entry| async move {
-                    let entry = entry.unwrap_object();
+                    let entry = entry
+                        .as_object()
+                        .expect("list_objects_stream only returns objects");
                     debug!("key={}", entry.key);
                     let compressed = if transparent_decompress {
                         head_object_request(s3, bucket, &entry.key, None)
@@ -712,9 +716,8 @@ fn flattened_object_listing<'a>(
                         return;
                     }
                 };
-                let path_result = Path::new(&entry.key).strip_prefix(key);
-                if let Ok(s3_suffix) = path_result {
-                    if process_globs(&s3_suffix, filters).is_some() {
+                match Path::new(&entry.key).strip_prefix(key) {
+                    Ok(s3_suffix) if process_globs(&s3_suffix, filters).is_some() => {
                         let local_path = directory.join(s3_suffix);
                         let s3_suffix = s3_suffix.to_string_lossy().into();
                         yield Ok((
@@ -722,10 +725,12 @@ fn flattened_object_listing<'a>(
                             entry.key,
                             ListingMetadata::some(s3_suffix, entry.e_tag, compressed),
                         ));
+                    },
+                    Ok(_ignored_suffix) => (),
+                    Err(e) => {
+                        yield Err(e.into());
+                        return;
                     }
-                } else {
-                    yield Err(path_result.err().unwrap().into());
-                    return;
                 }
             }
         }
@@ -751,7 +756,7 @@ where
                 key.clone(),
                 directory.clone(),
                 opts.clone(),
-                entry.unwrap(),
+                entry,
             )
         })
         .map(
@@ -761,14 +766,17 @@ where
                     local_etag,
                     metadata,
                     ..
-                } = entry;
-                let metadata = metadata.unwrap();
+                } = entry?;
+                let metadata = metadata.ok_or_else(|| Error::MetadataNone)?;
                 let dest_path = directory
                     .join(&metadata.s3_suffix)
                     .to_str()
-                    .unwrap()
+                    .expect("esthri only supports valid utf-8 paths like S3")
                     .to_owned();
-                let src_path = directory.to_str().unwrap().to_owned();
+                let src_path = directory
+                    .to_str()
+                    .expect("esthri only supports valid utf-8 paths like S3")
+                    .to_owned();
                 match local_etag {
                     Ok(Some(local_etag)) => {
                         if local_etag != metadata.e_tag {
@@ -929,7 +937,10 @@ pub mod streaming {
             }
         };
 
-        Ok(sync_remote_to_local(s3, bucket, key, path.to_str().unwrap(), filters, opts).await)
+        let path_as_str = path
+            .to_str()
+            .expect("path must be utf-8, required by S3 as well");
+        Ok(sync_remote_to_local(s3, bucket, key, path_as_str, filters, opts).await)
     }
 
     async fn sync_remote_to_local<'a>(
