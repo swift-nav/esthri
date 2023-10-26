@@ -40,7 +40,7 @@ thiserror = "1"
 tokio = { version = "1.23.0", features = ["fs", "io-util", "sync", "parking_lot", "rt", "macros"] }
 tokio-retry = "0.3"
 tokio-stream = "0.1.14"
-tokio-util = { version = "0.7.9", features = ["io"] }
+tokio-util = { version = "0.7.10", features = ["io"] }
 walkdir = "2"
 strum = "0.25.0"
 strum_macros = "0.24.3"
