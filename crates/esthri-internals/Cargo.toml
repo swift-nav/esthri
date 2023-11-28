@@ -21,7 +21,7 @@ blocking = []
 [dependencies]
 hyper = "0.14"
 [dependencies.hyper-tls]
-version = "0.5"
+version = "0.6"
 optional = true
 
 [dependencies.hyper-rustls]
