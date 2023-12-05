@@ -16,7 +16,7 @@ rustls = ["esthri-internals/rustls"]
 blocking = []
 
 [dependencies]
-esthri-internals = { path = "../esthri-internals", version = "11.1.1", default-features = false }
+esthri-internals = { path = "../esthri-internals", version = "11.2.0", default-features = false }
 chrono = "0.4"
 env_logger = "0.10"
 flate2 = "1.0.28"

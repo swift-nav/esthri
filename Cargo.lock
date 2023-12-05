@@ -1153,7 +1153,7 @@ dependencies = [
 
 [[package]]
 name = "esthri-internals"
-version = "11.1.1"
+version = "11.2.0"
 dependencies = [
  "hyper",
  "hyper-rustls 0.23.2",
