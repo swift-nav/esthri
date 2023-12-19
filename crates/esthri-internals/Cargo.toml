@@ -19,7 +19,7 @@ aggressive_lint = []
 blocking = []
 
 [dependencies]
-hyper = "0.14"
+hyper = "1.1"
 [dependencies.hyper-tls]
 version = "0.5"
 optional = true
