@@ -146,8 +146,8 @@ pub struct GetObjectResponse {
     pub size: i64,
     pub part: i64,
 }
-/// The AWS SDK removed future stream implementation of a Byte Stream Wrapper,
-/// so we implement it here
+/// The AWS SDK removed future stream implementation of a ByteStream,
+/// so we implement it here on a wrapper struct that holds the ByteStream.
 struct FutureStreamByteStreamWrapper(ByteStream);
 
 impl FutureStreamByteStreamWrapper {
@@ -163,6 +163,13 @@ impl Stream for FutureStreamByteStreamWrapper {
         Pin::new(&mut self.0)
             .poll_next(cx)
             .map(|opt| opt.map(|res| res.map_err(|e| Error::ByteStreamError(e.to_string()))))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let (a, b) = self.0.size_hint();
+        let a = usize::try_from(a).expect("platform usize must be able to hold a u64");
+        let b = b.map(|x| usize::try_from(x).expect("platform usize must be able to hold a u64"));
+        (a, b)
     }
 }
 impl GetObjectResponse {
