@@ -10,7 +10,14 @@
  * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-use std::{collections::HashMap, str::FromStr};
+use std::{
+    collections::HashMap,
+    convert::TryFrom,
+    pin::Pin,
+    str::FromStr,
+    task::{Context, Poll},
+    time::SystemTime,
+};
 
 use aws_sdk_s3::error::SdkError;
 use aws_sdk_s3::operation::create_multipart_upload::CreateMultipartUploadOutput;
@@ -18,10 +25,9 @@ use aws_sdk_s3::operation::get_object::GetObjectOutput;
 use aws_sdk_s3::operation::head_object::{HeadObjectError, HeadObjectOutput};
 use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart};
-use aws_smithy_types_convert::date_time::DateTimeExt;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
-use futures::{Stream, TryStreamExt};
+use futures::Stream;
 
 use crate::{Error, Result};
 
@@ -46,23 +52,29 @@ impl HeadObjectInfo {
     }
 
     pub(crate) fn from_head_object_output(hoo: HeadObjectOutput) -> Result<Option<HeadObjectInfo>> {
-        if hoo.delete_marker {
+        if hoo.delete_marker.unwrap_or_default() {
             return Ok(None);
         }
         let e_tag = hoo
             .e_tag
             .ok_or_else(|| Error::HeadObjectUnexpected("no e_tag found".into()))?;
-        let last_modified: DateTime<Utc> = hoo
-            .last_modified
-            .ok_or_else(|| Error::HeadObjectUnexpected("no last_modified found".into()))
-            .map(|last| last.to_chrono_utc())?
-            .map_err(|_| {
-                Error::HeadObjectUnexpected(
-                    "cannot convert last_modified to chrono time format".into(),
-                )
-            })?;
+        let last_modified: DateTime<Utc> = {
+            // convert the s3 date time string into chrono UTC format. FWIW the s3 date time string
+            // is not actually guaranteed to be in UTC.
+            let last_modified = hoo
+                .last_modified
+                .ok_or_else(|| Error::HeadObjectUnexpected("no last_modified found".into()))?;
 
-        let size = hoo.content_length;
+            SystemTime::try_from(last_modified)
+                .map(DateTime::from)
+                .map_err(|_| {
+                    Error::HeadObjectUnexpected(
+                        "cannot convert last_modified to chrono time format".into(),
+                    )
+                })?
+        };
+
+        let size = hoo.content_length.unwrap_or_default();
 
         let metadata = hoo
             .metadata
@@ -76,8 +88,13 @@ impl HeadObjectInfo {
 
         // parts_count = 0 means it is not a multipart upload, default parts count to 1
         let parts = match hoo.parts_count {
-            0 => 1,
-            _ => hoo.parts_count as u64,
+            Some(0) | None => 1,
+            Some(x) if x < 0 => {
+                return Err(Error::HeadObjectUnexpected(
+                    "parts_count is negative".into(),
+                ))
+            }
+            Some(x) => x as u64,
         };
 
         Ok(Some(HeadObjectInfo {
@@ -129,10 +146,35 @@ pub struct GetObjectResponse {
     pub size: i64,
     pub part: i64,
 }
+/// The AWS SDK removed future stream implementation of a ByteStream,
+/// so we implement it here on a wrapper struct that holds the ByteStream.
+struct FutureStreamByteStreamWrapper(ByteStream);
 
+impl FutureStreamByteStreamWrapper {
+    fn new(stream: ByteStream) -> Self {
+        Self(stream)
+    }
+}
+
+impl Stream for FutureStreamByteStreamWrapper {
+    type Item = Result<Bytes>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        Pin::new(&mut self.0)
+            .poll_next(cx)
+            .map(|opt| opt.map(|res| res.map_err(|e| Error::ByteStreamError(e.to_string()))))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let (a, b) = self.0.size_hint();
+        let a = usize::try_from(a).expect("platform usize must be able to hold a u64");
+        let b = b.map(|x| usize::try_from(x).expect("platform usize must be able to hold a u64"));
+        (a, b)
+    }
+}
 impl GetObjectResponse {
     pub fn into_stream(self) -> impl Stream<Item = Result<Bytes>> {
-        TryStreamExt::map_err(self.stream, |e| Error::ByteStreamError(e.to_string()))
+        FutureStreamByteStreamWrapper::new(self.stream)
     }
 }
 
@@ -157,7 +199,7 @@ pub async fn get_object_part_request(
     log::debug!("got part={} bucket={} key={}", part, bucket, key);
     Ok(GetObjectResponse {
         stream: goo.body,
-        size: goo.content_length,
+        size: goo.content_length.unwrap_or_default(),
         part,
     })
 }

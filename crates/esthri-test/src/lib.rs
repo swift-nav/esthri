@@ -1,7 +1,7 @@
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
 use aws_sdk_s3::Client as S3Client;
-use aws_smithy_client::hyper_ext;
+use aws_smithy_runtime::client::http::hyper_014::HyperClientBuilder;
 use esthri_internals::new_https_connector;
 use fs_extra::dir;
 use fs_extra::dir::CopyOptions;
@@ -127,10 +127,10 @@ async fn init_s3client() {
 
             let env_config = aws_config::load_from_env().await;
             let https_connector = new_https_connector();
-            let smithy_connector = hyper_ext::Adapter::builder().build(https_connector);
+            let hyper_client = HyperClientBuilder::new().build(https_connector);
 
             let config = aws_sdk_s3::config::Builder::from(&env_config)
-                .http_connector(smithy_connector)
+                .http_client(hyper_client)
                 .build();
 
             let s3 = aws_sdk_s3::Client::from_conf(config);

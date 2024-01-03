@@ -13,6 +13,7 @@
 pub use std::error::Error as StdError;
 use std::path::StripPrefixError;
 
+use aws_sdk_s3::error::BuildError;
 use aws_sdk_s3::operation::abort_multipart_upload::AbortMultipartUploadError;
 use aws_sdk_s3::operation::complete_multipart_upload::CompleteMultipartUploadError;
 use aws_sdk_s3::operation::copy_object::CopyObjectError;
@@ -106,6 +107,9 @@ pub enum Error {
 
     #[error(transparent)]
     AbortMultipartUploadFailed(#[from] Box<AbortMultipartUploadError>),
+
+    #[error(transparent)]
+    BuildError(#[from] BuildError),
 
     #[error(transparent)]
     StripPrefixFailed(#[from] StripPrefixError),
