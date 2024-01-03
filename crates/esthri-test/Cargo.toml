@@ -20,19 +20,18 @@ esthri-internals = { path = "../esthri-internals", version = "11.2.0", default-f
 chrono = "0.4"
 env_logger = "0.10"
 flate2 = "1.0.28"
-hyper = "0.14"
+hyper = { workspace = true }
 md-5 = "0.10.6"
 once_cell = "1.18"
 tempdir = "0.3"
-uuid = { version="1.6.1", features=["v4"]}
+uuid = { version="1.6.1", features=["v4"] }
 fs_extra = "1.3.0"
 tokio = "1.34.0"
 futures = "0.3"
 
 aws-sdk-s3 = { workspace = true }
-aws-smithy-client = { workspace = true }
-aws-smithy-http = { workspace = true }
 aws-types = { workspace = true }
 aws-config = { workspace = true }
+aws-smithy-runtime = { workspace = true }
 
 

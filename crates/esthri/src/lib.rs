@@ -30,6 +30,7 @@ use std::{marker::Unpin, path::Path, time::Duration};
 
 pub use crate::config::Config;
 use crate::{aws_sdk::*, types::S3Listing};
+use aws_smithy_runtime::client::http::hyper_014::HyperClientBuilder;
 use futures::{stream, TryStream, TryStreamExt};
 use log::{info, warn};
 use log_derive::logfn;
@@ -59,7 +60,6 @@ pub use presign::{
 };
 
 pub use aws_sdk::HeadObjectInfo;
-pub use aws_smithy_client::hyper_ext;
 pub use types::{S3ListingItem, S3Object, S3PathParam};
 
 pub use esthri_internals::new_https_connector;
@@ -102,7 +102,7 @@ pub async fn init_s3client_with_region(
         .with_initial_backoff(Duration::from_millis(500))
         .with_max_attempts(5);
     let https_connector = new_https_connector();
-    let smithy_connector = hyper_ext::Adapter::builder().build(https_connector);
+    let hyper_client = HyperClientBuilder::new().build(https_connector);
 
     let sdk_config = if let Some(region) = region {
         aws_config::from_env()
@@ -115,13 +115,13 @@ pub async fn init_s3client_with_region(
     let config = match provider {
         AwsCredProvider::DefaultProvider => aws_sdk_s3::config::Builder::from(&sdk_config)
             .retry_config(retry_config)
-            .http_connector(smithy_connector)
+            .http_client(hyper_client)
             .build(),
         AwsCredProvider::Environment => {
             let cred = aws_config::environment::EnvironmentVariableCredentialsProvider::new();
             aws_sdk_s3::config::Builder::from(&sdk_config)
                 .retry_config(retry_config)
-                .http_connector(smithy_connector)
+                .http_client(hyper_client)
                 .credentials_provider(cred)
                 .build()
         }
@@ -129,7 +129,7 @@ pub async fn init_s3client_with_region(
             let cred = aws_config::profile::ProfileFileCredentialsProvider::builder().build();
             aws_sdk_s3::config::Builder::from(&sdk_config)
                 .retry_config(retry_config)
-                .http_connector(smithy_connector)
+                .http_client(hyper_client)
                 .credentials_provider(cred)
                 .build()
         }
@@ -137,7 +137,7 @@ pub async fn init_s3client_with_region(
             let cred = aws_config::ecs::EcsCredentialsProvider::builder().build();
             aws_sdk_s3::config::Builder::from(&sdk_config)
                 .retry_config(retry_config)
-                .http_connector(smithy_connector)
+                .http_client(hyper_client)
                 .credentials_provider(cred)
                 .build()
         }
@@ -145,7 +145,7 @@ pub async fn init_s3client_with_region(
             let cred = aws_config::imds::credentials::ImdsCredentialsProvider::builder().build();
             aws_sdk_s3::config::Builder::from(&sdk_config)
                 .retry_config(retry_config)
-                .http_connector(smithy_connector)
+                .http_client(hyper_client)
                 .credentials_provider(cred)
                 .build()
         }
@@ -155,7 +155,7 @@ pub async fn init_s3client_with_region(
                     .build();
             aws_sdk_s3::config::Builder::from(&sdk_config)
                 .retry_config(retry_config)
-                .http_connector(smithy_connector)
+                .http_client(hyper_client)
                 .credentials_provider(cred)
                 .build()
         }
