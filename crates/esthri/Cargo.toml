@@ -23,7 +23,7 @@ async-compression = { version = "0.4", features = ["gzip", "tokio"] }
 async-stream = "0.3"
 bytes = "1"
 chrono = "0.4"
-derive_builder = "0.13.0"
+derive_builder = "0.13.1"
 envy = "0.4"
 futures = { version = "0.3", features = ["std"], default-features = false }
 glob = "0.3"
