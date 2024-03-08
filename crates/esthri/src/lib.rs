@@ -378,7 +378,13 @@ async fn list_objects_request(
         for object in contents {
             match (object.key, object.e_tag) {
                 (Some(key), Some(e_tag)) => {
-                    listing.contents.push(S3Object { key, e_tag });
+                    listing.contents.push(S3Object {
+                        key,
+                        e_tag,
+                        storage_class: object.storage_class,
+                        size: object.size,
+                        last_modified: object.last_modified,
+                    });
                 }
                 (key, etag) => {
                     if key.is_none() {
