@@ -151,6 +151,7 @@ impl S3Listing {
 }
 
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct S3Object {
     pub key: String,
     pub e_tag: String,
