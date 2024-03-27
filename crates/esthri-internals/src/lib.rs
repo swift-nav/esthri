@@ -12,6 +12,7 @@
 
 #![cfg_attr(feature = "aggressive_lint", deny(warnings))]
 
+pub use http;
 pub use hyper;
 
 use hyper::client::connect::HttpConnector;
