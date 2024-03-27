@@ -39,12 +39,12 @@ tempfile = "3"
 thiserror = "1"
 tokio = { version = "1.36.0", features = ["fs", "io-util", "sync", "parking_lot", "rt", "macros"] }
 tokio-retry = "0.3"
-tokio-stream = "0.1.14"
+tokio-stream = "0.1.15"
 tokio-util = { version = "0.7.10", features = ["io"] }
 walkdir = "2"
-strum = "0.26.1"
-strum_macros = "0.26.1"
-reqwest = { version="0.11.24", features=["stream", "json"], default-features = false }
+strum = "0.26.2"
+strum_macros = "0.26.2"
+reqwest = { version="0.12.2", features=["stream", "json"], default-features = false }
 serde-tuple-vec-map = "1.0.1"
 
 aws-sdk-s3 = { workspace = true }
@@ -62,4 +62,4 @@ tar = "0.4"
 tempdir = "0.3"
 backtrace = "0.3"
 fs_extra = "1.3"
-assert_cmd = "2.0.13"
+assert_cmd = "2.0.14"

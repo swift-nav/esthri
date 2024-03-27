@@ -12,13 +12,13 @@
 
 use std::{path::Path, time::Duration};
 
-use esthri_internals::hyper::HeaderMap;
+use esthri_internals::http::header::{HeaderMap, CONTENT_LENGTH};
 
 use aws_sdk_s3::error::SdkError;
 use aws_sdk_s3::presigning::PresigningConfig;
 use aws_sdk_s3::types::ObjectCannedAcl;
 use aws_sdk_s3::Client as S3Client;
-use reqwest::{header::CONTENT_LENGTH, Body, Client as HttpClient};
+use reqwest::{Body, Client as HttpClient};
 use tokio_util::codec::{BytesCodec, FramedRead};
 
 use crate::{compression::compressed_meta_value, opts::EsthriPutOptParams, Error, Result};
