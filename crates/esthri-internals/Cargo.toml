@@ -19,7 +19,6 @@ aggressive_lint = []
 blocking = []
 
 [dependencies]
-http = "1"
 hyper = { workspace = true }
 [dependencies.hyper-tls]
 version = "0.5"

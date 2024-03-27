@@ -46,6 +46,7 @@ strum = "0.26.2"
 strum_macros = "0.26.2"
 reqwest = { version="0.12.2", features=["stream", "json"], default-features = false }
 serde-tuple-vec-map = "1.0.1"
+http = "1"
 
 aws-sdk-s3 = { workspace = true }
 aws-types = { workspace = true }

@@ -12,7 +12,7 @@
 
 use std::{path::Path, time::Duration};
 
-use esthri_internals::http::header::{HeaderMap, CONTENT_LENGTH};
+use http::header::{HeaderMap, CONTENT_LENGTH};
 
 use aws_sdk_s3::error::SdkError;
 use aws_sdk_s3::presigning::PresigningConfig;
