@@ -17,6 +17,8 @@ use std::{
     result::Result as StdResult,
 };
 
+use aws_sdk_s3::primitives::DateTime;
+use aws_sdk_s3::types::ObjectStorageClass;
 use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -149,9 +151,13 @@ impl S3Listing {
 }
 
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct S3Object {
     pub key: String,
     pub e_tag: String,
+    pub storage_class: Option<ObjectStorageClass>,
+    pub size: Option<i64>,
+    pub last_modified: Option<DateTime>,
 }
 
 /// For syncing from remote to local, or local to remote, "metadata" is attached to the listing in
