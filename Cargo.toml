@@ -2,7 +2,7 @@
 members = ["crates/esthri", "crates/esthri-internals", "crates/esthri-cli", "crates/esthri-test"]
 
 [workspace.dependencies]
-aws-sdk-s3 = "1.21.0"
+aws-sdk-s3 = "1.22.0"
 aws-types = "1.1.8"
 aws-config = { version = "1.1.9", features = ["behavior-version-latest"]}
 aws-smithy-runtime = "1.1.8"
