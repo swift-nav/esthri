@@ -4,7 +4,7 @@ members = ["crates/esthri", "crates/esthri-internals", "crates/esthri-cli", "cra
 [workspace.dependencies]
 aws-sdk-s3 = "1.21.0"
 aws-types = "1.1.8"
-aws-config = { version = "1.1.9", features = ["behavior-version-latest"]}
+aws-config = { version = "1.1.10", features = ["behavior-version-latest"]}
 aws-smithy-runtime = "1.1.8"
 hyper = "0.14.28" # hyper 0.14 is the version used in the aws-smithy-runtime api. Can't upgrade to "1" until smithy-runtime does
 
