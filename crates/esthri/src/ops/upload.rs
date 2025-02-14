@@ -290,19 +290,12 @@ where
     add_pending(PendingUpload::new(bucket, key, &upload_id));
 
     let completed_parts = {
-        let mut parts: Vec<_> = upload_request_stream(
-            s3,
-            bucket,
-            key,
-            &upload_id,
-            reader,
-            file_size,
-            Config::global().upload_part_size(),
-        )
-        .await
-        .buffer_unordered(Config::global().concurrent_upload_tasks())
-        .try_collect()
-        .await?;
+        let mut parts: Vec<_> =
+            upload_request_stream(s3, bucket, key, &upload_id, reader, file_size)
+                .await
+                .buffer_unordered(Config::global().concurrent_upload_tasks())
+                .try_collect()
+                .await?;
         parts.sort_unstable_by_key(|a| a.part_number);
         parts
     };
@@ -313,11 +306,7 @@ where
     Ok(())
 }
 
-// Creates a stream of smaller chunks for a larger chunk of data. This
-// is to reduce memory usage when uploading, as we currently do
-// multipart uploads of 8MB. Giving the rusuto uploading a stream that
-// it can consume causes less memory to be used than giving it whole 8MB
-// chunks as there is less data waiting around to be uploaded.
+// Creates a ByteStream for a chunk, given a reader and a chunk number.
 async fn create_stream_for_chunk<R>(
     reader: Arc<Mutex<R>>,
     file_size: u64,
@@ -327,47 +316,15 @@ where
     R: AsyncRead + AsyncSeek + Send + Unpin + 'static,
 {
     let chunk_size = Config::global().upload_part_size();
-    let read_part_size = Config::global().upload_read_size();
-
-    // The total amount to read for this chunk
-    let to_read = u64::min(file_size - (chunk_size * chunk_number), chunk_size);
-    let init_state = (to_read, /* part_number = */ 0, reader);
-    let stream = Box::pin(stream::try_unfold(
-        init_state,
-        move |(remaining, part_number, reader)| async move {
-            if remaining == 0 {
-                Ok(None)
-            } else {
-                let read_size = u64::min(remaining, read_part_size);
-                let mut buf = BytesMut::with_capacity(read_size as usize);
-                buf.resize(read_size as usize, 0);
-                {
-                    let mut guard = reader.lock().await;
-                    let seek = chunk_size * chunk_number + part_number * read_part_size;
-                    guard.seek(SeekFrom::Start(seek)).await?;
-                    let slice = buf.as_mut();
-                    guard.read_exact(&mut slice[..read_size as usize]).await?;
-                }
-                if read_size == 0 {
-                    Err(Error::ReadZero)
-                } else {
-                    Ok(Some((
-                        buf.freeze(),
-                        (remaining - read_size, part_number + 1, reader),
-                    )))
-                }
-            }
-        },
-    ));
-    let mut stream = stream.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err));
-
-    // stream needs to be collected into Bytes for ByteStream to be retryable
-    let mut collected_bytes = Vec::new();
-
-    while let Some(bytes) = stream.try_next().await? {
-        collected_bytes.extend_from_slice(&bytes);
-    }
-    Ok(ByteStream::from(collected_bytes))
+    let seek = chunk_size * chunk_number;
+    let read_size = u64::min(file_size - seek, chunk_size);
+    let mut buf = BytesMut::with_capacity(read_size as usize);
+    buf.resize(read_size as usize, 0);
+    let mut guard = reader.lock().await;
+    guard.seek(SeekFrom::Start(seek)).await?;
+    let slice = buf.as_mut();
+    guard.read_exact(&mut slice[..read_size as usize]).await?;
+    Ok(ByteStream::from(buf.freeze()))
 }
 
 async fn upload_request_stream<'a, R>(
@@ -377,11 +334,11 @@ async fn upload_request_stream<'a, R>(
     upload_id: &'a str,
     reader: R,
     file_size: u64,
-    part_size: u64,
 ) -> impl Stream<Item = impl Future<Output = Result<CompletedPart>> + 'a> + 'a
 where
     R: AsyncRead + AsyncSeek + Unpin + Send + 'static,
 {
+    let part_size = Config::global().upload_part_size();
     let last_part = {
         let remaining = file_size % part_size;
         if remaining > 0 {
