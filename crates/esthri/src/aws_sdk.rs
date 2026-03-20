@@ -24,7 +24,7 @@ use aws_sdk_s3::operation::create_multipart_upload::CreateMultipartUploadOutput;
 use aws_sdk_s3::operation::get_object::GetObjectOutput;
 use aws_sdk_s3::operation::head_object::{HeadObjectError, HeadObjectOutput};
 use aws_sdk_s3::primitives::ByteStream;
-use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart};
+use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart, ObjectCannedAcl};
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use futures::Stream;
@@ -262,6 +262,7 @@ pub async fn create_multipart_upload(
     s3.create_multipart_upload()
         .bucket(bucket)
         .key(key)
+        .acl(ObjectCannedAcl::BucketOwnerFullControl)
         .set_metadata(metadata)
         .storage_class(storage_class)
         .send()
