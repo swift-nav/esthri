@@ -66,9 +66,7 @@ pub async fn download_file_presigned(
     let mut file = File::create(filepath).await?;
     let mut resp = client.get(presigned_url).send().await?.error_for_status()?;
     if opts.transparent_compression {
-        let st = resp
-            .bytes_stream()
-            .map_err(futures::io::Error::other);
+        let st = resp.bytes_stream().map_err(futures::io::Error::other);
         let mut src = StreamReader::new(st);
         let mut dest = GzipDecoder::new(file);
         copy(&mut src, &mut dest).await?;
