@@ -35,12 +35,12 @@ jobs:
             needs_musl: true
             tar: tar
 
-          - os: macos-11
+          - os: macos-14
             profile: release+mac
             target: x86_64-apple-darwin
             tar: gtar
 
-          - os: macos-11
+          - os: macos-14
             profile: release+mac+aarch64
             target: aarch64-apple-darwin
             tar: gtar
