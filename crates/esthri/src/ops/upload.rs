@@ -359,7 +359,7 @@ where
             }
         },
     ));
-    let mut stream = stream.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err));
+    let mut stream = stream.map_err(std::io::Error::other);
 
     // stream needs to be collected into Bytes for ByteStream to be retryable
     let mut collected_bytes = Vec::new();

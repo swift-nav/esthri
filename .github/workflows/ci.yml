@@ -24,11 +24,11 @@ jobs:
             target: aarch64-unknown-linux-musl
             needs_musl: true
 
-          - os: macos-11
+          - os: macos-14
             profile: dev+mac
             target: x86_64-apple-darwin
 
-          - os: macos-11
+          - os: macos-14
             profile: dev+mac+aarch64
             target: aarch64-apple-darwin
 

@@ -108,7 +108,7 @@ pub fn is_aws_compatibility_mode() -> bool {
         .map(String::from);
 
     // Returns true if the binary is named 'aws' or if it was invoked from a hard link named 'aws'
-    let is_run_as_aws = program_name.map_or(false, |s| s == "aws");
+    let is_run_as_aws = program_name.is_some_and(|s| s == "aws");
     let has_aws_env_var = env::var("ESTHRI_AWS_COMPAT_MODE").is_ok();
 
     is_run_as_aws || has_aws_env_var

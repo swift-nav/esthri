@@ -1,6 +1,6 @@
-ARG RUST_VERSION=1.74.0
+ARG RUST_VERSION=1.94.0
 
-FROM rust:${RUST_VERSION}-slim-buster
+FROM rust:${RUST_VERSION}-slim-bookworm
 
 ARG DEBIAN_FRONTEND=noninterative
 
