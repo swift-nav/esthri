@@ -12,7 +12,7 @@
 
 use std::{
     convert::Infallible,
-    io::{self, ErrorKind},
+    io,
     ops::Deref,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -150,7 +150,7 @@ impl From<ErrorTrackerArc> for Option<io::Error> {
         if let Some(the_error) = the_error.downcast_ref::<io::Error>() {
             Some(io::Error::new(the_error.kind(), format!("{}", the_error)))
         } else {
-            Some(io::Error::new(ErrorKind::Other, format!("{}", the_error)))
+            Some(io::Error::other(format!("{}", the_error)))
         }
     }
 }
@@ -226,7 +226,7 @@ fn with_s3_client(
 /// * `bucket` - The bucket to serve over HTTP.
 /// * `index_html` - Wether to serve "index.html" in place of directory listings.
 /// * `allowed_prefixes` - specifies a list of prefixes which are allowed for access, all other prefixes will be
-/// rejected with HTTP status 404 (not found).
+///   rejected with HTTP status 404 (not found).
 ///
 /// # Errors
 ///
@@ -439,7 +439,7 @@ async fn create_archive_stream(
 }
 
 fn into_io_error<E: std::error::Error>(err: E) -> io::Error {
-    io::Error::new(ErrorKind::Other, format!("{}", err))
+    io::Error::other(format!("{}", err))
 }
 
 fn get_stripped_path<'a>(base: &str, path: &'a str) -> &'a str {
@@ -800,13 +800,13 @@ fn should_reject(path: &str, allowed_prefixes: &[String], params: &DownloadParam
 /// * HTTP GET request to `/<path/to/object/foo.bin` => results in fetch of `s3://<bucket>/path/to/object/foo.bin`
 ///
 /// * HTTP GET request to `/<path/to/object/>` => results in a listing page showing all objects that match the prefix
-/// `path/to/object`
+///   `path/to/object`
 ///
 /// * HTTP GET request to `/<path/to/object/>?archive=true` => results in a zip archive being served with the contents
-/// of the directory `path/to/object` recursively populating said archive
+///   of the directory `path/to/object` recursively populating said archive
 ///
 /// * HTTP GET request to `/?archive=true&prefixes=prefix1|prefix2` => results in a zip archive being served with the
-/// contents all directories listed in the `prefixes` parameter populating the archive
+///   contents all directories listed in the `prefixes` parameter populating the archive
 ///
 /// # Arguments
 ///

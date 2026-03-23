@@ -191,7 +191,7 @@ impl From<Error> for std::io::Error {
     fn from(err: Error) -> Self {
         match err {
             Error::IoError(e) => e,
-            other => std::io::Error::new(std::io::ErrorKind::Other, other),
+            other => std::io::Error::other(other),
         }
     }
 }
