@@ -54,7 +54,7 @@ aws-config = { workspace = true }
 aws-smithy-runtime = { workspace = true }
 
 [dependencies.esthri-internals]
-version = "12.1.0"
+version = "12.1.1"
 path = "../esthri-internals"
 
 [dev-dependencies]
