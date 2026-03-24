@@ -1208,7 +1208,7 @@ dependencies = [
 
 [[package]]
 name = "esthri-test"
-version = "12.1.0"
+version = "12.1.1"
 dependencies = [
  "aws-config",
  "aws-sdk-s3",
