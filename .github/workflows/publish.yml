@@ -15,8 +15,19 @@ on:
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
+  create_release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release create ${{ github.ref_name }} --title "${{ github.ref_name }}" --generate-notes
+
   release:
     name: Release ${{ matrix.target }}
+    needs: [ create_release ]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
