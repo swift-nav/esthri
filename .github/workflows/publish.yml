@@ -88,13 +88,9 @@ jobs:
           ${{ matrix.tar }} -C target/${{ matrix.target }}/release -czf esthri-${{ env.VERSION }}-${{ matrix.target }}.tar.gz esthri${{ matrix.suffix }}
 
       - name: Upload Release
-        uses: svenstaro/upload-release-action@v1-release
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: "*.tar.gz"
-          tag: ${{ github.ref }}
-          overwrite: true
-          file_glob: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload ${{ github.ref_name }} *.tar.gz --clobber
 
   post_release:
     name: Post release
